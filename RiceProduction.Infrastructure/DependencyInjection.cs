@@ -1,11 +1,11 @@
-﻿using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.Constants;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Domain.Constants;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
@@ -20,18 +20,11 @@ public static class DependencyInjection
         Guard.Against.Null(connectionString, message: "Connection string 'CleanArchitectureDb' not found.");
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
-        builder.Services.AddScoped<ISaveChangesInterceptor, DispatchDomainEventsInterceptor>();
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
             options.AddInterceptors(sp.GetServices<ISaveChangesInterceptor>());
-#if (UsePostgreSQL)
             options.UseNpgsql(connectionString);
-#elif (UseSqlite)
-            options.UseSqlite(connectionString);
-#else
-            options.UseSqlServer(connectionString);
-#endif
             options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
@@ -47,7 +40,6 @@ public static class DependencyInjection
 
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
 
-#if (UseApiOnly)
         builder.Services.AddAuthentication()
             .AddBearerToken(IdentityConstants.BearerScheme);
 
@@ -58,12 +50,6 @@ public static class DependencyInjection
             .AddRoles<IdentityRole>()
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddApiEndpoints();
-#else
-        builder.Services
-            .AddDefaultIdentity<ApplicationUser>()
-            .AddRoles<IdentityRole>()
-            .AddEntityFrameworkStores<ApplicationDbContext>();
-#endif
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();

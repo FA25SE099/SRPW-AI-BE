@@ -1,5 +1,4 @@
-﻿using CleanArchitecture.Domain.Events;
-using RiceProduction.Application.Common.Interfaces;
+﻿using RiceProduction.Application.Common.Interfaces;
 
 namespace RiceProduction.Application.TodoItems.Commands.DeleteTodoItem;
 
@@ -23,7 +22,6 @@ public class DeleteTodoItemCommandHandler : IRequestHandler<DeleteTodoItemComman
 
         _context.TodoItems.Remove(entity);
 
-        entity.AddDomainEvent(new TodoItemDeletedEvent(entity));
 
         await _context.SaveChangesAsync(cancellationToken);
     }

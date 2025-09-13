@@ -1,6 +1,5 @@
-﻿using CleanArchitecture.Domain.Entities;
-using CleanArchitecture.Domain.Events;
-using RiceProduction.Application.Common.Interfaces;
+﻿using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.TodoItems.Commands.CreateTodoItem;
 

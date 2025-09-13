@@ -1,5 +1,5 @@
-﻿using CleanArchitecture.Domain.Enums;
-using RiceProduction.Application.Common.Interfaces;
+﻿using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.TodoItems.Commands.UpdateTodoItemDetail;
 

@@ -1,8 +1,8 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Infrastructure.Identity;
 
