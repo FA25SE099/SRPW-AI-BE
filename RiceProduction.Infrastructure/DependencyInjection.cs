@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Domain.Constants;
+using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
@@ -24,37 +24,34 @@ public static class DependencyInjection
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
             options.AddInterceptors(sp.GetServices<ISaveChangesInterceptor>());
-            options.UseNpgsql(connectionString);
-            options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+            options.UseNpgsql(connectionString, npgsqlOptions =>
+            {
+                npgsqlOptions.UseNetTopologySuite();
+
+                npgsqlOptions.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName);
+            });
         });
 
-#if (UseAspire)
-#if (UsePostgreSQL)
-        builder.EnrichNpgsqlDbContext<ApplicationDbContext>();
-#elif (UseSqlServer)
-        builder.EnrichSqlServerDbContext<ApplicationDbContext>();
-#endif
-#endif
-
-        builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
 
-        builder.Services.AddAuthentication()
-            .AddBearerToken(IdentityConstants.BearerScheme);
+        // Configure Identity with proper stores
+        builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
+        {
+            // Password settings
+            options.Password.RequireDigit = false;
+            options.Password.RequireLowercase = false;
+            options.Password.RequireNonAlphanumeric = false; 
+            options.Password.RequireUppercase = false;
 
-        builder.Services.AddAuthorizationBuilder();
-
-        builder.Services
-            .AddIdentityCore<ApplicationUser>()
-            .AddRoles<IdentityRole>()
-            .AddEntityFrameworkStores<ApplicationDbContext>()
-            .AddApiEndpoints();
+            // Lockout settings
+        })
+        .AddEntityFrameworkStores<ApplicationDbContext>()
+        .AddDefaultTokenProviders();
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
+        builder.Services.AddScoped<ITokenService, TokenService>();
 
-        builder.Services.AddAuthorization(options =>
-            options.AddPolicy(Policies.CanPurge, policy => policy.RequireRole(Roles.Administrator)));
     }
 }
