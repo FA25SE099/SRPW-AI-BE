@@ -19,6 +19,9 @@ RiceProduction.API/appsettings.json
 # Mono auto generated files
 mono_crash.*
 
+**/Infrastructure/Migrations/
+**/Infrastructure/*DbContextModelSnapshot.cs
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
