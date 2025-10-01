@@ -21,7 +21,7 @@ mono_crash.*
 
 **/Infrastructure/Migrations/
 **/Infrastructure/*DbContextModelSnapshot.cs
-
+RiceProduction.Infrastructure/Migrations/
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
