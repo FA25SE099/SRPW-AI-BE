@@ -11,10 +11,9 @@ public class ApplicationUser : IdentityUser<Guid>
     public string? Address { get; set; }
 
     public bool IsActive { get; set; } = true;
-    public string? RefreshToken { get; set; }
 
     public DateTime? LastActivityAt { get; set; }
 
-  
     public bool IsVerified { get; set; } = false;
+    public List<RefreshToken> RefreshTokens { get; set; }
 }

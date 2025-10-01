@@ -1,6 +1,6 @@
 using RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Infrastructure.Identity;
+namespace RiceProduction.Domain.Entities;
 
 public class RefreshToken
 {
