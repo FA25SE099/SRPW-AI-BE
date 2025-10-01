@@ -151,7 +151,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Seasons", x => x.Id);
-                    table.CheckConstraint("CK_Season_DateRange", "[EndDate] > [StartDate]");
                 });
 
             migrationBuilder.CreateTable(
@@ -755,7 +754,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PlotCultivations", x => x.Id);
-                    table.CheckConstraint("CK_PlotCultivation_ActualYield", "[ActualYield] IS NULL OR [ActualYield] >= 0");
                     table.ForeignKey(
                         name: "FK_PlotCultivations_Plots_PlotId",
                         column: x => x.PlotId,
@@ -840,9 +838,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ProductionPlans", x => x.Id);
-                    table.CheckConstraint("CK_ProductionPlan_ApprovalFlow", "([ApprovedAt] IS NULL AND [ApprovedBy] IS NULL) OR ([ApprovedAt] IS NOT NULL AND [ApprovedBy] IS NOT NULL)");
-                    table.CheckConstraint("CK_ProductionPlan_SubmissionFlow", "([SubmittedAt] IS NULL AND [SubmittedBy] IS NULL) OR ([SubmittedAt] IS NOT NULL AND [SubmittedBy] IS NOT NULL)");
-                    table.CheckConstraint("CK_ProductionPlan_TotalArea", "[TotalArea] IS NULL OR [TotalArea] > 0");
                     table.ForeignKey(
                         name: "FK_ProductionPlans_AgronomyExperts_AgronomyExpertId",
                         column: x => x.AgronomyExpertId,
@@ -904,7 +899,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ProductionPlanTasks", x => x.Id);
-                    table.CheckConstraint("CK_ProductionPlanTask_DateRange", "[ScheduledEndDate] IS NULL OR [ScheduledEndDate] >= [ScheduledDate]");
                     table.ForeignKey(
                         name: "FK_ProductionPlanTasks_ProductionPlans_ProductionPlanId",
                         column: x => x.ProductionPlanId,
@@ -950,9 +944,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CultivationTasks", x => x.Id);
-                    table.CheckConstraint("CK_CultivationTask_CompletionPercentage", "[CompletionPercentage] >= 0 AND [CompletionPercentage] <= 100");
-                    table.CheckConstraint("CK_CultivationTask_DateRange", "[ActualEndDate] IS NULL OR [ActualEndDate] >= [ActualStartDate]");
-                    table.CheckConstraint("CK_CultivationTask_NonNegativeCosts", "[ActualCost] >= 0 AND [ActualServiceCost] >= 0");
                     table.ForeignKey(
                         name: "FK_CultivationTasks_PlotCultivations_PlotCultivationId",
                         column: x => x.PlotCultivationId,
@@ -1012,8 +1003,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ProductionPlanTaskMaterials", x => x.Id);
-                    table.CheckConstraint("CK_ProductionPlanTaskMaterial_NonNegativeCost", "[EstimatedCost] >= 0");
-                    table.CheckConstraint("CK_ProductionPlanTaskMaterial_PositiveQuantity", "[EstimatedQuantity] > 0");
                     table.ForeignKey(
                         name: "FK_ProductionPlanTaskMaterials_Materials_MaterialId",
                         column: x => x.MaterialId,
@@ -1130,8 +1119,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CultivationTaskMaterials", x => x.Id);
-                    table.CheckConstraint("CK_CultivationTaskMaterial_NonNegativeCost", "[ActualCost] >= 0");
-                    table.CheckConstraint("CK_CultivationTaskMaterial_PositiveQuantity", "[ActualQuantity] > 0");
                     table.ForeignKey(
                         name: "FK_CultivationTaskMaterials_CultivationTasks_CultivationTaskId",
                         column: x => x.CultivationTaskId,
@@ -1220,8 +1207,6 @@ namespace RiceProduction.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FarmLogMaterials", x => x.Id);
-                    table.CheckConstraint("CK_FarmLogMaterial_NonNegativeCost", "[ActualCost] >= 0");
-                    table.CheckConstraint("CK_FarmLogMaterial_PositiveQuantity", "[ActualQuantityUsed] > 0");
                     table.ForeignKey(
                         name: "FK_FarmLogMaterials_FarmLogs_FarmLogId",
                         column: x => x.FarmLogId,

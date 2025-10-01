@@ -64,13 +64,5 @@ public class CultivationTaskConfiguration : IEntityTypeConfiguration<Cultivation
                .HasDatabaseName("IX_CultivationTask_AssignedVendor");
 
         // Check constraints
-        builder.ToTable(t => t.HasCheckConstraint("CK_CultivationTask_CompletionPercentage", 
-                       "[CompletionPercentage] >= 0 AND [CompletionPercentage] <= 100"));
-        
-        builder.ToTable(t => t.HasCheckConstraint("CK_CultivationTask_DateRange", 
-                       "[ActualEndDate] IS NULL OR [ActualEndDate] >= [ActualStartDate]"));
-        
-        builder.ToTable(t => t.HasCheckConstraint("CK_CultivationTask_NonNegativeCosts", 
-                       "[ActualCost] >= 0 AND [ActualServiceCost] >= 0"));
     }
 }

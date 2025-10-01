@@ -13,7 +13,7 @@ using RiceProduction.Infrastructure.Data;
 namespace RiceProduction.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250930113918_Initial")]
+    [Migration("20251001025503_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -519,14 +519,7 @@ namespace RiceProduction.Infrastructure.Migrations
 
                     b.HasIndex("VerifiedBy");
 
-                    b.ToTable("CultivationTasks", t =>
-                        {
-                            t.HasCheckConstraint("CK_CultivationTask_CompletionPercentage", "[CompletionPercentage] >= 0 AND [CompletionPercentage] <= 100");
-
-                            t.HasCheckConstraint("CK_CultivationTask_DateRange", "[ActualEndDate] IS NULL OR [ActualEndDate] >= [ActualStartDate]");
-
-                            t.HasCheckConstraint("CK_CultivationTask_NonNegativeCosts", "[ActualCost] >= 0 AND [ActualServiceCost] >= 0");
-                        });
+                    b.ToTable("CultivationTasks");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.CultivationTaskMaterial", b =>
@@ -581,12 +574,7 @@ namespace RiceProduction.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_CultivationTaskMaterial_Task_Material");
 
-                    b.ToTable("CultivationTaskMaterials", t =>
-                        {
-                            t.HasCheckConstraint("CK_CultivationTaskMaterial_NonNegativeCost", "[ActualCost] >= 0");
-
-                            t.HasCheckConstraint("CK_CultivationTaskMaterial_PositiveQuantity", "[ActualQuantity] > 0");
-                        });
+                    b.ToTable("CultivationTaskMaterials");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.FarmLog", b =>
@@ -710,12 +698,7 @@ namespace RiceProduction.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_FarmLogMaterial_Log_Material");
 
-                    b.ToTable("FarmLogMaterials", t =>
-                        {
-                            t.HasCheckConstraint("CK_FarmLogMaterial_NonNegativeCost", "[ActualCost] >= 0");
-
-                            t.HasCheckConstraint("CK_FarmLogMaterial_PositiveQuantity", "[ActualQuantityUsed] > 0");
-                        });
+                    b.ToTable("FarmLogMaterials");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.FieldWeather", b =>
@@ -1056,10 +1039,7 @@ namespace RiceProduction.Infrastructure.Migrations
                     b.HasIndex("Status", "PlantingDate")
                         .HasDatabaseName("IX_PlotCultivation_Status_PlantingDate");
 
-                    b.ToTable("PlotCultivations", t =>
-                        {
-                            t.HasCheckConstraint("CK_PlotCultivation_ActualYield", "[ActualYield] IS NULL OR [ActualYield] >= 0");
-                        });
+                    b.ToTable("PlotCultivations");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.ProductionPlan", b =>
@@ -1149,14 +1129,7 @@ namespace RiceProduction.Infrastructure.Migrations
                     b.HasIndex("Status", "BasePlantingDate")
                         .HasDatabaseName("IX_ProductionPlan_Status_PlantingDate");
 
-                    b.ToTable("ProductionPlans", t =>
-                        {
-                            t.HasCheckConstraint("CK_ProductionPlan_ApprovalFlow", "([ApprovedAt] IS NULL AND [ApprovedBy] IS NULL) OR ([ApprovedAt] IS NOT NULL AND [ApprovedBy] IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_ProductionPlan_SubmissionFlow", "([SubmittedAt] IS NULL AND [SubmittedBy] IS NULL) OR ([SubmittedAt] IS NOT NULL AND [SubmittedBy] IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_ProductionPlan_TotalArea", "[TotalArea] IS NULL OR [TotalArea] > 0");
-                        });
+                    b.ToTable("ProductionPlans");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.ProductionPlanTask", b =>
@@ -1246,10 +1219,7 @@ namespace RiceProduction.Infrastructure.Migrations
                     b.HasIndex("ProductionPlanId", "SequenceOrder")
                         .HasDatabaseName("IX_ProductionPlanTask_Plan_Sequence");
 
-                    b.ToTable("ProductionPlanTasks", t =>
-                        {
-                            t.HasCheckConstraint("CK_ProductionPlanTask_DateRange", "[ScheduledEndDate] IS NULL OR [ScheduledEndDate] >= [ScheduledDate]");
-                        });
+                    b.ToTable("ProductionPlanTasks");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.ProductionPlanTaskMaterial", b =>
@@ -1296,12 +1266,7 @@ namespace RiceProduction.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_ProductionPlanTaskMaterial_Task_Material");
 
-                    b.ToTable("ProductionPlanTaskMaterials", t =>
-                        {
-                            t.HasCheckConstraint("CK_ProductionPlanTaskMaterial_NonNegativeCost", "[EstimatedCost] >= 0");
-
-                            t.HasCheckConstraint("CK_ProductionPlanTaskMaterial_PositiveQuantity", "[EstimatedQuantity] > 0");
-                        });
+                    b.ToTable("ProductionPlanTaskMaterials");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.RiceVariety", b =>
@@ -1489,10 +1454,7 @@ namespace RiceProduction.Infrastructure.Migrations
                     b.HasIndex("StartDate", "EndDate")
                         .HasDatabaseName("IX_Season_DateRange");
 
-                    b.ToTable("Seasons", t =>
-                        {
-                            t.HasCheckConstraint("CK_Season_DateRange", "[EndDate] > [StartDate]");
-                        });
+                    b.ToTable("Seasons");
                 });
 
             modelBuilder.Entity("RiceProduction.Domain.Entities.StandardPlan", b =>

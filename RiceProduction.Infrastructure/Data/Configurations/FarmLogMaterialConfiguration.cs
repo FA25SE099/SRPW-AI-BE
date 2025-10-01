@@ -48,10 +48,5 @@ public class FarmLogMaterialConfiguration : IEntityTypeConfiguration<FarmLogMate
                .HasDatabaseName("IX_FarmLogMaterial_MaterialId");
 
         // Check constraints for positive quantities and costs
-        builder.ToTable(t => t.HasCheckConstraint("CK_FarmLogMaterial_PositiveQuantity", 
-                       "[ActualQuantityUsed] > 0"));
-        
-        builder.ToTable(t => t.HasCheckConstraint("CK_FarmLogMaterial_NonNegativeCost", 
-                       "[ActualCost] >= 0"));
     }
 }

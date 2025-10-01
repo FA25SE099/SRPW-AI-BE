@@ -32,12 +32,5 @@ public class ProductionPlanTaskMaterialConfiguration : IEntityTypeConfiguration<
 
         builder.HasIndex(pptm => pptm.MaterialId)
                .HasDatabaseName("IX_ProductionPlanTaskMaterial_MaterialId");
-
-        // Check constraint for positive quantities and costs
-        builder.ToTable(t => t.HasCheckConstraint("CK_ProductionPlanTaskMaterial_PositiveQuantity", 
-                       "[EstimatedQuantity] > 0"));
-        
-        builder.ToTable(t => t.HasCheckConstraint("CK_ProductionPlanTaskMaterial_NonNegativeCost", 
-                       "[EstimatedCost] >= 0"));
     }
 }

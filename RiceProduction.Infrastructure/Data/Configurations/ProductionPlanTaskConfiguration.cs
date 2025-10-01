@@ -72,7 +72,5 @@ public class ProductionPlanTaskConfiguration : IEntityTypeConfiguration<Producti
                .HasDatabaseName("IX_ProductionPlanTask_Plan_Sequence");
 
         // Check constraint for dates
-        builder.ToTable(t => t.HasCheckConstraint("CK_ProductionPlanTask_DateRange", 
-                       "[ScheduledEndDate] IS NULL OR [ScheduledEndDate] >= [ScheduledDate]"));
     }
 }

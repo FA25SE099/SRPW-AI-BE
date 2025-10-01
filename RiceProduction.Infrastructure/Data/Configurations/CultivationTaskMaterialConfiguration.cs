@@ -48,10 +48,5 @@ public class CultivationTaskMaterialConfiguration : IEntityTypeConfiguration<Cul
                .HasDatabaseName("IX_CultivationTaskMaterial_MaterialId");
 
         // Check constraints for positive quantities and costs
-        builder.ToTable(t => t.HasCheckConstraint("CK_CultivationTaskMaterial_PositiveQuantity", 
-                       "[ActualQuantity] > 0"));
-        
-        builder.ToTable(t => t.HasCheckConstraint("CK_CultivationTaskMaterial_NonNegativeCost", 
-                       "[ActualCost] >= 0"));
     }
 }

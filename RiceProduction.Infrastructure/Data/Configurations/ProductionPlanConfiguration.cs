@@ -75,13 +75,5 @@ public class ProductionPlanConfiguration : IEntityTypeConfiguration<ProductionPl
                .HasDatabaseName("IX_ProductionPlan_Status_PlantingDate");
 
         // Check constraints
-        builder.ToTable(t => t.HasCheckConstraint("CK_ProductionPlan_TotalArea", 
-                       "[TotalArea] IS NULL OR [TotalArea] > 0"));
-        
-        builder.ToTable(t => t.HasCheckConstraint("CK_ProductionPlan_ApprovalFlow", 
-                       "([ApprovedAt] IS NULL AND [ApprovedBy] IS NULL) OR ([ApprovedAt] IS NOT NULL AND [ApprovedBy] IS NOT NULL)"));
-        
-        builder.ToTable(t => t.HasCheckConstraint("CK_ProductionPlan_SubmissionFlow", 
-                       "([SubmittedAt] IS NULL AND [SubmittedBy] IS NULL) OR ([SubmittedAt] IS NOT NULL AND [SubmittedBy] IS NOT NULL)"));
     }
 }

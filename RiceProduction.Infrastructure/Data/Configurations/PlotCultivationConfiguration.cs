@@ -63,7 +63,5 @@ public class PlotCultivationConfiguration : IEntityTypeConfiguration<PlotCultiva
                .HasDatabaseName("IX_PlotCultivation_Status_PlantingDate");
 
         // Check constraints
-        builder.ToTable(t => t.HasCheckConstraint("CK_PlotCultivation_ActualYield", 
-                       "[ActualYield] IS NULL OR [ActualYield] >= 0"));
     }
 }
