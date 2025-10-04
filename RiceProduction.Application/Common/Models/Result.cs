@@ -1,5 +1,4 @@
 ﻿namespace RiceProduction.Application.Common.Models;
-
 public class Result<T>
 {
     public bool Succeeded { get; set; }
