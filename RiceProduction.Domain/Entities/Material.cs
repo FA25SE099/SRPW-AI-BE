@@ -1,4 +1,6 @@
-﻿namespace RiceProduction.Domain.Entities;
+﻿using Microsoft.EntityFrameworkCore;
+
+namespace RiceProduction.Domain.Entities;
 
 public class Material : BaseAuditableEntity
 {
