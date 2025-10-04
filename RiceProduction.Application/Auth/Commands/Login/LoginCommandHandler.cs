@@ -1,13 +1,17 @@
 using MediatR;
+using Microsoft.AspNetCore.Http.Features;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
+using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.Auth.Commands.Login;
 
 public class LoginCommandHandler : IRequestHandler<LoginCommand, Result<LoginResponse>>
 {
     private readonly IIdentityService _identityService;
+    private readonly IUnitOfWork _unitOfWork;
 
     public LoginCommandHandler(IIdentityService identityService)
     {
