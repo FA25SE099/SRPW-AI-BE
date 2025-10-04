@@ -65,6 +65,8 @@ namespace RiceProduction.Infrastructure.Data
 
             await SeedCoreDataAsync();
 
+            await SeedMaterialDataAsync();
+
         }
 
         private async Task SeedRolesAsync()
@@ -251,6 +253,36 @@ namespace RiceProduction.Infrastructure.Data
                             userName, string.Join(", ", adminRoleResult.Errors.Select(e => e.Description)));
                     }
                 }
+            }
+        }
+        private async Task SeedMaterialDataAsync()
+        {
+            // Add materials seeding
+            if (!_context.Set<Material>().Any())
+            {
+                var materials = new List<Material>
+        {
+            // Fertilizers
+            new Material
+            {
+                Name = "Đạm Urê 46.5%N",
+                Type = MaterialType.Fertilizer,
+                AmmountPerMaterial = 120.0m,
+                Unit = "ml",
+                Description = "Phân đạm urê có hàm lượng đạm cao, thích hợp cho giai đoạn sinh trưởng",
+                Manufacturer = "Đạm Phú Mỹ",
+                IsActive = true
+            },
+            
+        };
+
+                await _context.Set<Material>().AddRangeAsync(materials);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Seeded {Count} materials", materials.Count);
+            }
+            else
+            {
+                _logger.LogInformation("Materials data already exists - skipping seeding");
             }
         }
 
