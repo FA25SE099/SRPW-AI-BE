@@ -11,7 +11,6 @@ namespace RiceProduction.Application.Auth.Commands.Login;
 public class LoginCommandHandler : IRequestHandler<LoginCommand, Result<LoginResponse>>
 {
     private readonly IIdentityService _identityService;
-    private readonly IUnitOfWork _unitOfWork;
 
     public LoginCommandHandler(IIdentityService identityService)
     {
