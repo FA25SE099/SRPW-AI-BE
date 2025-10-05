@@ -1,4 +1,6 @@
-﻿namespace RiceProduction.Domain.Entities;
+﻿using Microsoft.EntityFrameworkCore;
+
+namespace RiceProduction.Domain.Entities;
 
 public class Material : BaseAuditableEntity
 {
@@ -9,10 +11,10 @@ public class Material : BaseAuditableEntity
     [Required]
     public MaterialType Type { get; set; }
 
+    public decimal? AmmountPerMaterial { get; set; }//lieu luong cua 1 vat tu vd: 400
     [Required]
     [MaxLength(50)]
-    public string Unit { get; set; } = string.Empty;
-
+    public string Unit { get; set; } = string.Empty;//don vi tinh vd: ml, kg
     public string? Description { get; set; }
 
     [MaxLength(255)]

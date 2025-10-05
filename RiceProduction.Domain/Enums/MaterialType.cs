@@ -3,7 +3,5 @@ namespace RiceProduction.Domain.Enums;
 public enum MaterialType
 {
     Fertilizer,
-    Pesticide,
-    Seed,
-    Other
+    Pesticide
 }
