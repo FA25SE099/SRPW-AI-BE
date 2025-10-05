@@ -63,6 +63,8 @@ namespace RiceProduction.Infrastructure.Data
 
             await SeedUsersAsync();
 
+            await SeedVietnameseRiceDataAsync();
+
             await SeedCoreDataAsync();
 
         }
@@ -222,7 +224,7 @@ namespace RiceProduction.Infrastructure.Data
                     "Supervisor" => UserRole.Supervisor,
                     "Farmer" => UserRole.Farmer,
                     "UavVendor" => UserRole.UavVendor,
-                    _ => UserRole.Farmer 
+                    _ => UserRole.Farmer
                 };
 
                 string roleName = userRoleEnum.ToString();
@@ -253,10 +255,155 @@ namespace RiceProduction.Infrastructure.Data
                 }
             }
         }
+        private async Task SeedVietnameseRiceDataAsync()
+        {
+
+            bool dataAlreadySeeded = _context.Seasons.Any(s => s.SeasonName == "Đông Xuân") &&
+                                     _context.RiceVarieties.Any(v => v.VarietyName == "ST25");
+
+            if (dataAlreadySeeded)
+            {
+                _logger.LogInformation("Vietnamese rice data (ĐX, HT, TĐ) has already been seeded.");
+                return;
+            }
+
+            // ----------------------------------------------------------------------
+            // 1. Seed Rice Varieties
+            // ----------------------------------------------------------------------
+
+            var riceVarietiesData = new (string Name, int Duration, decimal Yield, string Characteristics)[]
+            {
+        ("OM5451", 95, 6.50m, "Giống lúa chất lượng cao, hạt dài, cơm dẻo, vị đậm. Phổ biến ở ĐBSCL."),
+        ("ST25", 105, 6.00m, "Gạo ngon nhất thế giới, thơm mùi lá dứa, cơm dẻo, vị ngọt hậu. Giống cao cấp."),
+        ("ST24", 100, 5.80m, "Giống lúa thơm chất lượng, anh em với ST25. Năng suất và chất lượng tốt."),
+        ("Jasmine", 105, 6.00m, "Giống lúa thơm phổ biến cho xuất khẩu, hạt thon dài."),
+        ("IR50404", 90, 5.50m, "Giống lúa tẻ thường, năng suất ổn định, chịu phèn mặn tốt. Giá thành thấp."),
+        ("Nàng Hoa 9", 110, 6.00m, "Giống lúa thơm, cơm dẻo vừa, để nguội vẫn mềm. Chịu phèn tốt."),
+        ("Đài Thơm 8", 100, 7.00m, "Giống lúa chủ lực, năng suất cao, chất lượng tốt, chống chịu sâu bệnh.")
+            };
+
+            foreach (var data in riceVarietiesData)
+            {
+                if (!_context.RiceVarieties.Any(v => v.VarietyName == data.Name))
+                {
+                    _context.RiceVarieties.Add(new RiceVariety
+                    {
+                        VarietyName = data.Name,
+                        BaseGrowthDurationDays = data.Duration,
+                        BaseYieldPerHectare = data.Yield,
+                        Characteristics = data.Characteristics,
+                        IsActive = true
+                    });
+                }
+            }
+
+            // ----------------------------------------------------------------------
+            // 2. Seed Seasons
+            // ----------------------------------------------------------------------
+
+            var seasonsData = new (string Name, string Type, string StartDate, string EndDate)[]
+            {
+        // Tháng/Ngày (MM/dd)
+        ("Đông Xuân", "Winter-Spring", "12/01", "04/30"),
+        ("Hè Thu", "Summer-Autumn", "05/01", "08/31"),
+        ("Thu Đông", "Autumn-Winter", "09/01", "11/30")
+            };
+
+            foreach (var data in seasonsData)
+            {
+                if (!_context.Seasons.Any(s => s.SeasonName == data.Name))
+                {
+                    _context.Seasons.Add(new Season
+                    {
+                        SeasonName = data.Name,
+                        // Sử dụng thuộc tính string mới (DayMonth)
+                        StartDate = data.StartDate,
+                        EndDate = data.EndDate,
+                        SeasonType = data.Type,
+                        IsActive = true
+                    });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            // ----------------------------------------------------------------------
+            // 3. Seed RiceVarietySeason Relationships
+            // ----------------------------------------------------------------------
+
+            var allVarieties = _context.RiceVarieties.ToList();
+            var allSeasons = _context.Seasons.ToList();
+
+            var dongXuanSeason = allSeasons.FirstOrDefault(s => s.SeasonName == "Đông Xuân");
+            var heThuSeason = allSeasons.FirstOrDefault(s => s.SeasonName == "Hè Thu");
+            var thuDongSeason = allSeasons.FirstOrDefault(s => s.SeasonName == "Thu Đông");
+
+            if (dongXuanSeason == null || heThuSeason == null || thuDongSeason == null)
+            {
+                _logger.LogError("Required seasons were not found after saving changes.");
+                return;
+            }
+
+            var varietySeasonData = new List<VarietySeasonSeedData>
+    {
+        // Đông Xuân
+        new VarietySeasonSeedData { VarietyName = "Đài Thơm 8", SeasonId = dongXuanSeason.Id, Duration = 100, Yield = 7.50m, Risk = RiskLevel.Low, Notes = "Năng suất tối ưu.", PlantingStart = "12/05", PlantingEnd = "01/20" },
+        new VarietySeasonSeedData { VarietyName = "OM5451", SeasonId = dongXuanSeason.Id, Duration = 90, Yield = 7.00m, Risk = RiskLevel.Low, Notes = "Phù hợp gieo sớm.", PlantingStart = "12/15", PlantingEnd = "01/30" },
+        new VarietySeasonSeedData { VarietyName = "ST25", SeasonId = dongXuanSeason.Id, Duration = 100, Yield = 6.50m, Risk = RiskLevel.Low, Notes = "Đảm bảo hương thơm và chất lượng.", PlantingStart = "01/01", PlantingEnd = "02/15" },
+        new VarietySeasonSeedData { VarietyName = "Jasmine", SeasonId = dongXuanSeason.Id, Duration = 100, Yield = 6.80m, Risk = RiskLevel.Low, Notes = "Giống xuất khẩu, ít sâu bệnh.", PlantingStart = "12/10", PlantingEnd = "01/25" },
+
+        // Hè Thu
+        new VarietySeasonSeedData { VarietyName = "Đài Thơm 8", SeasonId = heThuSeason.Id, Duration = 105, Yield = 6.80m, Risk = RiskLevel.Medium, Notes = "Theo dõi bệnh đạo ôn.", PlantingStart = "05/10", PlantingEnd = "06/15" },
+        new VarietySeasonSeedData { VarietyName = "OM5451", SeasonId = heThuSeason.Id, Duration = 95, Yield = 6.20m, Risk = RiskLevel.Medium, Notes = "Ngắn ngày, thu hoạch trước mưa lớn.", PlantingStart = "05/20", PlantingEnd = "06/25" },
+        new VarietySeasonSeedData { VarietyName = "ST25", SeasonId = heThuSeason.Id, Duration = 105, Yield = 5.50m, Risk = RiskLevel.Medium, Notes = "Chất lượng dễ bị ảnh hưởng bởi độ ẩm cao.", PlantingStart = "05/01", PlantingEnd = "06/10" },
+        new VarietySeasonSeedData { VarietyName = "IR50404", SeasonId = heThuSeason.Id, Duration = 90, Yield = 6.00m, Risk = RiskLevel.Low, Notes = "Giống cứng cây, chịu đựng tốt.", PlantingStart = "06/01", PlantingEnd = "07/15" },
+
+        // Thu Đông
+        new VarietySeasonSeedData { VarietyName = "IR50404", SeasonId = thuDongSeason.Id, Duration = 95, Yield = 5.00m, Risk = RiskLevel.Medium, Notes = "Thích hợp cho vùng đất thấp.", PlantingStart = "09/05", PlantingEnd = "10/10" },
+        new VarietySeasonSeedData { VarietyName = "Đài Thơm 8", SeasonId = thuDongSeason.Id, Duration = 110, Yield = 6.00m, Risk = RiskLevel.High, Notes = "Chỉ trồng ở khu vực có đê bao kiên cố.", PlantingStart = "09/01", PlantingEnd = "10/05" },
+        new VarietySeasonSeedData { VarietyName = "Nàng Hoa 9", SeasonId = thuDongSeason.Id, Duration = 115, Yield = 5.50m, Risk = RiskLevel.High, Notes = "Cần gieo sạ sớm để tránh lũ.", PlantingStart = "08/20", PlantingEnd = "09/30" }
+    };
+
+            foreach (var data in varietySeasonData)
+            {
+                var variety = allVarieties.FirstOrDefault(v => v.VarietyName == data.VarietyName);
+
+                if (variety != null && !_context.RiceVarietySeasons.Any(rvs => rvs.RiceVarietyId == variety.Id && rvs.SeasonId == data.SeasonId))
+                {
+                    _context.RiceVarietySeasons.Add(new RiceVarietySeason
+                    {
+                        RiceVarietyId = variety.Id,
+                        SeasonId = data.SeasonId,
+                        GrowthDurationDays = data.Duration,
+                        ExpectedYieldPerHectare = data.Yield,
+                        RiskLevel = data.Risk,
+                        SeasonalNotes = data.Notes,
+                        IsRecommended = true,
+                        // Sử dụng thuộc tính string mới (DayMonth)
+                        OptimalPlantingStart = data.PlantingStart,
+                        OptimalPlantingEnd = data.PlantingEnd
+                    });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Seeded Vietnamese rice varieties, seasons (ĐX, HT, TĐ), and relationships with specific attributes.");
+        }
 
         private async Task SeedCoreDataAsync()
         {
             _logger.LogInformation("Core data seeding completed");
         }
+    }
+    class VarietySeasonSeedData
+    {
+        public string VarietyName { get; set; }
+        public Guid SeasonId { get; set; }
+        public int Duration { get; set; }
+        public decimal Yield { get; set; }
+        public RiskLevel Risk { get; set; }
+        public string Notes { get; set; }
+        public string PlantingStart { get; set; }
+        public string PlantingEnd { get; set; }
     }
 }
