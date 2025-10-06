@@ -2,9 +2,6 @@
 
 public class Plot : BaseAuditableEntity
 {
-    [Required]
-    [MaxLength(100)]
-    public string FieldId { get; set; } = string.Empty;
 
     [Required]
     public Guid FarmerId { get; set; }
@@ -14,7 +11,8 @@ public class Plot : BaseAuditableEntity
     [Required]
     [Column(TypeName = "geometry(Polygon,4326)")]
     public Polygon Boundary { get; set; } = null!;
-
+    public int? SoThua { get; set; }
+    public int? SoTo { get; set; }
     [Required]
     [Column(TypeName = "decimal(10,2)")]
     public decimal Area { get; set; }

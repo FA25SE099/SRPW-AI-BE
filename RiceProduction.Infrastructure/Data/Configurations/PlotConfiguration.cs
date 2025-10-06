@@ -3,10 +3,7 @@ namespace RiceProduction.Infrastructure.Data.Configurations;
 public class PlotConfiguration : IEntityTypeConfiguration<Plot>
 {
     public void Configure(EntityTypeBuilder<Plot> builder)
-    {
-        builder.Property(p => p.FieldId)
-            .IsRequired()
-            .HasMaxLength(100);
+    { 
 
         builder.Property(p => p.Boundary)
             .IsRequired()
@@ -26,8 +23,6 @@ public class PlotConfiguration : IEntityTypeConfiguration<Plot>
             .HasConversion<string>();
 
         // Indexes
-        builder.HasIndex(p => p.FieldId)
-            .IsUnique();
         builder.HasIndex(p => p.FarmerId);
         builder.HasIndex(p => p.GroupId);
         builder.HasIndex(p => p.Boundary)

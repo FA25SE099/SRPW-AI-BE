@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Geometries;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using RiceProduction.Infrastructure.Identity;
@@ -63,7 +64,7 @@ namespace RiceProduction.Infrastructure.Data
 
             await SeedUsersAsync();
 
-            await SeedCoreDataAsync();
+            await SeedPlotDataAsync();
 
         }
 
@@ -254,9 +255,115 @@ namespace RiceProduction.Infrastructure.Data
             }
         }
 
-        private async Task SeedCoreDataAsync()
+        private async Task SeedPlotDataAsync()
         {
             _logger.LogInformation("Core data seeding completed");
+            var farmerUser = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
+            var farmerUser2 = await _userManager.FindByEmailAsync("farmer2@ricepro.com") as Farmer;
+            var farmerUser3 = await _userManager.FindByEmailAsync("farmer3@ricepro.com") as Farmer;
+            if (farmerUser == null)
+            {
+                _logger.LogWarning("Farmer 'farmer1@ricepro.com' could not found. Skipping plot seeding. Ensure users are seeded first");
+                return;
+            }
+
+            if (farmerUser2 == null)
+            {
+                _logger.LogWarning("Farmer 'farmer2@ricepro.com' could not found. Skipping plot seeding. Ensure users are seeded first");
+                return;
+            }
+
+            var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+
+            if (!_context.Plots.Any())
+            {
+                var plots = new List<Plot>
+                {
+                    new Plot {
+                        FarmerId = farmerUser.Id,
+                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                        {
+                            new Coordinate(105.700, 10.000),    // SW corner
+                            new Coordinate(105.700, 10.005),    // NW corner
+                            new Coordinate(105.708, 10.005),    // NE corner
+                            new Coordinate(105.708, 10.000),    // SE corner
+                            new Coordinate(105.700, 10.000)     // Back to SW corner (close the ring)
+                        }),
+                        SoThua = 15,
+                        SoTo = 36,
+                        Area = 5.5m,
+                        SoilType = "Đất phù sa",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(105.704, 10.0025)),
+                        Status = PlotStatus.Active,
+                    },
+
+                    new Plot
+                    {
+                        FarmerId = farmerUser2.Id,
+                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                    {
+                        new Coordinate(105.800, 10.100),
+                        new Coordinate(105.800, 10.110),
+                        new Coordinate(105.815, 10.110),
+                        new Coordinate(105.815, 10.100),
+                        new Coordinate(105.800, 10.100)
+                        }),
+                        SoThua = 18,
+                        SoTo = 12,
+                        Area = 12,
+                        SoilType = "Đất phù sa",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(105.8075, 10.105)),
+                        Status = PlotStatus.Active
+                    },
+                    new Plot
+                    {
+                        FarmerId = farmerUser3.Id,
+                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                        {
+                            new Coordinate(11.210168500427, 106.42701488353),
+                            new Coordinate(11.20919692067,  106.42252632102),
+                            new Coordinate(11.213582994862, 106.42153433778),
+                            new Coordinate(11.214553605806, 106.42601646253),
+                            new Coordinate(11.210168500427, 106.42701488353),
+                        }),
+                        SoThua = 16,
+                        SoTo = 58,
+                        Area =  25.0857m,
+                        SoilType = "Đất nông nghiệp",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(11.211290, 106.425131)),
+                        Status = PlotStatus.Active
+                    },
+                    new Plot
+                    {
+                        FarmerId = farmerUser3.Id,
+                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                        {
+                            new Coordinate(11.215557861556,  106.4305890557),
+                            new Coordinate(11.211197392783,  106.43148705062),
+                            new Coordinate(11.211014284582,  106.43080189246),
+                            new Coordinate(11.210198687479,  106.42708240463),
+                            new Coordinate(11.214569243013,  106.42608561738),
+                            new Coordinate(11.215557861556,  106.4305890557),
+                        }),
+                        SoThua = 17,
+                        SoTo = 58,
+                        Area =  25.0857m,
+                        SoilType = "Đất nông nghiệp",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(11.212688, 106.427436)),
+                        Status = PlotStatus.Active
+                    }
+
+                };
+                await _context.AddRangeAsync(plots);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Seeded {Count} plots for Farmer {FarmerEmail}.");
+            }
+            else
+            {
+                _logger.LogInformation("Plots already exist. Skipping plot seeding.");
+            }
+
+            _logger.LogInformation("Core data seeding completed. 🌾");
         }
     }
 }
