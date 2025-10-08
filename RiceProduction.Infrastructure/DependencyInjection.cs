@@ -9,6 +9,7 @@ using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
+using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 
 namespace RiceProduction.Infrastructure;
 
@@ -20,6 +21,7 @@ public static class DependencyInjection
         Guard.Against.Null(connectionString, message: "Connection string 'CleanArchitectureDb' not found.");
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
+        builder.Services.AddScoped<IDownloadGenericExcel, DownloadGenericExcel>();
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {

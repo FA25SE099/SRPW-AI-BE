@@ -24,8 +24,5 @@
 	<ItemGroup>
 	  <ProjectReference Include="..\RiceProduction.Application\RiceProduction.Application.csproj" />
 	</ItemGroup>
-	<ItemGroup>
-	  <Folder Include="Implementation\MiniExcelImplementation\" />
-	</ItemGroup>
 
 </Project>
