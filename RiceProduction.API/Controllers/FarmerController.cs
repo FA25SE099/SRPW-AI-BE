@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature;
+using RiceProduction.Application.FarmerFeature.Command;
 using RiceProduction.Application.FarmerFeature.Queries;
 
 namespace RiceProduction.API.Controllers
@@ -47,12 +48,6 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, "An error occurred while processing your request");
             }
         }
-
-
-
-
-
-
         [HttpGet]
          public async Task<ActionResult<PagedResult<IEnumerable<FarmerDTO>>>> GetAllFarmers(
             [FromQuery] int pageNumber = 1,
@@ -75,7 +70,30 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
          }
+        [HttpPost("import")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(ImportFarmerResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ImportFarmerResult), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ImportFarmers([FromForm] FileUploadRequest requestModel)
+        {
+            if (requestModel.File == null || requestModel.File.Length == 0)
+            {
+                var errorResult = new ImportFarmerResult
+                {
+                    Errors = { new ImportError { ErrorMessage = "File không được để trống." } }
+                };
+                return BadRequest(errorResult);
+            }
+            var command = new ImportFarmerCommand(requestModel.File);
+            var result = await _mediator.Send(command);
 
+            if (result.FailureCount > 0)
+            {
+                return BadRequest(result);
+            }
 
-       }
+            return Ok(result);
+        }
+
+    }
     }

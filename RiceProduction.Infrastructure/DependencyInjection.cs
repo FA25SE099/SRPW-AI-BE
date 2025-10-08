@@ -13,6 +13,7 @@ using AutoMapper;
 using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries;
+using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 
 namespace RiceProduction.Infrastructure;
 
@@ -60,6 +61,7 @@ public static class DependencyInjection
             cfg.RegisterServicesFromAssembly(typeof(GetAllPlotQueriesHandler).Assembly);
         });
 
+        builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
 
