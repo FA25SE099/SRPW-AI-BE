@@ -7,10 +7,10 @@ public class Season : BaseAuditableEntity
     public string SeasonName { get; set; } = string.Empty;
 
     [Required]
-    public DateTime StartDate { get; set; }
+    public string StartDate { get; set; } = string.Empty; // Format "MM/DD"
 
     [Required]
-    public DateTime EndDate { get; set; }
+    public string EndDate { get; set; } = string.Empty; // Format "MM/DD"
 
     /// <summary>
     /// Type of season (e.g., "Wet Season", "Dry Season", "Winter-Spring")

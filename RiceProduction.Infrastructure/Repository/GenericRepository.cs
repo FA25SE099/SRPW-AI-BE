@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore.Query;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Domain.Common;
 using RiceProduction.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -9,6 +11,7 @@ using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 using RiceProduction.Domain.Common;
+using Microsoft.Extensions.Logging;
 
 namespace RiceProduction.Infrastructure.Repository
 {
@@ -16,12 +19,14 @@ namespace RiceProduction.Infrastructure.Repository
    where T : BaseAuditableEntity
     {
         private readonly ApplicationDbContext _context;
+        private readonly ILogger<GenericRepository<T>> _logger;
 
-        public GenericRepository(ApplicationDbContext context)
+
+        public GenericRepository(ApplicationDbContext context, ILogger<GenericRepository<T>> logger)
         {
             _context = context;
+            _logger = logger;
         }
-
         public async Task AddAsync(T entity)
         {
             await _context.Set<T>().AddAsync(entity);

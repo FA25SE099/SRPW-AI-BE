@@ -23,12 +23,12 @@ public class RiceVarietySeason : BaseAuditableEntity
     /// <summary>
     /// Optimal planting window start within the season
     /// </summary>
-    public DateTime? OptimalPlantingStart { get; set; }
+    public string OptimalPlantingStart { get; set; } = string.Empty;
 
     /// <summary>
     /// Optimal planting window end within the season
     /// </summary>
-    public DateTime? OptimalPlantingEnd { get; set; }
+    public string? OptimalPlantingEnd { get; set; } = string.Empty;
 
     /// <summary>
     /// Risk level for this variety in this season (Low, Medium, High)

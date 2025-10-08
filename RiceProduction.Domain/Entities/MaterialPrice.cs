@@ -7,7 +7,7 @@ public class MaterialPrice : BaseAuditableEntity
 
     [Required]
     [Column(TypeName = "decimal(10,2)")]
-    public decimal PricePerUnit { get; set; }
+    public decimal PricePerMaterial { get; set; }
 
     [Required]
     public DateTime ValidFrom { get; set; }
