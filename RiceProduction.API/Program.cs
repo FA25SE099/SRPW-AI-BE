@@ -10,12 +10,10 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.AddApplicationServices();
 builder.AddInfrastructureServices();
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -28,12 +26,10 @@ builder.Services.AddSwaggerGen(c =>
                       "Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,  // Changed from ApiKey to Http
-        Scheme = "bearer",               // Enables auto-prefixing
-        BearerFormat = "JWT"             // Optional: Specifies the token format
+        Scheme = "bearer",             
+        BearerFormat = "JWT"             
     });
 
-    // Apply the security requirement globally (to all endpoints)
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -49,12 +45,28 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3000") 
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()  
+            .WithExposedHeaders("Location");
+    });
 
-// Add HTTP context accessor and current user service
+    options.AddPolicy("AllowGemini", policy =>
+    {
+        policy.AllowAnyOrigin()
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .WithExposedHeaders("Content-Disposition");
+    });
+});
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUser, CurrentUser>();
 
-// Configure JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (string.IsNullOrEmpty(jwtSecret))
 {
@@ -111,12 +123,13 @@ if (seedDatabase)
         logger.LogError(ex, "An error occurred creating the DB or seeding data.");
     }
 }
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+app.UseCors("AllowFrontend");
+app.UseCors("AllowGemini");
 
 app.UseHttpsRedirection();
 

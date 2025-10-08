@@ -1,11 +1,13 @@
 ﻿using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
+using RiceProduction.Application.Common.Models.Response;
 
 namespace RiceProduction.Application.Common.Interfaces;
 
 public interface IIdentityService
 {
     Task<string?> GetUserNameAsync(Guid userId);
+    Task<UserDto> GetUserAsync(string userId);
     Task<bool> IsInRoleAsync(Guid userId, string role);
     Task<bool> AuthorizeAsync(Guid userId, string policyName);
     Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string password);

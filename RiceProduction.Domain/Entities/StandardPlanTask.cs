@@ -3,7 +3,7 @@ namespace RiceProduction.Domain.Entities;
 public class StandardPlanTask : BaseAuditableEntity
 {
     [Required]
-    public Guid StandardPlanId { get; set; }
+    public Guid StandardStageId { get; set; }
 
     [Required]
     [MaxLength(255)]
@@ -24,10 +24,15 @@ public class StandardPlanTask : BaseAuditableEntity
     [Required]
     public int SequenceOrder { get; set; }
 
-    // Navigation properties
-    [ForeignKey("StandardPlanId")]
-    public StandardPlan StandardPlan { get; set; } = null!;
+    /// <summary>
+    /// The production stage this task belongs to
+    /// </summary>
+    [Required]
+    public Guid StandardProductionStageId { get; set; }
+
+
+    [ForeignKey("StandardProductionStageId")]
+    public StandardPlanStage StandardPlanStage { get; set; } = null!;
 
     public ICollection<StandardPlanTaskMaterial> StandardPlanTaskMaterials { get; set; } = new List<StandardPlanTaskMaterial>();
-    public ICollection<ProductionPlanTask> ProductionPlanTasks { get; set; } = new List<ProductionPlanTask>();
 }
