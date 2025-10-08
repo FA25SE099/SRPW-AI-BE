@@ -32,10 +32,6 @@ public class ProductionPlanConfiguration : IEntityTypeConfiguration<ProductionPl
                .HasForeignKey(pp => pp.GroupId)
                .OnDelete(DeleteBehavior.SetNull);
 
-        builder.HasOne(pp => pp.PlotCultivation)
-               .WithMany(pc => pc.ProductionPlans)
-               .HasForeignKey(pp => pp.PlotCultivationId)
-               .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne(pp => pp.StandardPlan)
                .WithMany(sp => sp.ProductionPlans)
@@ -65,8 +61,6 @@ public class ProductionPlanConfiguration : IEntityTypeConfiguration<ProductionPl
         builder.HasIndex(pp => pp.GroupId)
                .HasDatabaseName("IX_ProductionPlan_GroupId");
 
-        builder.HasIndex(pp => pp.PlotCultivationId)
-               .HasDatabaseName("IX_ProductionPlan_PlotCultivationId");
 
         builder.HasIndex(pp => pp.StandardPlanId)
                .HasDatabaseName("IX_ProductionPlan_StandardPlanId");

@@ -20,6 +20,16 @@ public class PlotCultivation : BaseAuditableEntity
 
     public CultivationStatus Status { get; set; } = CultivationStatus.Planned;
 
+    /// <summary>
+    /// Current production stage for this cultivation
+    /// </summary>
+    public Guid? CurrentProductionStageId { get; set; }
+
+    /// <summary>
+    /// Date when the current production stage started
+    /// </summary>
+    public DateTime? CurrentStageStartDate { get; set; }
+
     // Navigation properties
     [ForeignKey("PlotId")]
     public Plot Plot { get; set; } = null!;
@@ -29,6 +39,9 @@ public class PlotCultivation : BaseAuditableEntity
 
     [ForeignKey("RiceVarietyId")]
     public RiceVariety RiceVariety { get; set; } = null!;
+
+    [ForeignKey("CurrentProductionStageId")]
+    public ProductionStage? CurrentProductionStage { get; set; }
 
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
     public ICollection<CultivationTask> CultivationTasks { get; set; } = new List<CultivationTask>();

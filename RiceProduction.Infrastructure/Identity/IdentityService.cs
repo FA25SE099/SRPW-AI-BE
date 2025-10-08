@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 
@@ -40,6 +41,36 @@ public class IdentityService : IIdentityService
         return user?.UserName;
     }
 
+
+    public async Task<UserDto> GetUserAsync(string userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+        {
+            return null;
+        }
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var userDto = new UserDto
+        {
+            Id = user.Id.ToString(),
+            UserName = user.FullName ?? "User don't have Fullname yet",
+            Email = user.Email ?? "User don't have Email yet",
+            Role = roles.FirstOrDefault() ?? string.Empty
+        };
+        return userDto;
+    }
+
+    //public async Task<IList<string>> GetUserRolesAsync(Guid userId)
+    //{
+    //    var user = await _userManager.FindByIdAsync(userId.ToString());
+    //    if (user == null)
+    //    {
+    //        return new List<string>();
+    //    }
+
+    //    return await _userManager.GetRolesAsync(user);
+    //}
     public async Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string password)
     {
         var user = new ApplicationUser
