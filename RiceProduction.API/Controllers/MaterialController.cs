@@ -1,9 +1,15 @@
-﻿using MediatR;
+﻿using Azure.Core;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using MiniExcelLibs;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.Common.Models.Response;
+using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
+using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace RiceProduction.API.Controllers;
 
@@ -18,7 +24,7 @@ public class MaterialController : ControllerBase
         _mediator = mediator;
     }
 
-    [HttpPost("AllMaterialPaging")]
+    [HttpPost("get-all")]
     public async Task<ActionResult<PagedResult<List<MaterialResponse>>>> AllMaterialPaging([FromBody] MaterialListRequest request)
     {
         var query = new GetAllMaterialByTypeQuery
@@ -33,5 +39,19 @@ public class MaterialController : ControllerBase
             return BadRequest(result);
         }
         return Ok(result);
+    }
+    [HttpPost("download-excel")]
+    public async Task<IActionResult> DownloadExcel([FromBody] DateTime request)
+    {
+        var query = new DownloadAllMaterialExcelQuery
+        {
+            InputDate = request
+        };
+        var result =await _mediator.Send(query);
+        if (!result.Succeeded || result.Data == null)
+        {
+            return BadRequest(new { message = result.Message });
+        }
+        return result.Data;
     }
 }

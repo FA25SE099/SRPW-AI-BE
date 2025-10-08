@@ -8,6 +8,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.Common.Models.Response;
 using System.Security.Claims;
+using RiceProduction.Application.Auth.Queries.GetUserById;
 
 namespace RiceProduction.API.Controllers;
 
@@ -85,5 +86,16 @@ public class AuthController : ControllerBase
         }
 
         return Ok(result);
+    }
+    [HttpGet("me")]
+    [Authorize] 
+    public async Task<Result<UserDto>> GetCurrentUser()
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        var query = new GetUserByIdQuery(){UserId = userId};
+        var user = await _mediator.Send(query);
+
+        return user;
     }
 }

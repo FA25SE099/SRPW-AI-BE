@@ -25,6 +25,7 @@ public static class DependencyInjection
         Guard.Against.Null(connectionString, message: "Connection string 'CleanArchitectureDb' not found.");
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
+        builder.Services.AddScoped<IDownloadGenericExcel, DownloadGenericExcel>();
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {

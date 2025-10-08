@@ -6,6 +6,9 @@ public class StandardPlan : BaseAuditableEntity
     public Guid RiceVarietyId { get; set; }
 
     [Required]
+    public Guid ExpertId { get; set; }
+
+    [Required]
     [MaxLength(255)]
     public string PlanName { get; set; } = string.Empty;
 
@@ -23,8 +26,8 @@ public class StandardPlan : BaseAuditableEntity
     public RiceVariety RiceVariety { get; set; } = null!;
 
     [ForeignKey("CreatedBy")]
-    public AgronomyExpert? Creator { get; set; }
+    public AgronomyExpert Creator { get; set; }
 
-    public ICollection<StandardPlanTask> StandardPlanTasks { get; set; } = new List<StandardPlanTask>();
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
+    public ICollection<StandardPlanStage> StandardPlanStages { get; set; } = new List<StandardPlanStage>();
 }

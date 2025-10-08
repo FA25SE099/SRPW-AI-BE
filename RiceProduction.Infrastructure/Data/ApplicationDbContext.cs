@@ -48,6 +48,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<ProductionPlanTask> ProductionPlanTasks => Set<ProductionPlanTask>();
     public DbSet<ProductionPlanTaskMaterial> ProductionPlanTaskMaterials => Set<ProductionPlanTaskMaterial>();
 
+    // Production stages
+    public DbSet<ProductionStage> ProductionStages => Set<ProductionStage>();
+    public DbSet<StandardPlanStage> StandardPlanStages => Set<StandardPlanStage>();
+
     // Task execution
     public DbSet<CultivationTask> CultivationTasks => Set<CultivationTask>();
     public DbSet<CultivationTaskMaterial> CultivationTaskMaterials => Set<CultivationTaskMaterial>();
