@@ -4,7 +4,10 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using MiniExcelLibs;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models;
 using RiceProduction.Infrastructure.Data;
 
 namespace RiceProduction.Infrastructure.Repository
@@ -94,5 +97,7 @@ namespace RiceProduction.Infrastructure.Repository
         {
             return _farmers.AsQueryable();
         }
+
+        
     }
 }
