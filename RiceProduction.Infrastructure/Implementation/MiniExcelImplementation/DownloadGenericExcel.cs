@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MiniExcelLibs;
 using RiceProduction.Application.Common.Interfaces;
@@ -43,6 +44,32 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             {
                 _logger.LogInformation($"Error generating Excel file: {ex.Message}");
                 return null; 
+            }
+        }
+        public async Task<List<T>> ExcelToListT<T>(IFormFile excel) where T : class, new()
+        {
+            if (excel == null || excel.Length == 0)
+            {
+                _logger.LogWarning("Uploaded file is null or empty");
+                return new List<T>();
+            }
+
+            try
+            {
+                var stream = new MemoryStream();
+                await excel.CopyToAsync(stream);
+                stream.Position = 0; // Reset stream position to beginning
+
+                var rows = stream.Query<T>().ToList();
+
+                _logger.LogInformation($"Successfully parsed {rows.Count} rows from Excel file: {excel.FileName}");
+
+                return rows;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error parsing Excel file: {excel.FileName}. Error: {ex.Message}");
+                return null;
             }
         }
     }
