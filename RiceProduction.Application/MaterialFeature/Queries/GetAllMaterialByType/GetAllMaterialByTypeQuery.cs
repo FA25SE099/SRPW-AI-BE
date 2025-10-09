@@ -1,5 +1,5 @@
 ﻿using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Response;
+using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Domain.Enums;
 using System;
 using System.Collections.Generic;

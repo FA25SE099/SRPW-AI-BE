@@ -5,7 +5,7 @@ namespace RiceProduction.Application.Common.Interfaces
 {
     public interface IGenericExcel
     {
-        Task<IActionResult> DownloadGenericExcelFile<T>(List<T> inputList, string fileName = "export.xlsx") where T : class;
+        Task<IActionResult> DownloadGenericExcelFile<T>(List<T> inputList, string date, string fileName = "export.xlsx") where T : class;
         Task<List<T>> ExcelToListT<T>(IFormFile excel) where T : class, new();
     }
 }

@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MiniExcelLibs;
+using MiniExcelLibs.Attributes;
+using MiniExcelLibs.OpenXml;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Infrastructure.Repository;
@@ -22,7 +24,7 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             _logger = logger;
         }
 
-        public async Task<IActionResult> DownloadGenericExcelFile<T>(List<T> inputList, string fileName = "export.xlsx") where T : class
+        public async Task<IActionResult> DownloadGenericExcelFile<T>(List<T> inputList, string date, string fileName = "export.xlsx") where T : class
         {
             if (inputList == null || !inputList.Any())
             {
@@ -32,7 +34,8 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             try
             {
                 var memoryStream = new MemoryStream();
-                memoryStream.SaveAs(inputList);
+                var sheetName = Path.GetFileNameWithoutExtension(fileName);
+                memoryStream.SaveAs(inputList, sheetName: date.ToString());
                 memoryStream.Seek(0, SeekOrigin.Begin);
 
                 return new FileStreamResult(memoryStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

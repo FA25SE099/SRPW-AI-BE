@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.Common.Models.Response
+namespace RiceProduction.Application.Common.Models.Response.MaterialResponses
 {
     public class MaterialResponse
     {
@@ -19,4 +19,5 @@ namespace RiceProduction.Application.Common.Models.Response
         public string? Manufacturer { get; set; }
         public bool IsActive { get; set; }
     }
+
 }
