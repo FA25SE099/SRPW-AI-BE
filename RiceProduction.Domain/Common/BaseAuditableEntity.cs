@@ -1,6 +1,8 @@
-﻿namespace RiceProduction.Domain.Common;
+﻿using Microsoft.AspNetCore.Identity;
 
-public abstract class BaseAuditableEntity
+namespace RiceProduction.Domain.Common;
+
+public abstract class BaseAuditableEntity 
 {
     public Guid Id { get; set; }
 
