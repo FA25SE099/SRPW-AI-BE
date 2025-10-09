@@ -2,6 +2,8 @@ namespace RiceProduction.Domain.Enums;
 
 public enum TaskType
 {
-    Manual,
-    UavService
+    Fertilization,
+    PestControl,
+    Harvesting,
+    Sowing
 }
