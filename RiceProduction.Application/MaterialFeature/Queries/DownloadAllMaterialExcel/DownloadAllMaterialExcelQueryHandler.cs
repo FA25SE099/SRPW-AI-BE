@@ -15,12 +15,12 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
     public class DownloadAllMaterialExcelQueryHandler : IRequestHandler<DownloadAllMaterialExcelQuery, Result<IActionResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IGenericExcel _downloadGenericExcel;
+        private readonly IGenericExcel _genericExcel;
 
-        public DownloadAllMaterialExcelQueryHandler(IUnitOfWork unitOfWork, IGenericExcel downloadGenericExcel)
+        public DownloadAllMaterialExcelQueryHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
         {
             _unitOfWork = unitOfWork;
-            _downloadGenericExcel = downloadGenericExcel;
+            _genericExcel = genericExcel;
         }
 
         public async Task<Result<IActionResult>> Handle(DownloadAllMaterialExcelQuery request, CancellationToken cancellationToken)
@@ -37,6 +37,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                 var materialResponses = materialRepo
                     .Select(m => new MaterialResponse
                     {
+                        MaterialId = m.Id,
                         Name = m.Name,
                         Type = m.Type,
                         AmmountPerMaterial = m.AmmountPerMaterial,
@@ -50,7 +51,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                         IsActive = m.IsActive
                     })
                     .ToList();
-                var result = await _downloadGenericExcel.DownloadGenericExcelFile(materialResponses, request.InputDate.ToString(), "Bảng giá sản phẩm ngày " + request.InputDate);
+                var result = await _genericExcel.DownloadGenericExcelFile(materialResponses, request.InputDate.ToString(), "Bảng giá sản phẩm ngày " + request.InputDate);
                 return Result<IActionResult>.Success(result,"File created successfully");
 
             }

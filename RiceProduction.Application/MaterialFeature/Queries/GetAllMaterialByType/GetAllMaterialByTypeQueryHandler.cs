@@ -44,6 +44,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByTyp
                 var materialResponses = pagedMaterials
                     .Select(m => new MaterialResponse
                     {
+                        MaterialId = m.Id,
                         Name = m.Name,
                         Type = m.Type,
                         AmmountPerMaterial = m.AmmountPerMaterial,
