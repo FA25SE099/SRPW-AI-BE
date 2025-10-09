@@ -13,11 +13,11 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
 {
-    public class DownloadGenericExcel : IDownloadGenericExcel
+    public class GenericExcel : IGenericExcel
     {
-        private readonly ILogger<DownloadGenericExcel> _logger;
+        private readonly ILogger<GenericExcel> _logger;
 
-        public DownloadGenericExcel(ILogger<DownloadGenericExcel> logger)
+        public GenericExcel(ILogger<GenericExcel> logger)
         {
             _logger = logger;
         }

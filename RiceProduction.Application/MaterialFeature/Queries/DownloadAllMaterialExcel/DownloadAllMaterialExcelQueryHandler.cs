@@ -16,9 +16,9 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
     public class DownloadAllMaterialExcelQueryHandler : IRequestHandler<DownloadAllMaterialExcelQuery, Result<IActionResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IDownloadGenericExcel _downloadGenericExcel;
+        private readonly IGenericExcel _downloadGenericExcel;
 
-        public DownloadAllMaterialExcelQueryHandler(IUnitOfWork unitOfWork, IDownloadGenericExcel downloadGenericExcel)
+        public DownloadAllMaterialExcelQueryHandler(IUnitOfWork unitOfWork, IGenericExcel downloadGenericExcel)
         {
             _unitOfWork = unitOfWork;
             _downloadGenericExcel = downloadGenericExcel;
