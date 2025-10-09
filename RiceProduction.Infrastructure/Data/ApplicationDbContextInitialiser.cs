@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Geometries;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using RiceProduction.Infrastructure.Identity;

@@ -9,6 +9,11 @@ using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
+using AutoMapper;
+using RiceProduction.Application.Common.Mappings;
+using RiceProduction.Application.PlotFeature.Queries;
+using RiceProduction.Application.FarmerFeature.Queries;
+using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 
 namespace RiceProduction.Infrastructure;
 
@@ -20,6 +25,7 @@ public static class DependencyInjection
         Guard.Against.Null(connectionString, message: "Connection string 'CleanArchitectureDb' not found.");
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
+        builder.Services.AddScoped<IDownloadGenericExcel, DownloadGenericExcel>();
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
@@ -34,6 +40,7 @@ public static class DependencyInjection
 
 
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
+        builder.Services.AddAutoMapper(typeof(FarmerMapping).Assembly);
 
         // Configure Identity with proper stores
         builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -41,19 +48,28 @@ public static class DependencyInjection
             // Password settings
             options.Password.RequireDigit = false;
             options.Password.RequireLowercase = false;
-            options.Password.RequireNonAlphanumeric = false; 
+            options.Password.RequireNonAlphanumeric = false;
             options.Password.RequireUppercase = false;
 
             // Lockout settings
         })
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
+       
+        builder.Services.AddMediatR(cfg =>
+        {
+            cfg.RegisterServicesFromAssembly(typeof(GetAllFarmerQueriesHandler).Assembly);
+            cfg.RegisterServicesFromAssembly(typeof(GetAllPlotQueriesHandler).Assembly);
+        });
+
+        builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
+
 
     }
 }

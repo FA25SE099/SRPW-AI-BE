@@ -12,6 +12,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="9.0.9" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9" />
 		<PackageReference Include="MiniExcel" Version="1.41.4" />
+		
 
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.9" />
@@ -23,9 +24,6 @@
 	</ItemGroup>
 	<ItemGroup>
 	  <ProjectReference Include="..\RiceProduction.Application\RiceProduction.Application.csproj" />
-	</ItemGroup>
-	<ItemGroup>
-	  <Folder Include="Implementation\MiniExcelImplementation\" />
 	</ItemGroup>
 
 </Project>
