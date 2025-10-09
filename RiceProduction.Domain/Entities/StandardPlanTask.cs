@@ -2,8 +2,6 @@ namespace RiceProduction.Domain.Entities;
 
 public class StandardPlanTask : BaseAuditableEntity
 {
-    [Required]
-    public Guid StandardStageId { get; set; }
 
     [Required]
     [MaxLength(255)]

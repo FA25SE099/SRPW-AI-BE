@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Geometries;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using RiceProduction.Infrastructure.Identity;
@@ -67,7 +68,7 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialDataAsync();
 
             await SeedMaterialPriceDataAsync();
-
+            await SeedSeasonalPlanDataAsync();
             await SeedCoreDataAsync();
 
         }
@@ -783,6 +784,571 @@ namespace RiceProduction.Infrastructure.Data
             else
             {
                 _logger.LogInformation("Material prices data already exists - skipping seeding");
+            }
+        }
+        private async Task SeedSeasonalPlanDataAsync()
+        {
+            if (!_context.Set<StandardPlan>().Any(p => p.PlanName.Contains("Vụ")))
+            {
+                // Query for ST25 RiceVariety
+                var st25Variety = await _context.Set<RiceVariety>().FirstOrDefaultAsync(v => v.VarietyName == "ST25");
+                if (st25Variety == null)
+                {
+                    st25Variety = new RiceVariety
+                    {
+                        Id = new Guid("00000000-0000-0000-0000-000000000001"),
+                        VarietyName = "ST25",
+                        Description = "Lúa ST25 - Giống lúa chất lượng cao Việt Nam.",
+                        IsActive = true
+                        // Add other properties as per entity
+                    };
+                    await _context.Set<RiceVariety>().AddAsync(st25Variety);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Seeded ST25 RiceVariety");
+                }
+                var riceVarietyId = st25Variety.Id;
+
+                // Query for an AgronomyExpert (assume first active expert or seed one)
+                var expert = await _context.Set<AgronomyExpert>().FirstOrDefaultAsync(e => e.IsActive);
+                if (expert == null)
+                {
+                    expert = new AgronomyExpert
+                    {
+                        Id = new Guid("00000000-0000-0000-0000-000000000002"),
+                        FullName = "Expert Đức Thành",
+                        Email = "expert@ducthanh.com",
+                        IsActive = true
+                        // Add other properties as per entity
+                    };
+                    await _context.Set<AgronomyExpert>().AddAsync(expert);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Seeded default AgronomyExpert");
+                }
+                var expertId = expert.Id;
+
+                // Query for creator (assume same as expert or a user)
+                var creatorId = expertId; // Or query User if separate entity
+
+                var seasonsData = new (string Name, string Type, string StartDate, string EndDate, DateTime SowingDate)[]
+                {
+            ("Đông Xuân", "Winter-Spring", "12/01", "04/30", new DateTime(2024, 12, 20)),
+            ("Hè Thu", "Summer-Autumn", "05/01", "08/31", new DateTime(2025, 5, 15)),
+            ("Thu Đông", "Autumn-Winter", "09/01", "11/30", new DateTime(2025, 9, 10))
+                };
+
+                var seasonalPlans = new List<StandardPlan>();
+                var allStages = new List<StandardPlanStage>();
+                var allTasks = new List<StandardPlanTask>();
+                var allTaskMaterials = new List<StandardPlanTaskMaterial>();
+
+                foreach (var season in seasonsData)
+                {
+                    var seasonalPlan = new StandardPlan
+                    {
+                        Id = Guid.NewGuid(),
+                        RiceVarietyId = riceVarietyId,
+                        ExpertId = expertId,
+                        PlanName = $"Quy Trình Canh Tác Lúa ST25 - Vụ {season.Name} {season.SowingDate.Year}-{season.SowingDate.AddYears(1).Year}",
+                        Description = $"Quy trình sản xuất lúa ST25 cho vụ {season.Name} với ngày gieo sạ {season.SowingDate:dd/MM/yyyy}. Mùa: {season.Type}, Thời gian vụ: {season.StartDate} đến {season.EndDate}.",
+                        TotalDurationDays = 100, // Approx 90-100 days post-sowing
+                        CreatedBy = creatorId,
+                        IsActive = true
+                    };
+
+                    seasonalPlans.Add(seasonalPlan);
+
+                    // Stages (common structure across seasons)
+                    var stages = new List<StandardPlanStage>
+            {
+                new StandardPlanStage
+                {
+                    Id = Guid.NewGuid(),
+                    StandardPlanId = seasonalPlan.Id,
+                    ExpectedDurationDays = 2,
+                    SequenceOrder = 1,
+                    IsMandatory = true,
+                    Notes = "Chuẩn bị hạt giống và đất trước khi sạ."
+                },
+                new StandardPlanStage
+                {
+                    Id = Guid.NewGuid(),
+                    StandardPlanId = seasonalPlan.Id,
+                    ExpectedDurationDays = 1,
+                    SequenceOrder = 2,
+                    IsMandatory = true,
+                    Notes = "Gieo sạ hạt giống theo hàng."
+                },
+                new StandardPlanStage
+                {
+                    Id = Guid.NewGuid(),
+                    StandardPlanId = seasonalPlan.Id,
+                    ExpectedDurationDays = 15,
+                    SequenceOrder = 3,
+                    IsMandatory = true,
+                    Notes = "Chăm sóc ngay sau sạ, bao gồm trừ sâu bệnh và bón phân đầu."
+                },
+                new StandardPlanStage
+                {
+                    Id = Guid.NewGuid(),
+                    StandardPlanId = seasonalPlan.Id,
+                    ExpectedDurationDays = 20,
+                    SequenceOrder = 4,
+                    IsMandatory = true,
+                    Notes = "Giai đoạn đẻ nhánh, kiểm soát nước và dinh dưỡng."
+                },
+                new StandardPlanStage
+                {
+                    Id = Guid.NewGuid(),
+                    StandardPlanId = seasonalPlan.Id,
+                    ExpectedDurationDays = 30,
+                    SequenceOrder = 5,
+                    IsMandatory = true,
+                    Notes = "Từ vươn lóng đến trỗ bông, bón thúc và phòng trừ."
+                },
+                new StandardPlanStage
+                {
+                    Id = Guid.NewGuid(),
+                    StandardPlanId = seasonalPlan.Id,
+                    ExpectedDurationDays = 25,
+                    SequenceOrder = 6,
+                    IsMandatory = true,
+                    Notes = "Từ trỗ đến chín hạt, tập trung phòng sâu bệnh."
+                },
+                new StandardPlanStage
+                {
+                    Id = Guid.NewGuid(),
+                    StandardPlanId = seasonalPlan.Id,
+                    ExpectedDurationDays = 7,
+                    SequenceOrder = 7,
+                    IsMandatory = true,
+                    Notes = "Thu hoạch và bảo quản sau khi chín."
+                }
+            };
+
+                    allStages.AddRange(stages);
+
+                    // StandardProductionStageIds (placeholders) - Assume pre-seeded or query similarly
+                    var standardProductionStageIds = new Dictionary<string, Guid>
+            {
+                { "BeforeSowing", new Guid("00000000-0000-0000-0000-000000000004") },
+                { "Sowing", new Guid("00000000-0000-0000-0000-000000000005") },
+                { "PostSowing", new Guid("00000000-0000-0000-0000-000000000006") },
+                { "Tillering", new Guid("00000000-0000-0000-0000-000000000007") },
+                { "StemElongation", new Guid("00000000-0000-0000-0000-000000000008") },
+                { "HeadingMaturity", new Guid("00000000-0000-0000-0000-000000000009") },
+                { "Harvesting", new Guid("00000000-0000-0000-0000-000000000010") }
+            };
+
+                    // Tasks based on Excel rows (DaysAfter from "Ngày sau sạ", common across seasons)
+                    var tasks = new List<StandardPlanTask>();
+
+                    // Stage 1: Trước sạ (-1)
+                    var stage1 = stages.First(s => s.SequenceOrder == 1);
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage1.Id,
+                        TaskName = "Bón lót",
+                        Description = "Bón HTO Green 300 kg/ha trước sạ.",
+                        DaysAfter = -1,
+                        DurationDays = 1,
+                        TaskType = TaskType.Fertilization,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 1
+                    });
+
+                    // Stage 2: Sạ hàng (0)
+                    var stage2 = stages.First(s => s.SequenceOrder == 2);
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage2.Id,
+                        TaskName = "Sạ",
+                        Description = "Gieo sạ ngày 0.",
+                        DaysAfter = 0,
+                        DurationDays = 1,
+                        TaskType = TaskType.Sowing,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 1
+                    });
+
+                    // Stage 3: Chăm sóc sau sạ (0-3, 5-7, 10)
+                    var stage3 = stages.First(s => s.SequenceOrder == 3);
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage3.Id,
+                        TaskName = "Phòng trừ cỏ - Diệt mầm cỏ",
+                        Description = "Phun Butaco 600EC ngày 0-3.",
+                        DaysAfter = 0,
+                        DurationDays = 3,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 1
+                    });
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage3.Id,
+                        TaskName = "Phòng trừ cỏ - Cỏ hậu nảy mầm sớm",
+                        Description = "Phun Butaco 600EC + Cantanil ngày 5-7.",
+                        DaysAfter = 5,
+                        DurationDays = 2,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 2
+                    });
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage3.Id,
+                        TaskName = "Bón thúc lần 1",
+                        Description = "Bón NPK 22-15-5/22-17-7, 100 kg/ha ngày 10.",
+                        DaysAfter = 10,
+                        DurationDays = 1,
+                        TaskType = TaskType.Fertilization,
+                        Priority = TaskPriority.Normal,
+                        SequenceOrder = 3
+                    });
+
+                    // Stage 4: Đẻ nhánh (15-18, 20, 25-30)
+                    var stage4 = stages.First(s => s.SequenceOrder == 4);
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage4.Id,
+                        TaskName = "Phòng trừ dịch hại (15-18 ngày)",
+                        Description = "Phun DT11 + Amino Gold 15SL + Zilla 100SC ngày 15-18.",
+                        DaysAfter = 15,
+                        DurationDays = 3,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.Normal,
+                        SequenceOrder = 1
+                    });
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage4.Id,
+                        TaskName = "Bón thúc lần 2",
+                        Description = "Bón NPK 22-15-5/22-17-7, 100-150 kg/ha ngày 20.",
+                        DaysAfter = 20,
+                        DurationDays = 1,
+                        TaskType = TaskType.Fertilization,
+                        Priority = TaskPriority.Normal,
+                        SequenceOrder = 2
+                    });
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage4.Id,
+                        TaskName = "Phòng trừ dịch hại (25-30 ngày)",
+                        Description = "Phun DT11 + Hexalazole 300SC + Captival 400WP + muỗi hành ngày 25-30.",
+                        DaysAfter = 25,
+                        DurationDays = 5,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 3
+                    });
+
+                    // Stage 5: Vươn lóng đến trỗ (38-42, 45-50)
+                    var stage5 = stages.First(s => s.SequenceOrder == 5);
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage5.Id,
+                        TaskName = "Bón thúc lần 3",
+                        Description = "Bón NPK 20-0-22/25-0-25, 100-150 kg/ha ngày 38-42.",
+                        DaysAfter = 38,
+                        DurationDays = 4,
+                        TaskType = TaskType.Fertilization,
+                        Priority = TaskPriority.Normal,
+                        SequenceOrder = 1
+                    });
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage5.Id,
+                        TaskName = "Phòng trừ dịch hại (45-50 ngày)",
+                        Description = "Phun DT11 (Đồng to) + Hexalazole 300SC + Captival 400WP + Rubbercare 720WP + sâu cuốn lá/rầy cánh trắng ngày 45-50.",
+                        DaysAfter = 45,
+                        DurationDays = 5,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 2
+                    });
+
+                    // Stage 6: Trỗ đến chín (~60-65, ~70, ~75-80)
+                    var stage6 = stages.First(s => s.SequenceOrder == 6);
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage6.Id,
+                        TaskName = "Phòng trừ dịch hại (Trỗ lẹt xẹt)",
+                        Description = "Phun Upper 400SC + DT6 + Amino Gold 15SL + Captival 400WP + trừ sâu đục thân ngày ~60-65.",
+                        DaysAfter = 60,
+                        DurationDays = 5,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 1
+                    });
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage6.Id,
+                        TaskName = "Phòng trừ dịch hại (Trỗ đều)",
+                        Description = "Phun Upper 400SC hoặc Ori 150SC + DT9 (Kali sửa Nhật) + vi khuẩn + Captival 400WP ngày ~70.",
+                        DaysAfter = 70,
+                        DurationDays = 1,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 2
+                    });
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage6.Id,
+                        TaskName = "Phòng trừ dịch hại (Cong trái me)",
+                        Description = "Phun Upper 400SC + DT9 (Vua vào gạo) + Prochess 250WP ngày ~75-80.",
+                        DaysAfter = 75,
+                        DurationDays = 5,
+                        TaskType = TaskType.PestControl,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 3
+                    });
+
+                    // Stage 7: Thu hoạch (~90+)
+                    var stage7 = stages.First(s => s.SequenceOrder == 7);
+                    tasks.Add(new StandardPlanTask
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardProductionStageId = stage7.Id,
+                        TaskName = "Thu hoạch",
+                        Description = "Thu hoạch sau khi chín hoàn toàn.",
+                        DaysAfter = 90,
+                        DurationDays = 7,
+                        TaskType = TaskType.Harvesting,
+                        Priority = TaskPriority.High,
+                        SequenceOrder = 1
+                    });
+
+                    allTasks.AddRange(tasks);
+
+                    // TaskMaterials (using existing material GUIDs where matched; new ones would need seeding first)
+                    // Note: Some new materials like Zilla 100SC, Hexalazole 300SC, etc., are not in previous seeding; assume added or use placeholders
+                    // For brevity, linking to matched ones; extend as needed
+
+                    // Bón lót: HTO Green 300 kg/ha
+                    var bonLotTask = tasks.First(t => t.TaskName == "Bón lót");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = bonLotTask.Id,
+                        MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"), // HTO Green
+                        QuantityPerHa = 300.000m
+                    });
+
+                    // Diệt mầm cỏ: Butaco 600EC (assume 1350 ml/ha from previous)
+                    var dietMamCoTask = tasks.First(t => t.TaskName == "Phòng trừ cỏ - Diệt mầm cỏ");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = dietMamCoTask.Id,
+                        MaterialId = new Guid("9E524C9B-2BFE-444F-AAA1-6D16C36BDC6B"), // Butaco
+                        QuantityPerHa = 1.350m
+                    });
+
+                    // Cỏ hậu nảy mầm: Butaco + Cantanil (1350 ml + 1440 ml)
+                    var coHauNayTask = tasks.First(t => t.TaskName == "Phòng trừ cỏ - Cỏ hậu nảy mầm sớm");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = coHauNayTask.Id,
+                        MaterialId = new Guid("9E524C9B-2BFE-444F-AAA1-6D16C36BDC6B"), // Butaco
+                        QuantityPerHa = 1.350m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = coHauNayTask.Id,
+                        MaterialId = new Guid("4B331200-E729-412C-AE0C-4484A3E6EEA5"), // Cantanil
+                        QuantityPerHa = 1.440m
+                    });
+
+                    // Thúc 1: NPK 22-15-5 100 kg/ha
+                    var thuc1Task = tasks.First(t => t.TaskName == "Bón thúc lần 1");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = thuc1Task.Id,
+                        MaterialId = new Guid("A575B22D-053D-440E-BCC5-F152F11C8A22"), // Lúa Xanh Bón Thúc
+                        QuantityPerHa = 100.000m
+                    });
+
+                    // Phòng trừ 15-18: DT11 + Amino Gold + Zilla (quantities from previous/approx)
+                    var phongTru15Task = tasks.First(t => t.TaskName == "Phòng trừ dịch hại (15-18 ngày)");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru15Task.Id,
+                        MaterialId = new Guid("FCCD3DE6-B604-41C6-9D23-66F071CA7319"), // DT11 (assume Đâm chồi)
+                        QuantityPerHa = 1.000m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru15Task.Id,
+                        MaterialId = new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"), // Amino Gold
+                        QuantityPerHa = 0.500m
+                    });
+                    // Zilla 100SC: Assume new GUID or skip if not seeded
+
+                    // Thúc 2: NPK 22-15-5 100-150 kg/ha (use 125 avg)
+                    var thuc2Task = tasks.First(t => t.TaskName == "Bón thúc lần 2");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = thuc2Task.Id,
+                        MaterialId = new Guid("A575B22D-053D-440E-BCC5-F152F11C8A22"),
+                        QuantityPerHa = 125.000m
+                    });
+
+                    // Phòng trừ 25-30: DT11 + Hexalazole + Captival
+                    var phongTru25Task = tasks.First(t => t.TaskName == "Phòng trừ dịch hại (25-30 ngày)");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru25Task.Id,
+                        MaterialId = new Guid("FCCD3DE6-B604-41C6-9D23-66F071CA7319"), // DT11
+                        QuantityPerHa = 1.000m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru25Task.Id,
+                        MaterialId = new Guid("56B90D7A-9671-40C4-B36B-24621DEEFED0"), // Captival (assume Hexalazole similar or separate)
+                        QuantityPerHa = 0.125m
+                    });
+                    // Hexalazole skipped
+
+                    // Thúc 3: NPK 20-0-22 100-150 kg/ha
+                    var thuc3Task = tasks.First(t => t.TaskName == "Bón thúc lần 3");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = thuc3Task.Id,
+                        MaterialId = new Guid("2167503B-F6D3-4E87-B426-0FE78ADDDCA0"), // Lúa Vàng (close match)
+                        QuantityPerHa = 125.000m
+                    });
+
+                    // Phòng trừ 45-50: DT11 + Hexalazole + Captival + Rubbercare
+                    var phongTru45Task = tasks.First(t => t.TaskName == "Phòng trừ dịch hại (45-50 ngày)");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru45Task.Id,
+                        MaterialId = new Guid("5AF3EB7B-E068-4FFF-97B8-12291D18A0D2"), // DT11 Đồng to
+                        QuantityPerHa = 1.000m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru45Task.Id,
+                        MaterialId = new Guid("56B90D7A-9671-40C4-B36B-24621DEEFED0"), // Captival
+                        QuantityPerHa = 0.125m
+                    });
+                    // Others skipped
+
+                    // Phòng trừ 60-65: Upper + DT6 + Amino Gold + Captival
+                    var phongTru60Task = tasks.First(t => t.TaskName == "Phòng trừ dịch hại (Trỗ lẹt xẹt)");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru60Task.Id,
+                        MaterialId = new Guid("58200EA8-3B9B-4B13-B841-5D7D7917A95C"), // Upper
+                        QuantityPerHa = 0.360m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru60Task.Id,
+                        MaterialId = new Guid("11FB236B-AA4D-46F6-9461-FE4EB810E5CD"), // DT6
+                        QuantityPerHa = 1.000m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru60Task.Id,
+                        MaterialId = new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"), // Amino Gold
+                        QuantityPerHa = 0.500m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru60Task.Id,
+                        MaterialId = new Guid("56B90D7A-9671-40C4-B36B-24621DEEFED0"), // Captival
+                        QuantityPerHa = 0.125m
+                    });
+
+                    // Phòng trừ 70: Upper/Ori + DT9 + Captival
+                    var phongTru70Task = tasks.First(t => t.TaskName == "Phòng trừ dịch hại (Trỗ đều)");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru70Task.Id,
+                        MaterialId = new Guid("58200EA8-3B9B-4B13-B841-5D7D7917A95C"), // Upper
+                        QuantityPerHa = 0.360m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru70Task.Id,
+                        MaterialId = new Guid("60061BBE-1DCA-48B1-B291-41497D3BAE76"), // DT9
+                        QuantityPerHa = 1.000m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru70Task.Id,
+                        MaterialId = new Guid("56B90D7A-9671-40C4-B36B-24621DEEFED0"), // Captival
+                        QuantityPerHa = 0.125m
+                    });
+
+                    // Phòng trừ 75-80: Upper + DT9 + Prochess
+                    var phongTru75Task = tasks.First(t => t.TaskName == "Phòng trừ dịch hại (Cong trái me)");
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru75Task.Id,
+                        MaterialId = new Guid("58200EA8-3B9B-4B13-B841-5D7D7917A95C"), // Upper
+                        QuantityPerHa = 0.360m
+                    });
+                    allTaskMaterials.Add(new StandardPlanTaskMaterial
+                    {
+                        Id = Guid.NewGuid(),
+                        StandardPlanTaskId = phongTru75Task.Id,
+                        MaterialId = new Guid("60061BBE-1DCA-48B1-B291-41497D3BAE76"), // DT9 Vua vào gạo
+                        QuantityPerHa = 1.000m
+                    });
+                    // Prochess skipped
+                }
+
+                await _context.Set<StandardPlan>().AddRangeAsync(seasonalPlans);
+                await _context.SaveChangesAsync();
+
+                await _context.Set<StandardPlanStage>().AddRangeAsync(allStages);
+                await _context.SaveChangesAsync();
+
+                await _context.Set<StandardPlanTask>().AddRangeAsync(allTasks);
+                await _context.SaveChangesAsync();
+
+                await _context.Set<StandardPlanTaskMaterial>().AddRangeAsync(allTaskMaterials);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Seeded {Count} seasonal plans, stages, tasks, and materials", seasonalPlans.Count);
+            }
+            else
+            {
+                _logger.LogInformation("Seasonal StandardPlan data already exists - skipping seeding");
             }
         }
         private async Task SeedCoreDataAsync()
