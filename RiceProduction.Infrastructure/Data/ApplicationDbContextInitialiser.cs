@@ -69,6 +69,7 @@ namespace RiceProduction.Infrastructure.Data
 
             await SeedMaterialPriceDataAsync();
             await SeedSeasonalPlanDataAsync();
+            await SeedClusterDataAsync();
             await SeedCoreDataAsync();
 
         }
@@ -1351,6 +1352,204 @@ namespace RiceProduction.Infrastructure.Data
                 _logger.LogInformation("Seasonal StandardPlan data already exists - skipping seeding");
             }
         }
+        private async Task SeedClusterDataAsync()
+    {
+            // Kiểm tra xem dữ liệu Cluster đã được thêm chưa
+            if (!_context.Set<Cluster>().Any())
+            {
+                _logger.LogInformation("Seeding Core Data: Clusters and Groups...");
+
+                // ----------------------------------------------------------------------
+                // 1. Chuẩn bị các ID cần thiết
+                // ----------------------------------------------------------------------
+
+                // Lấy ClusterManager, Supervisor, RiceVariety, Season đã seed trước
+                var clusterManager1 = await _context.Set<ClusterManager>()
+                    .FirstOrDefaultAsync(cm => cm.Email == "cluster1@ricepro.com");
+                var clusterManager2 = await _context.Set<ClusterManager>()
+                    .FirstOrDefaultAsync(cm => cm.Email == "cluster2@ricepro.com");
+
+                var supervisor1 = await _context.Set<Supervisor>()
+                    .FirstOrDefaultAsync(s => s.Email == "supervisor1@ricepro.com");
+                var supervisor2 = await _context.Set<Supervisor>()
+                    .FirstOrDefaultAsync(s => s.Email == "supervisor2@ricepro.com");
+                var supervisor3 = await _context.Set<Supervisor>()
+                    .FirstOrDefaultAsync(s => s.Email == "supervisor3@ricepro.com");
+
+                var riceVarietyST25 = await _context.Set<RiceVariety>()
+                    .FirstOrDefaultAsync(v => v.VarietyName == "ST25");
+                var riceVarietyDT8 = await _context.Set<RiceVariety>()
+                    .FirstOrDefaultAsync(v => v.VarietyName == "Đài Thơm 8");
+
+                var seasonDongXuan = await _context.Set<Season>()
+                    .FirstOrDefaultAsync(s => s.SeasonName == "Đông Xuân");
+                var seasonHeThu = await _context.Set<Season>()
+                    .FirstOrDefaultAsync(s => s.SeasonName == "Hè Thu");
+                
+                // Kiểm tra điều kiện cần thiết
+                if (clusterManager1 == null || supervisor1 == null || riceVarietyST25 == null || seasonDongXuan == null)
+                {
+                    _logger.LogError("Required users or entities for Core Data seeding not found. Skipping Cluster and Group seeding.");
+                    return;
+                }
+
+                // Tạo các GUID cho Cluster và Group để dễ dàng tham chiếu
+                var cluster1Id = new Guid("4A75A0E6-20A5-4E80-928A-D6A8E19B1A01"); // Đồng Tháp
+                var cluster2Id = new Guid("9C0C35B8-8F0E-4D2A-8B6C-C32E8F47C499"); // An Giang
+                
+                var group1Id = new Guid("67B40A3C-4C9D-4F7F-9A52-E23B9B42B101");
+                var group2Id = new Guid("3E8F5D2B-8A1C-4E7A-A1B9-F9C3A021E202");
+                var group3Id = new Guid("7F9E1C4D-2B8A-4A9B-B0C1-D8E7F6C5D403");
+
+                // Giả lập Polygon cho Boundary và Area
+                // Dùng WKT (Well-Known Text) để tạo Polygon
+                var factory = new NetTopologySuite.Geometries.GeometryFactory(new NetTopologySuite.Geometries.PrecisionModel(), 4326);
+                
+                // Polygon mẫu cho Cluster 1 (Đồng Tháp): Hình chữ nhật đơn giản
+                // Lệnh: POLYGON((lon1 lat1, lon2 lat2, lon3 lat3, lon4 lat4, lon1 lat1))
+                var wktCluster1 = "POLYGON((105.78 10.45, 105.80 10.45, 105.80 10.47, 105.78 10.47, 105.78 10.45))";
+                var polygonCluster1 = new NetTopologySuite.IO.WKTReader(factory).Read(wktCluster1) as NetTopologySuite.Geometries.Polygon;
+
+                // Polygon mẫu cho Group 1 (trong Cluster 1)
+                var wktGroup1 = "POLYGON((105.785 10.455, 105.795 10.455, 105.795 10.465, 105.785 10.465, 105.785 10.455))";
+                var polygonGroup1 = new NetTopologySuite.IO.WKTReader(factory).Read(wktGroup1) as NetTopologySuite.Geometries.Polygon;
+
+                // Polygon mẫu cho Cluster 2 (An Giang)
+                var wktCluster2 = "POLYGON((105.15 10.50, 105.18 10.50, 105.18 10.53, 105.15 10.53, 105.15 10.50))";
+                var polygonCluster2 = new NetTopologySuite.IO.WKTReader(factory).Read(wktCluster2) as NetTopologySuite.Geometries.Polygon;
+
+                // Polygon mẫu cho Group 3 (trong Cluster 2)
+                var wktGroup3 = "POLYGON((105.16 10.51, 105.17 10.51, 105.17 10.52, 105.16 10.52, 105.16 10.51))";
+                var polygonGroup3 = new NetTopologySuite.IO.WKTReader(factory).Read(wktGroup3) as NetTopologySuite.Geometries.Polygon;
+
+
+                // ----------------------------------------------------------------------
+                // 2. Seed Clusters
+                // ----------------------------------------------------------------------
+
+                var clusters = new List<Cluster>
+        {
+            new Cluster
+            {
+                Id = cluster1Id,
+                ClusterName = "Cụm Đồng Tháp A",
+                ClusterManagerId = clusterManager1.Id,
+                Boundary = polygonCluster1,
+                Area = 450.75m,
+                LastModified = DateTime.UtcNow
+            },
+            // ... (Cluster 2 và Cluster 3 giữ nguyên, nhớ đổi Created/LastModified thành DateTime.UtcNow) ...
+            new Cluster
+            {
+                Id = cluster2Id,
+                ClusterName = "Cụm An Giang B",
+                ClusterManagerId = clusterManager2?.Id,
+                Boundary = polygonCluster2,
+                Area = 680.50m,
+                LastModified = DateTime.UtcNow
+            },
+            new Cluster
+            {
+                Id = Guid.NewGuid(),
+                ClusterName = "Cụm Kiên Giang C (Draft)",
+                ClusterManagerId = clusterManager1.Id,
+                Area = 300.00m,
+                LastModified = DateTime.UtcNow
+            }
+        };
+
+        await _context.Set<Cluster>().AddRangeAsync(clusters);
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Seeded {Count} Clusters", clusters.Count);
+
+        // ----------------------------------------------------------------------
+        // 3. Seed Groups
+        // ----------------------------------------------------------------------
+        
+        // CHỈNH SỬA: Tạo DateTime với Kind=Utc
+        // Lấy ngày hiện tại và ép Kind sang UTC
+        var todayUtc = DateTime.UtcNow.Date;
+        var plantingDate1 = todayUtc.AddDays(-30); 
+        var plantingDate2 = todayUtc.AddDays(-5);  
+        var plantingDate4 = todayUtc.AddDays(10); // Kế hoạch sạ 10 ngày tới
+
+        var groups = new List<Group>
+        {
+            new Group
+            {
+                Id = group1Id,
+                ClusterId = cluster1Id,
+                SupervisorId = supervisor1.Id,
+                RiceVarietyId = riceVarietyST25.Id,
+                SeasonId = seasonDongXuan.Id,
+                // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
+                PlantingDate = plantingDate1,
+                IsException = false,
+                // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
+                ReadyForUavDate = plantingDate1.AddDays(40),
+                Area = polygonGroup1,
+                TotalArea = 25.50m,
+                LastModified = DateTime.UtcNow
+            },
+            new Group
+            {
+                Id = group2Id,
+                ClusterId = cluster1Id,
+                SupervisorId = supervisor2?.Id,
+                RiceVarietyId = riceVarietyDT8?.Id,
+                SeasonId = seasonDongXuan.Id,
+                // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
+                PlantingDate = plantingDate2,
+                IsException = false,
+                // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
+                ReadyForUavDate = plantingDate2.AddDays(15),
+                TotalArea = 15.00m,
+                LastModified = DateTime.UtcNow
+            },
+            new Group
+            {
+                Id = group3Id,
+                ClusterId = cluster2Id,
+                SupervisorId = supervisor3?.Id,
+                RiceVarietyId = riceVarietyDT8?.Id,
+                SeasonId = seasonHeThu?.Id,
+                PlantingDate = null, // Có thể null
+                Status = GroupStatus.Draft,
+                IsException = true,
+                ExceptionReason = "Thiếu thông tin người quản lý và giống lúa.",
+                ReadyForUavDate = null, // Có thể null
+                Area = polygonGroup3,
+                TotalArea = 10.25m,
+                LastModified = DateTime.UtcNow
+            },
+            new Group
+            {
+                Id = Guid.NewGuid(),
+                ClusterId = cluster2Id,
+                SupervisorId = supervisor1.Id,
+                RiceVarietyId = riceVarietyST25.Id,
+                SeasonId = seasonHeThu?.Id,
+                // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
+                PlantingDate = plantingDate4,
+                IsException = false,
+                // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
+                ReadyForUavDate = plantingDate4.AddDays(15), // Thêm 15 ngày sau khi sạ
+                TotalArea = 50.00m,
+                LastModified = DateTime.UtcNow
+            }
+        };
+
+        await _context.Set<Group>().AddRangeAsync(groups);
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Seeded {Count} Groups", groups.Count);
+    }
+    else
+    {
+        _logger.LogInformation("Cluster data already exists - skipping seeding");
+    }
+    _logger.LogInformation("Core data seeding completed");
+        }
+
         private async Task SeedCoreDataAsync()
         {
             _logger.LogInformation("Core data seeding completed");
