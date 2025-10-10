@@ -3,8 +3,9 @@ using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using MiniExcelLibs;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Request;
-using RiceProduction.Application.Common.Models.Response;
+using RiceProduction.Application.Common.Models.Request.MaterialRequests;
+using RiceProduction.Application.Common.Models.Response.MaterialResponses;
+using RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
 using RiceProduction.Domain.Entities;
@@ -54,4 +55,19 @@ public class MaterialController : ControllerBase
         }
         return result.Data;
     }
+    [HttpPost("upload-excel")]
+    public async Task<Result<List<MaterialResponse>>> UploadExcel(IFormFile excelFile)
+    {
+        var command = new ImportUpdateAllMaterialExcelCommand
+        {
+            ExcelFile = excelFile
+        };
+        var result =await _mediator.Send(command);
+        if (!result.Succeeded || result.Data == null)
+        {
+            return null;
+        }
+        return result;
+    }
+
 }
