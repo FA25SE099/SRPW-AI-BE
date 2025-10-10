@@ -1555,6 +1555,10 @@ namespace RiceProduction.Infrastructure.Data
         {
             _logger.LogInformation("Core data seeding completed");
         }
+        private async Task SeedDataAsync()
+        {
+            _logger.LogInformation("Core data seeding completed");
+        }
     }
     class VarietySeasonSeedData
     {
