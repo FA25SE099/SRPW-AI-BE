@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.Common.Models.Request
+namespace RiceProduction.Application.Common.Models.Request.MaterialRequests
 {
     public class MaterialListRequest
     {

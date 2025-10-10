@@ -1,7 +1,7 @@
 ﻿using RiceProduction.Application.Auth.Commands.Login;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Response;
+using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
@@ -44,6 +44,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByTyp
                 var materialResponses = pagedMaterials
                     .Select(m => new MaterialResponse
                     {
+                        MaterialId = m.Id,
                         Name = m.Name,
                         Type = m.Type,
                         AmmountPerMaterial = m.AmmountPerMaterial,
