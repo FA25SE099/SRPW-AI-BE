@@ -8,18 +8,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.MaterialFeature.Commands.ImportAllMaterialExcel
+namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMaterialExcel
 {
-    public class ImportAllMaterialExcelCommandHandler : IRequestHandler<ImportAllMaterialExcelCommand, Result<List<MaterialResponse>>>
+    public class ImportUpdateAllMaterialExcelCommandHandler : IRequestHandler<ImportUpdateAllMaterialExcelCommand, Result<List<MaterialResponse>>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _genericExcel;
-        public ImportAllMaterialExcelCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
+        public ImportUpdateAllMaterialExcelCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
         {
             _unitOfWork = unitOfWork;
             _genericExcel = genericExcel;
         }
-        public async Task<Result<List<MaterialResponse>>> Handle(ImportAllMaterialExcelCommand request, CancellationToken cancellationToken)
+        public async Task<Result<List<MaterialResponse>>> Handle(ImportUpdateAllMaterialExcelCommand request, CancellationToken cancellationToken)
         {
             try
             {
@@ -28,7 +28,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportAllMaterialE
                 {
                     return Result<List<MaterialResponse>>.Failure("The uploaded Excel file is empty or invalid.");
                 }
-                var result = Result<List<MaterialResponse>>.Success(materialList, "Convert excel to list success!");
+                //var result = Result<List<MaterialResponse>>.Success(materialList, "Convert excel to list success!");
+                return Result<List<MaterialResponse>>.Success(materialList, "Convert excel to list success!");
 
             }
             catch (Exception ex)

@@ -7,9 +7,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.MaterialFeature.Commands.ImportAllMaterialExcel
+namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMaterialExcel
 {
-    public class ImportAllMaterialExcelCommand : IRequest<Result<List<MaterialResponse>>>
+    public class ImportUpdateAllMaterialExcelCommand : IRequest<Result<List<MaterialResponse>>>
     {
         public IFormFile ExcelFile { get; set; }
         public DateTime ImportDate { get; set; }
