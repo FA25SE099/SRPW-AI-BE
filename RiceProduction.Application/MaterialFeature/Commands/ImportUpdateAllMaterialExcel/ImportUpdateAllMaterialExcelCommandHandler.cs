@@ -28,24 +28,39 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMat
                 {
                     return Result<List<MaterialResponse>>.Failure("The uploaded Excel file is empty or invalid.");
                 }
+                var materialRepo = _unitOfWork.Repository<Material>();
+                var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
                 foreach (var material in materialListInput)
                 {
-                    var materialInDB = _unitOfWork.Repository<Material>().FindAsync(m => material.MaterialId == m.Id);
+                    var materialInDB = await materialRepo.FindAsync(m => material.MaterialId == m.Id);
                     if (materialInDB == null)
                     {
                         return Result<List<MaterialResponse>>.Failure($"The uploaded Excel file contain material name {material.Name} with ID changed. Please download file again to get the right ID!");
                     }
                 }
-                var materialRepo = _unitOfWork.Repository<Material>();
-                var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
                 var materialList = new List<Material>();
                 var materialPriceUpdateList = new List<MaterialPrice>();
                 var materialPriceCreateList = new List<MaterialPrice>();
                 foreach (var material in materialListInput)
                 {
+                    // Get material from database
                     var materialInDB = await materialRepo.FindAsync(m => material.MaterialId == m.Id);
-                    var materialPriceInDB = materialPriceRepo.ListAsync(p => p.MaterialId == material.MaterialId && material.IsActive && p.ValidFrom <= DateTime.UtcNow)
-                        .Result.FirstOrDefault();
+                    if (materialInDB == null)
+                    {
+                        return Result<List<MaterialResponse>>.Failure(
+                            $"Material with ID {material.MaterialId} not found.");
+                    }
+
+                    var currentDate = DateTime.Now;
+                    // FIX 2: Fixed filter logic - get current active price (where ValidTo is null)
+                    var materialPriceInDB = (await materialPriceRepo.ListAsync(
+                        p => p.MaterialId == material.MaterialId &&
+                             (p.ValidFrom.CompareTo(currentDate) >= 0) && 
+                             (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) <= 0))))
+                             .OrderByDescending(p => p.ValidFrom)
+                        .FirstOrDefault();
+
+                    // Update material properties
                     materialInDB.Name = material.Name;
                     materialInDB.Type = material.Type;
                     materialInDB.AmmountPerMaterial = material.AmmountPerMaterial;
@@ -53,26 +68,64 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMat
                     materialInDB.Description = material.Description;
                     materialInDB.Manufacturer = material.Manufacturer;
                     materialInDB.IsActive = material.IsActive;
-                    materialPriceInDB.ValidTo = request.ImportDate;
-                    var newMaterialPrice = new MaterialPrice
-                    {
-                        MaterialId = material.MaterialId,
-                        PricePerMaterial = material.PricePerMaterial,
-                        ValidFrom = request.ImportDate,
-                        ValidTo = null
-                    };
-                    materialList.Add(materialInDB);
-                    //materialPriceCreateList.Add(materialPriceInDB);
-                    materialPriceCreateList.Add(newMaterialPrice);
-                }
-                // If all materials are valid, proceed to update
-                materialRepo.UpdateRange(materialList);
-                await materialPriceRepo.AddRangeAsync(materialPriceCreateList);
-                //materialPriceRepo.UpdateRange(materialPriceUpdateList);
-                await _unitOfWork.CompleteAsync();
-                var result = Result<List<MaterialResponse>>.Success(materialListInput, "Convert excel to list success!");
-                return Result<List<MaterialResponse>>.Success(materialListInput, "Convert excel to list success!");
 
+                    // FIX 3: Close old price if it exists and price changed
+                    if (materialPriceInDB != null)
+                    {
+                        // Only update if price has changed
+                        if (materialPriceInDB.PricePerMaterial != material.PricePerMaterial)
+                        {
+                            materialPriceInDB.ValidTo = request.ImportDate;
+                            materialPriceUpdateList.Add(materialPriceInDB);
+
+                            // Create new price record
+                            var newMaterialPrice = new MaterialPrice
+                            {
+                                MaterialId = material.MaterialId,
+                                PricePerMaterial = material.PricePerMaterial,
+                                ValidFrom = request.ImportDate,
+                                ValidTo = null
+                            };
+                            materialPriceCreateList.Add(newMaterialPrice);
+                        }
+                    }
+                    else
+                    {
+                        // FIX 4: If no existing price, create one
+                        var newMaterialPrice = new MaterialPrice
+                        {
+                            MaterialId = material.MaterialId,
+                            PricePerMaterial = material.PricePerMaterial,
+                            ValidFrom = request.ImportDate,
+                            ValidTo = null
+                        };
+                        materialPriceCreateList.Add(newMaterialPrice);
+                    }
+
+                    materialList.Add(materialInDB);
+                }
+
+                // FIX 5: Update old prices before adding new ones
+                if (materialPriceUpdateList.Any())
+                {
+                    materialPriceRepo.UpdateRange(materialPriceUpdateList);
+                }
+
+                // Update materials
+                materialRepo.UpdateRange(materialList);
+
+                // Add new price records
+                if (materialPriceCreateList.Any())
+                {
+                    await materialPriceRepo.AddRangeAsync(materialPriceCreateList);
+                }
+
+                // Save all changes
+                await _unitOfWork.CompleteAsync();
+
+                return Result<List<MaterialResponse>>.Success(
+                    materialListInput,
+                    $"Successfully updated {materialList.Count} materials and {materialPriceCreateList.Count} price records!");
             }
             catch (Exception ex)
             {
