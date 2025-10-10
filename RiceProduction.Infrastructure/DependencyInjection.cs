@@ -14,6 +14,7 @@ using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
+using RiceProduction.Infrastructure.Implementation.Zalo;
 
 namespace RiceProduction.Infrastructure;
 
@@ -70,6 +71,9 @@ public static class DependencyInjection
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
 
+        // Register Zalo Services
+        builder.Services.AddHttpClient<IZaloOAuthService, ZaloOAuthService>();
+        builder.Services.AddHttpClient<IZaloZnsService, ZaloZnsService>();
 
     }
 }
