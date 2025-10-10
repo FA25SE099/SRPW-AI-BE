@@ -51,12 +51,12 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMat
                             $"Material with ID {material.MaterialId} not found.");
                     }
 
-                    var currentDate = DateTime.Now;
+                    var currentDate = DateTime.UtcNow;
                     // FIX 2: Fixed filter logic - get current active price (where ValidTo is null)
                     var materialPriceInDB = (await materialPriceRepo.ListAsync(
                         p => p.MaterialId == material.MaterialId &&
-                             (p.ValidFrom.CompareTo(currentDate) >= 0) && 
-                             (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) <= 0))))
+                             (p.ValidFrom.CompareTo(currentDate) <= 0) && 
+                             (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))))
                              .OrderByDescending(p => p.ValidFrom)
                         .FirstOrDefault();
 

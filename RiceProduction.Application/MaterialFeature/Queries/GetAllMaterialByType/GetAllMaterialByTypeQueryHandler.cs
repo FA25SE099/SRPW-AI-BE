@@ -48,8 +48,11 @@ namespace RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByTyp
                         AmmountPerMaterial = m.AmmountPerMaterial,
                         Showout = m.AmmountPerMaterial.ToString() + m.Unit,
                         PricePerMaterial = materialPriceRepoList
-                        .Where(p=>p.MaterialId == m.Id && m.IsActive && (p.ValidFrom.CompareTo(currentDate) >=0) &&
-                             (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) <= 0)))
+                        .Where(p=>p.MaterialId == m.Id
+                        && m.IsActive 
+                        && (p.ValidFrom.CompareTo(currentDate) <=0)
+                        && (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
+                             )
                         .OrderByDescending(p => p.ValidFrom)
                         .FirstOrDefault()?.PricePerMaterial ?? 0,
                         Unit = m.Unit,
