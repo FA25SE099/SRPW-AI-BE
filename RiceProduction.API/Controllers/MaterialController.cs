@@ -42,7 +42,7 @@ public class MaterialController : ControllerBase
         return Ok(result);
     }
     [HttpPost("download-excel")]
-    public async Task<IActionResult> DownloadExcel([FromBody] DateTime request)
+    public async Task<IActionResult> DownloadMaterialExcel([FromBody] DateTime request)
     {
         var query = new DownloadAllMaterialExcelQuery
         {
@@ -55,12 +55,13 @@ public class MaterialController : ControllerBase
         }
         return result.Data;
     }
-    [HttpPost("upload-excel")]
-    public async Task<Result<List<MaterialResponse>>> UploadExcel(IFormFile excelFile)
+    [HttpPost("import-update-excel")]
+    public async Task<Result<List<MaterialResponse>>> ImportUpdateMaterialExcel([FromForm] ImportUpdateMaterialExcel input)
     {
         var command = new ImportUpdateAllMaterialExcelCommand
         {
-            ExcelFile = excelFile
+            ExcelFile = input.ExcelFile,
+            ImportDate = input.ImportDate
         };
         var result =await _mediator.Send(command);
         if (!result.Succeeded || result.Data == null)

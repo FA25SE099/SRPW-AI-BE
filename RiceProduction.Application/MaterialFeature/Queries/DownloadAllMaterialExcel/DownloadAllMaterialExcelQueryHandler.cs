@@ -30,10 +30,9 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                 var materialRepo = await _unitOfWork.Repository<Material>().ListAsync(
                     filter: m => m.IsActive,
                     orderBy: q => q.OrderBy(m => m.Name));
-                var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
-                // Filter for active materials of the requested type
-                Expression<Func<Material, bool>> filter = m => m.IsActive;
+                var materialPriceRepoList = await _unitOfWork.Repository<MaterialPrice>().ListAsync();
 
+                var currentDate = DateTime.Now;
                 var materialResponses = materialRepo
                     .Select(m => new MaterialResponse
                     {
@@ -42,9 +41,14 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                         Type = m.Type,
                         AmmountPerMaterial = m.AmmountPerMaterial,
                         Showout = m.AmmountPerMaterial.ToString() + m.Unit,
-                        PricePerMaterial = materialPriceRepo.ListAsync(p => p.MaterialId == m.Id && m.IsActive && 
-                        (p.ValidFrom <= request.InputDate && (p.ValidTo >= request.InputDate || !p.ValidTo.HasValue))
-                        ).Result.FirstOrDefault().PricePerMaterial,
+                        PricePerMaterial = materialPriceRepoList
+                        .Where(p => p.MaterialId == m.Id
+                        && m.IsActive
+                        && (p.ValidFrom.CompareTo(currentDate) <= 0)
+                        && (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
+                             )
+                        .OrderByDescending(p => p.ValidFrom)
+                        .FirstOrDefault()?.PricePerMaterial ?? 0,
                         Unit = m.Unit,
                         Description = m.Description,
                         Manufacturer = m.Manufacturer,
