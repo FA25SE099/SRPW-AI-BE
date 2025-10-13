@@ -648,135 +648,136 @@ namespace RiceProduction.Infrastructure.Data
         {
             if (!_context.Set<MaterialPrice>().Any())
             {
+                var currentDate = DateTime.UtcNow;
                 var materialPrices = new List<MaterialPrice>
-        {
-            new MaterialPrice
-            {
-                MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"),
-                PricePerMaterial = 345000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("98AB7097-ECC9-444B-A9A2-26207E28E679"),
-                PricePerMaterial = 750000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("A575B22D-053D-440E-BCC5-F152F11C8A22"),
-                PricePerMaterial = 896500,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("2167503B-F6D3-4E87-B426-0FE78ADDDCA0"),
-                PricePerMaterial = 814500,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("1385516C-B4A3-4F62-9D4D-D55BFB484C47"),
-                PricePerMaterial = 36000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("05949927-5F48-4955-A9A1-6B15E525E8E7"),
-                PricePerMaterial = 66000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("4B331200-E729-412C-AE0C-4484A3E6EEA5"),
-                PricePerMaterial = 107000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("9E524C9B-2BFE-444F-AAA1-6D16C36BDC6B"),
-                PricePerMaterial = 100000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("4DBE9AC3-4900-4919-B55D-9607F36490D2"),
-                PricePerMaterial = 219000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("3BE50B7F-55DC-4E3C-9686-04664BCABA14"),
-                PricePerMaterial = 100000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("1C62D597-86EA-4B9F-8F67-8FEC5BA386B1"),
-                PricePerMaterial = 194000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("FCCD3DE6-B604-41C6-9D23-66F071CA7319"),
-                PricePerMaterial = 86000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("DB1BB9F3-34FE-419C-860A-99DBEDB69092"),
-                PricePerMaterial = 314000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("6D33769E-8099-4A10-8B86-B20DCC1CC545"),
-                PricePerMaterial = 0,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("58200EA8-3B9B-4B13-B841-5D7D7917A95C"),
-                PricePerMaterial = 299000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("56B90D7A-9671-40C4-B36B-24621DEEFED0"),
-                PricePerMaterial = 25000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("5AF3EB7B-E068-4FFF-97B8-12291D18A0D2"),
-                PricePerMaterial = 90000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("60061BBE-1DCA-48B1-B291-41497D3BAE76"),
-                PricePerMaterial = 96000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"),
-                PricePerMaterial = 219000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("DC92CDEE-7D8B-4C43-9586-8DE46B1BE8B5"),
-                PricePerMaterial = 288000,
-                ValidFrom = DateTime.UtcNow
-            },
-            new MaterialPrice
-            {
-                MaterialId = new Guid("11FB236B-AA4D-46F6-9461-FE4EB810E5CD"),
-                PricePerMaterial = 26000,
-                ValidFrom = DateTime.UtcNow
-            }
-        };
+                {
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"),
+                        PricePerMaterial = 345000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("98AB7097-ECC9-444B-A9A2-26207E28E679"),
+                        PricePerMaterial = 750000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("A575B22D-053D-440E-BCC5-F152F11C8A22"),
+                        PricePerMaterial = 896500,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("2167503B-F6D3-4E87-B426-0FE78ADDDCA0"),
+                        PricePerMaterial = 814500,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("1385516C-B4A3-4F62-9D4D-D55BFB484C47"),
+                        PricePerMaterial = 36000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("05949927-5F48-4955-A9A1-6B15E525E8E7"),
+                        PricePerMaterial = 66000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("4B331200-E729-412C-AE0C-4484A3E6EEA5"),
+                        PricePerMaterial = 107000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("9E524C9B-2BFE-444F-AAA1-6D16C36BDC6B"),
+                        PricePerMaterial = 100000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("4DBE9AC3-4900-4919-B55D-9607F36490D2"),
+                        PricePerMaterial = 219000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("3BE50B7F-55DC-4E3C-9686-04664BCABA14"),
+                        PricePerMaterial = 100000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("1C62D597-86EA-4B9F-8F67-8FEC5BA386B1"),
+                        PricePerMaterial = 194000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("FCCD3DE6-B604-41C6-9D23-66F071CA7319"),
+                        PricePerMaterial = 86000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("DB1BB9F3-34FE-419C-860A-99DBEDB69092"),
+                        PricePerMaterial = 314000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("6D33769E-8099-4A10-8B86-B20DCC1CC545"),
+                        PricePerMaterial = 0,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("58200EA8-3B9B-4B13-B841-5D7D7917A95C"),
+                        PricePerMaterial = 299000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("56B90D7A-9671-40C4-B36B-24621DEEFED0"),
+                        PricePerMaterial = 25000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("5AF3EB7B-E068-4FFF-97B8-12291D18A0D2"),
+                        PricePerMaterial = 90000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("60061BBE-1DCA-48B1-B291-41497D3BAE76"),
+                        PricePerMaterial = 96000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"),
+                        PricePerMaterial = 219000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("DC92CDEE-7D8B-4C43-9586-8DE46B1BE8B5"),
+                        PricePerMaterial = 288000,
+                        ValidFrom = currentDate
+                    },
+                    new MaterialPrice
+                    {
+                        MaterialId = new Guid("11FB236B-AA4D-46F6-9461-FE4EB810E5CD"),
+                        PricePerMaterial = 26000,
+                        ValidFrom = currentDate
+                    }
+                };
 
                 await _context.Set<MaterialPrice>().AddRangeAsync(materialPrices);
                 await _context.SaveChangesAsync();

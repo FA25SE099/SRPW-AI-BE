@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace RiceProduction.Application.Common.Models.Request.MaterialRequests
 {
-    public class ImportUpdateMaterialExcel
+    public class ImportMaterialExcel
     {
         public IFormFile ExcelFile { get; set; }
         public DateTime ImportDate { get; set; }

@@ -1,19 +1,20 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using AutoMapper;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
+using RiceProduction.Application.FarmerFeature.Queries;
+using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
-using AutoMapper;
-using RiceProduction.Application.Common.Mappings;
-using RiceProduction.Application.PlotFeature.Queries;
-using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
+using System.Text.Json.Serialization;
 
 namespace RiceProduction.Infrastructure;
 
@@ -26,6 +27,12 @@ public static class DependencyInjection
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
         builder.Services.AddScoped<IGenericExcel, GenericExcel>();
+
+        builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
