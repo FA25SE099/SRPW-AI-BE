@@ -27,6 +27,15 @@ namespace RiceProduction.Infrastructure.Repository
             _context = context;
             _logger = logger;
         }
+
+        public async Task<Guid> GenerateNewGuid(Guid guidInput)
+        {
+            while ( await FindAsync(e => e.Id == guidInput) == null)
+            {
+                return guidInput;
+            }
+            return await GenerateNewGuid(Guid.NewGuid());
+        }
         public async Task AddAsync(T entity)
         {
             await _context.Set<T>().AddAsync(entity);
