@@ -12,7 +12,7 @@ namespace RiceProduction.Application.Common.Interfaces
         public IGenericRepository<T> Repository<T>() where T : BaseAuditableEntity;
 
         Task<int> CompleteAsync();
-        IFarmerGenericRepository FarmerRepository { get; }
-        IPlotGenericRepository PlotRepository { get; }
+        IFarmerRepository FarmerRepository { get; }
+        IPlotRepository PlotRepository { get; }
     }
 }

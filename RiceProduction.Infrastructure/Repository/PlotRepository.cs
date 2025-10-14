@@ -9,12 +9,12 @@ using RiceProduction.Infrastructure.Data;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public class PlotGenericRepository : IPlotGenericRepository
+    public class PlotRepository : IPlotRepository
     {
         private readonly ApplicationDbContext _context;
         private readonly DbSet<Plot> _plots;
 
-        public PlotGenericRepository (ApplicationDbContext context)
+        public PlotRepository (ApplicationDbContext context)
         {
             _context = context;
             _plots = context.Set<Plot>(); 

@@ -10,7 +10,7 @@ using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.Common.Interfaces
 {
-    public interface IFarmerGenericRepository
+    public interface IFarmerRepository
     {
        Task<Farmer?> GetFarmerByIdAsync (Guid id, CancellationToken cancellationToken = default);
        Task<IEnumerable<Farmer?>> GetAllFarmerAsync (CancellationToken cancellationToken = default);

@@ -24,6 +24,7 @@ namespace RiceProduction.Application.Common.Models
         public decimal Area { get; set; }
         public string? SoilType { get; set; }
         public PlotStatus Status { get; set; } 
-        public string VarietyName { get; set; } 
+        public string VarietyName { get; set; }
+        public ICollection<PlotCultivationDTO> PlotCultivations { get; set; } = new List<PlotCultivationDTO>();
     }
 }

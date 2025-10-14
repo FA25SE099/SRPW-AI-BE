@@ -2,9 +2,11 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
 using RiceProduction.Application.FarmerFeature.Queries;
+using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 
 namespace RiceProduction.API.Controllers
 {
@@ -94,6 +96,22 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
         }
+
+        [HttpPost("Export-Farmer-BasicData")]
+        public async Task<IActionResult> DownloadExcel([FromBody] DateTime request)
+        {
+            var query = new DownloadAllFarmerExcelQuery
+            {
+                InputDate = request
+            };
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded || result.Data == null)
+            {
+                return BadRequest(new { message = result.Message });
+            }
+            return result.Data;
+        }
+
 
     }
     }

@@ -24,8 +24,8 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
         private ConcurrentDictionary<string, object> _repos;
 
-        private IFarmerGenericRepository? _farmerRepository;
-        private IPlotGenericRepository? _plotRepository;
+        private IFarmerRepository? _farmerRepository;
+        private IPlotRepository? _plotRepository;
 
         // ===================================
         // === Constructors
@@ -86,25 +86,25 @@ namespace RiceProduction.Infrastructure.UnitOfWork
             return (IGenericRepository<T>)repoInstanceTypeT;
         }
 
-        public IFarmerGenericRepository FarmerRepository
+        public IFarmerRepository FarmerRepository
         {
             get
             {
                 if (_farmerRepository == null)
                 {
-                    _farmerRepository = new FarmerGenericRepository(_dbContext);
+                    _farmerRepository = new FarmerRepository(_dbContext);
                 }
                 return _farmerRepository;
             }
         }
         
-        public IPlotGenericRepository PlotRepository
+        public IPlotRepository PlotRepository
         {
             get
             {
                 if (_plotRepository == null)
                 {
-                    _plotRepository = new PlotGenericRepository(_dbContext);
+                    _plotRepository = new PlotRepository(_dbContext);
                 }
                 return _plotRepository;
             }

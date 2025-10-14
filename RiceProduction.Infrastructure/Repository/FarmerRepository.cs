@@ -12,12 +12,12 @@ using RiceProduction.Infrastructure.Data;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public class FarmerGenericRepository : IFarmerGenericRepository
+    public class FarmerRepository : IFarmerRepository
     {
         private readonly ApplicationDbContext _context;
         private readonly DbSet<Farmer> _farmers;
 
-        public FarmerGenericRepository(ApplicationDbContext context)
+        public FarmerRepository(ApplicationDbContext context)
         {
             _context = context;
             _farmers = context.Set<Farmer>();

@@ -6,12 +6,14 @@ using System.Threading.Tasks;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using AutoMapper;
+using NetTopologySuite.IO;
+using NetTopologySuite.Geometries;
 
 namespace RiceProduction.Application.Common.Mappings
 {
     public class PlotMapping : Profile
     {
-       public PlotMapping()
+        public PlotMapping()
         {
             CreateMap<Plot, PlotDTO>()
                 .ForMember(dest => dest.FarmerName, opt => opt.MapFrom(src => src.Farmer != null ? src.Farmer.FullName : null))
@@ -21,5 +23,7 @@ namespace RiceProduction.Application.Common.Mappings
                 .ForMember(dest => dest.CoordinateGeoJson, opt => opt.MapFrom(src => src.Coordinate));
 
         }
+
+        
     }
 }

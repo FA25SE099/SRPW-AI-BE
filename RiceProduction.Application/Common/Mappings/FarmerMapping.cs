@@ -9,13 +9,13 @@ using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.Common.Mappings
 {
-    
-        public class FarmerMapping : Profile
+
+    public class FarmerMapping : Profile
+    {
+        public FarmerMapping()
         {
-            public FarmerMapping() 
-            {
             CreateMap<Farmer, FarmerDTO>()
-                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.FarmerId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName))
                 .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
                 .ForMember(dest => dest.FarmCode, opt => opt.MapFrom(src => src.FarmCode))
@@ -23,8 +23,21 @@ namespace RiceProduction.Application.Common.Mappings
                 .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address))
                 .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => src.IsActive))
                 .ForMember(dest => dest.IsVerified, opt => opt.MapFrom(src => src.IsVerified))
-                .ForMember(dest => dest.PlotCount, opt => opt.MapFrom(src => src.OwnedPlots != null ? src.OwnedPlots.Count : 0));          
-            }
-            
+                .ForMember(dest => dest.PlotCount, opt => opt.MapFrom(src => src.OwnedPlots != null ? src.OwnedPlots.Count : 0));
+
+
+        //    CreateMap<Farmer, FarmerDetailDTO>()
+        //        .ForMember(dest => dest.Plots, opt => opt.MapFrom(src => src.OwnedPlots))
+        //        .ForMember(dest => dest.ProductionPlans, opt => opt.MapFrom(src =>
+        //            src.OwnedPlots
+        //            .SelectMany(p => p.PlotCultivations).SelectMany(cul => cul.ProductionPlans)
+        //        ))
+        //        .ForMember(dest => dest.ProductionPlansTask, opt => opt.MapFrom(src =>
+        //        src.OwnedPlots
+        //        .SelectMany(cul => cul.PlotCultivations)
+        //        .SelectMany(pl => pl.ProductionPlans)
+        //        .SelectMany(s => s.CurrentProductionStages)
+        //        .SelectMany(tsk => tsk.ProductionPlanTasks)));
         }
+    }
 }
