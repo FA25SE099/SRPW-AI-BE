@@ -87,15 +87,15 @@ public class CreateProductionPlanCommandHandler :
             var priceReferenceDate = request.BasePlantingDate.Date;
 
             // Truy vấn các mức giá có hiệu lực trước hoặc vào ngày tham chiếu
-            var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
+            var materialPrices = _unitOfWork.Repository<MaterialPrice>().ListAsync(
                 filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate
-            );
+            ).Result.OrderByDescending(p => p.ValidFrom).FirstOrDefault();
 
             // Group theo MaterialId và chọn mức giá có ngày ValidFrom mới nhất
-            var materialPrices = potentialPrices
-                .GroupBy(p => p.MaterialId)
-                .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
-                .ToDictionary(p => p.MaterialId, p => p.PricePerMaterial);
+            // var materialPrices = potentialPrices
+            //     .GroupBy(p => p.MaterialId)
+            //     .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
+            //     .ToDictionary(p => p.MaterialId, p => p.PricePerMaterial);
             
             // 4. Prepare lists for batch insertion
             var planStages = new List<ProductionStage>();
@@ -146,15 +146,15 @@ public class CreateProductionPlanCommandHandler :
                             ProductionPlanTask = task
                         };
 
-                        if (!materialPrices.TryGetValue(materialDto.MaterialId, out var unitPrice))
-                        {
-                            _logger.LogWarning("Material with ID {MaterialId} not found in price list valid for {Date}. Using PricePerMaterial = 0.", materialDto.MaterialId, priceReferenceDate.ToShortDateString());
-                            unitPrice = 0M;
-                        }
+                        // if (!materialPrices.TryGetValue(materialDto.MaterialId, out var unitPrice))
+                        // {
+                        //     _logger.LogWarning("Material with ID {MaterialId} not found in price list valid for {Date}. Using PricePerMaterial = 0.", materialDto.MaterialId, priceReferenceDate.ToShortDateString());
+                        //     unitPrice = 0M;
+                        // }
                         
                         // Calculation: EstimatedAmount = QuantityPerHa * effectiveTotalArea * PricePerMaterial
-                        decimal totalQuantity = materialDto.QuantityPerHa * effectiveTotalArea;
-                        material.EstimatedAmount = totalQuantity * unitPrice;
+                        decimal totalQuantity = materialDto.QuantityPerHa / materialPrices.Material.AmmountPerMaterial.Value * effectiveTotalArea;
+                        material.EstimatedAmount = totalQuantity * materialPrices.PricePerMaterial;
                         
                         totalTaskMaterialCost += material.EstimatedAmount.GetValueOrDefault(0);
                         
