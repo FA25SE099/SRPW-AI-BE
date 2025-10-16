@@ -1354,7 +1354,7 @@ namespace RiceProduction.Infrastructure.Data
             }
         }
         private async Task SeedClusterDataAsync()
-    {
+        {
             // Kiểm tra xem dữ liệu Cluster đã được thêm chưa
             if (!_context.Set<Cluster>().Any())
             {
@@ -1386,7 +1386,7 @@ namespace RiceProduction.Infrastructure.Data
                     .FirstOrDefaultAsync(s => s.SeasonName == "Đông Xuân");
                 var seasonHeThu = await _context.Set<Season>()
                     .FirstOrDefaultAsync(s => s.SeasonName == "Hè Thu");
-                
+
                 // Kiểm tra điều kiện cần thiết
                 if (clusterManager1 == null || supervisor1 == null || riceVarietyST25 == null || seasonDongXuan == null)
                 {
@@ -1397,7 +1397,7 @@ namespace RiceProduction.Infrastructure.Data
                 // Tạo các GUID cho Cluster và Group để dễ dàng tham chiếu
                 var cluster1Id = new Guid("4A75A0E6-20A5-4E80-928A-D6A8E19B1A01"); // Đồng Tháp
                 var cluster2Id = new Guid("9C0C35B8-8F0E-4D2A-8B6C-C32E8F47C499"); // An Giang
-                
+
                 var group1Id = new Guid("67B40A3C-4C9D-4F7F-9A52-E23B9B42B101");
                 var group2Id = new Guid("3E8F5D2B-8A1C-4E7A-A1B9-F9C3A021E202");
                 var group3Id = new Guid("7F9E1C4D-2B8A-4A9B-B0C1-D8E7F6C5D403");
@@ -1405,7 +1405,7 @@ namespace RiceProduction.Infrastructure.Data
                 // Giả lập Polygon cho Boundary và Area
                 // Dùng WKT (Well-Known Text) để tạo Polygon
                 var factory = new NetTopologySuite.Geometries.GeometryFactory(new NetTopologySuite.Geometries.PrecisionModel(), 4326);
-                
+
                 // Polygon mẫu cho Cluster 1 (Đồng Tháp): Hình chữ nhật đơn giản
                 // Lệnh: POLYGON((lon1 lat1, lon2 lat2, lon3 lat3, lon4 lat4, lon1 lat1))
                 var wktCluster1 = "POLYGON((105.78 10.45, 105.80 10.45, 105.80 10.47, 105.78 10.47, 105.78 10.45))";
@@ -1459,22 +1459,22 @@ namespace RiceProduction.Infrastructure.Data
             }
         };
 
-        await _context.Set<Cluster>().AddRangeAsync(clusters);
-        await _context.SaveChangesAsync();
-        _logger.LogInformation("Seeded {Count} Clusters", clusters.Count);
+                await _context.Set<Cluster>().AddRangeAsync(clusters);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Seeded {Count} Clusters", clusters.Count);
 
-        // ----------------------------------------------------------------------
-        // 3. Seed Groups
-        // ----------------------------------------------------------------------
-        
-        // CHỈNH SỬA: Tạo DateTime với Kind=Utc
-        // Lấy ngày hiện tại và ép Kind sang UTC
-        var todayUtc = DateTime.UtcNow.Date;
-        var plantingDate1 = todayUtc.AddDays(-30); 
-        var plantingDate2 = todayUtc.AddDays(-5);  
-        var plantingDate4 = todayUtc.AddDays(10); // Kế hoạch sạ 10 ngày tới
+                // ----------------------------------------------------------------------
+                // 3. Seed Groups
+                // ----------------------------------------------------------------------
 
-        var groups = new List<Group>
+                // CHỈNH SỬA: Tạo DateTime với Kind=Utc
+                // Lấy ngày hiện tại và ép Kind sang UTC
+                var todayUtc = DateTime.UtcNow.Date;
+                var plantingDate1 = todayUtc.AddDays(-30);
+                var plantingDate2 = todayUtc.AddDays(-5);
+                var plantingDate4 = todayUtc.AddDays(10); // Kế hoạch sạ 10 ngày tới
+
+                var groups = new List<Group>
         {
             new Group
             {
@@ -1540,18 +1540,22 @@ namespace RiceProduction.Infrastructure.Data
             }
         };
 
-        await _context.Set<Group>().AddRangeAsync(groups);
-        await _context.SaveChangesAsync();
-        _logger.LogInformation("Seeded {Count} Groups", groups.Count);
-    }
-    else
-    {
-        _logger.LogInformation("Cluster data already exists - skipping seeding");
-    }
-    _logger.LogInformation("Core data seeding completed");
+                await _context.Set<Group>().AddRangeAsync(groups);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Seeded {Count} Groups", groups.Count);
+            }
+            else
+            {
+                _logger.LogInformation("Cluster data already exists - skipping seeding");
+            }
+            _logger.LogInformation("Core data seeding completed");
         }
 
         private async Task SeedCoreDataAsync()
+        {
+            _logger.LogInformation("Core data seeding completed");
+        }
+        private async Task SeedDataAsync()
         {
             _logger.LogInformation("Core data seeding completed");
         }

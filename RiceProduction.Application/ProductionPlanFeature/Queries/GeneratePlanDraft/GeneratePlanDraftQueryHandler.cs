@@ -74,14 +74,14 @@ public class GeneratePlanDraftQueryHandler :
 
             var priceReferenceDate = DateTime.SpecifyKind(request.BasePlantingDate.Date, DateTimeKind.Utc);
 
-            var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
+            var materialPrices = _unitOfWork.Repository<MaterialPrice>().ListAsync(
                 filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate
-            );
+            ).Result.OrderByDescending(p => p.ValidFrom).FirstOrDefault() ;
 
-            var materialPrices = potentialPrices
-                .GroupBy(p => p.MaterialId)
-                .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
-                .ToDictionary(p => p.MaterialId, p => p.PricePerMaterial);
+            // var materialPrices = potentialPrices
+            //     .GroupBy(p => p.MaterialId)
+            //     .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
+            //     .ToDictionary(p => p.MaterialId, p => p.PricePerMaterial);
             
             // --- 4. Build the Draft Response Structure and Calculate Costs ---
             
@@ -133,14 +133,14 @@ public class GeneratePlanDraftQueryHandler :
                     // Loop through Standard Task Materials and Calculate Cost
                     foreach (var standardMaterial in standardTask.StandardPlanTaskMaterials)
                     {
-                        if (!materialPrices.TryGetValue(standardMaterial.MaterialId, out var unitPrice))
-                        {
-                            unitPrice = 0M;
-                        }
+                        // if (!materialPrices.TryGetValue(standardMaterial.MaterialId, out var unitPrice))
+                        // {
+                        //     unitPrice = 0M;
+                        // }
                         
                         // Calculation: EstimatedAmount = QuantityPerHa * effectiveTotalArea * PricePerMaterial
-                        decimal totalQuantity = standardMaterial.QuantityPerHa * effectiveTotalArea;
-                        decimal estimatedAmount = totalQuantity * unitPrice;
+                        decimal totalQuantity = standardMaterial.QuantityPerHa / materialPrices.Material.AmmountPerMaterial.Value * effectiveTotalArea;
+                        decimal estimatedAmount = totalQuantity * materialPrices.PricePerMaterial;
                         
                         taskTotalEstimatedCost += estimatedAmount;
                         totalPlanCost += estimatedAmount; // <--- Tích lũy vào tổng chi phí Plan

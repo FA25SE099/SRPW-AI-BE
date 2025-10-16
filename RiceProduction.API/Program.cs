@@ -9,6 +9,7 @@ using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
