@@ -1601,7 +1601,72 @@ namespace RiceProduction.Infrastructure.Data
                         ApprovedAt = DateTime.SpecifyKind(new DateTime(2024, 12, 15), DateTimeKind.Utc),
                         ApprovedBy = null, // Giả lập không có người duyệt cụm
                         SubmittedBy = group1.SupervisorId,
-                        LastModified = DateTime.UtcNow
+                        LastModified = DateTime.UtcNow,
+                        CurrentProductionStages = new List<ProductionStage>()
+                        {
+                            new ProductionStage
+                            {
+                                  StageName = "Bón phân",
+                                  Description = "Giai đoạn trước khi vào công đoạn chăm sóc",
+                                  IsActive = true,
+                                  Notes = "Bón phân, làm đất trước sạ",
+                                  SequenceOrder = 1,
+                                  TypicalDurationDays = 1,
+                                  ProductionPlanTasks = new List<ProductionPlanTask>()
+                                  {
+                                      new ProductionPlanTask
+                                      {
+                                          Priority = TaskPriority.High,
+                                          SequenceOrder = 1,
+                                          TaskName = "Bón lót",
+                                          TaskType = TaskType.Fertilization,
+                                          ScheduledDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12), DateTimeKind.Utc),
+                                          ScheduledEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12).AddDays(1), DateTimeKind.Utc),
+                                          Description = "Bón lót các loại phân như phân hữu cơ, lân để sau khi sạ cây mọc mầm có thể cung cấp dinh dưỡng - Bón trước khi bừa trục và trạc",
+                                          Status = TaskStatus.Completed,
+                                          ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>()
+                                          {
+                                              new ProductionPlanTaskMaterial
+                                              {
+                                                  MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"),
+                                                  QuantityPerHa = 300,
+                                                  EstimatedAmount = 2070000
+                                              }
+                                          },
+                                          EstimatedMaterialCost = 2070000,
+                                          CultivationTasks = new List<CultivationTask>()
+                                          {
+                                              new CultivationTask
+                                              {
+                                                  ExecutionOrder = 1,
+                                                  
+                                              }
+                                          }
+                                          
+                                      },
+                                      new ProductionPlanTask
+                                      {
+                                          Priority = TaskPriority.High,
+                                          SequenceOrder = 2,
+                                          TaskName = "Làm đất",
+                                          TaskType = TaskType.Sowing,
+                                          ScheduledDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12), DateTimeKind.Utc),
+                                          ScheduledEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12).AddDays(1), DateTimeKind.Utc),
+                                          Description = "Bón lót các loại phân như phân hữu cơ, lân để sau khi sạ cây mọc mầm có thể cung cấp dinh dưỡng - Bón trước khi bừa trục và trạc",
+                                          Status = TaskStatus.Completed,
+                                          ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>()
+                                          {
+                                              new ProductionPlanTaskMaterial
+                                              {
+                                                  MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"),
+                                                  QuantityPerHa = 300,
+                                                  EstimatedAmount = 2070000
+                                              }
+                                          }
+                                      }
+                                  }
+                            },
+                        }
                         },
                     //new ProductionPlan
                     //{
