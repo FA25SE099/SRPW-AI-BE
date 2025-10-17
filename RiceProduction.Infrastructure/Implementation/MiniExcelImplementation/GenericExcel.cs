@@ -36,11 +36,30 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             try
             {
                 var memoryStream = new MemoryStream();
-                
+
                 // Convert to dictionary list with JsonPropertyName as keys
                 var excelData = ConvertToExcelData(inputList);
-                
-                memoryStream.SaveAs(excelData, sheetName: date.ToString());
+
+                var properties = typeof(T).GetProperties();
+                var columns = properties.Select(prop =>
+                {
+                    var maxLength = inputList
+                        .Select(item => prop.GetValue(item)?.ToString()?.Length ?? 0)
+                        .DefaultIfEmpty(prop.Name.Length)
+                        .Max();
+
+                    // Width calculation: character count * 1.2 + 2 (padding)
+                    var width = Math.Min(maxLength * 1.2 + 2, 50); // Cap at 50
+
+                    return new DynamicExcelColumn(prop.Name) { Width = width };
+                }).ToArray();
+
+                var config = new OpenXmlConfiguration
+                {
+                    DynamicColumns = columns
+                };
+                var sanitizedSheetName = date.Replace(":", "-").Replace("/", "-");
+                memoryStream.SaveAs(excelData, sheetName: sanitizedSheetName, configuration: config);
                 memoryStream.Seek(0, SeekOrigin.Begin);
 
                 return new FileStreamResult(memoryStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -51,9 +70,11 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error generating Excel file: {ex.Message}");
-                return null; 
+                return null;
             }
         }
+
+
 
         public async Task<List<T>> ExcelToListT<T>(IFormFile excel) where T : class, new()
         {
