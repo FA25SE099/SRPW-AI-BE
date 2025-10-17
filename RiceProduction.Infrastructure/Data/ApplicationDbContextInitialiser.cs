@@ -1468,6 +1468,10 @@ namespace RiceProduction.Infrastructure.Data
                 await _context.Set<Cluster>().AddRangeAsync(clusters);
                 await _context.SaveChangesAsync();
                 _logger.LogInformation("Seeded {Count} Clusters", clusters.Count);
+                var farmer1Id = _userManager.FindByEmailAsync("farmer1@ricepro.com").Result?.Id ?? Guid.NewGuid();
+                var farmer2Id = _userManager.FindByEmailAsync("farmer2@ricepro.com").Result?.Id ?? Guid.NewGuid();
+                var farmer3Id = _userManager.FindByEmailAsync("farmer3@ricepro.com").Result?.Id ?? Guid.NewGuid();
+                var farmer4Id = _userManager.FindByEmailAsync("farmer4@ricepro.com").Result?.Id ?? Guid.NewGuid();
 
                 // ----------------------------------------------------------------------
                 // 3. Seed Groups
@@ -1496,7 +1500,38 @@ namespace RiceProduction.Infrastructure.Data
                 ReadyForUavDate = plantingDate1.AddDays(40),
                 Area = polygonGroup1,
                 TotalArea = 25.50m,
-                LastModified = DateTime.UtcNow
+                LastModified = DateTime.UtcNow,
+                Plots = new List<Plot>
+                {
+                    new Plot
+                    {
+                        Id = new Guid("F9023C7B-B4EE-4D58-8B46-6AC9AB415FF7"),
+                        FarmerId = farmer1Id,
+                        Area =  3.00m,
+                        Boundary = polygonGroup1 // Có thể thêm Boundary nếu cần
+                    },
+                    new Plot
+                    {
+                        Id = new Guid("9901619B-9517-4DDB-80BC-6CCBA8EED484"),
+                        FarmerId = farmer2Id,
+                        Area =  6.50m,
+                        Boundary = polygonGroup3 // Có thể thêm Boundary nếu cần
+                    },
+                    new Plot
+                    {
+                        Id = new Guid("947C9E3E-0F9B-40F3-ADFF-A74B7F70C8CC"),
+                        FarmerId = farmer3Id,
+                        Area =  3.50m,
+                        Boundary = polygonCluster1 // Có thể thêm Boundary nếu cần
+                    },
+                    new Plot
+                    {
+                        Id = new Guid("96B35D4D-72C7-4CDE-A232-A59BA5B11E0B"),
+                        FarmerId = farmer4Id,
+                        Area =  10.00m,
+                        Boundary = polygonCluster2 // Có thể thêm Boundary nếu cần
+                    },
+                }
             },
             new Group
             {
@@ -1585,6 +1620,48 @@ namespace RiceProduction.Infrastructure.Data
                 var productionPlanTaskGuid1 = new Guid("86170DE5-672C-48B6-89EC-67113BDB1EBD");
 
                 var productionPlanGuid2 = new Guid("AD439C33-BAC6-4420-88D7-E81DA81C499A");
+
+                var riceVarietyST25 = await _context.Set<RiceVariety>()
+                    .FirstOrDefaultAsync(v => v.VarietyName == "ST25");
+
+                var season = await _context.Set<Season>()
+                    .FirstOrDefaultAsync(v => v.SeasonName == "Đông Xuân");
+                // danh sách cultivation làm đất
+                var cultivationTaskBonLotList = new List<CultivationTask>();
+                foreach(var plot in group1.Plots)
+                {
+                    var cultivationTaskId = Guid.NewGuid();
+                    cultivationTaskBonLotList.Add(new CultivationTask
+                    {
+                        Id = cultivationTaskId,
+                        IsContingency = false,
+                        ActualStartDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19), DateTimeKind.Utc),
+                        ActualEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 20), DateTimeKind.Utc),
+                        ActualMaterialCost = 2070000 * plot.Area,
+                        ActualServiceCost = 7300000,
+                        CompletedAt = DateTime.SpecifyKind(new DateTime(2024, 12, 20), DateTimeKind.Utc),
+                        CompletionPercentage = 100,
+                        CultivationTaskMaterials = new List<CultivationTaskMaterial>()
+                        {
+                            new CultivationTaskMaterial
+                            {
+                                MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"),
+                                ActualQuantity = 300 * plot.Area,
+                                ActualCost = 2070000 * plot.Area,
+                                Notes = "- Bón phân lót bằng cách rải đều trên mặt ruộng kết hợp với bừa trục và trạc để vùi phân lót xuống dưới\r\n- Vật tư: Phân hữu cơ vi sinh \r\n- Liều lượng: 300kg/ha phân hữu cơ vi sinh "
+                            }
+                        },
+                        PlotCultivation = new PlotCultivation
+                        {
+                            PlotId = plot.Id,
+                            ActualYield = plot.Area,
+                            PlantingDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19), DateTimeKind.Utc),
+                            RiceVarietyId = riceVarietyST25.Id,
+                            SeasonId = season.Id,
+                            Status = CultivationStatus.Completed,
+                        }
+                    });
+                }
                 // Tạo các ProductionPlan mẫu
                 var productionPlans = new List<ProductionPlan>
                 {
@@ -1606,7 +1683,7 @@ namespace RiceProduction.Infrastructure.Data
                         {
                             new ProductionStage
                             {
-                                  StageName = "Bón phân",
+                                  StageName = "Bón phân, làm đất",
                                   Description = "Giai đoạn trước khi vào công đoạn chăm sóc",
                                   IsActive = true,
                                   Notes = "Bón phân, làm đất trước sạ",
@@ -1622,8 +1699,9 @@ namespace RiceProduction.Infrastructure.Data
                                           TaskType = TaskType.Fertilization,
                                           ScheduledDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12), DateTimeKind.Utc),
                                           ScheduledEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12).AddDays(1), DateTimeKind.Utc),
-                                          Description = "Bón lót các loại phân như phân hữu cơ, lân để sau khi sạ cây mọc mầm có thể cung cấp dinh dưỡng - Bón trước khi bừa trục và trạc",
+                                          Description = "- Bón lót các loại phân như phân hữu cơ, lân để sau khi sạ cây mọc mầm có thể cung cấp dinh dưỡng\r\n- Bón trước khi bừa trục và trạc",
                                           Status = TaskStatus.Completed,
+                                          EstimatedMaterialCost = 2070000,
                                           ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>()
                                           {
                                               new ProductionPlanTaskMaterial
@@ -1633,16 +1711,7 @@ namespace RiceProduction.Infrastructure.Data
                                                   EstimatedAmount = 2070000
                                               }
                                           },
-                                          EstimatedMaterialCost = 2070000,
-                                          CultivationTasks = new List<CultivationTask>()
-                                          {
-                                              new CultivationTask
-                                              {
-                                                  ExecutionOrder = 1,
-                                                  
-                                              }
-                                          }
-                                          
+                                          CultivationTasks = cultivationTaskBonLotList
                                       },
                                       new ProductionPlanTask
                                       {
@@ -1650,19 +1719,11 @@ namespace RiceProduction.Infrastructure.Data
                                           SequenceOrder = 2,
                                           TaskName = "Làm đất",
                                           TaskType = TaskType.Sowing,
-                                          ScheduledDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12), DateTimeKind.Utc),
-                                          ScheduledEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12).AddDays(1), DateTimeKind.Utc),
-                                          Description = "Bón lót các loại phân như phân hữu cơ, lân để sau khi sạ cây mọc mầm có thể cung cấp dinh dưỡng - Bón trước khi bừa trục và trạc",
+                                          ScheduledDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19), DateTimeKind.Utc),
+                                          ScheduledEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19).AddDays(1), DateTimeKind.Utc),
+                                          Description = "- Cày bừa lại theo phương pháp bừa trục và trạc để san phẳng mặt ruộng hạn chế chênh lệch tối đa các vùng cao thấp không quá 5cm\r\n- Kết hợp xử lý cỏ dại ven bờ, đánh rãnh để thoát phèn và diệt ốc",
                                           Status = TaskStatus.Completed,
-                                          ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>()
-                                          {
-                                              new ProductionPlanTaskMaterial
-                                              {
-                                                  MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"),
-                                                  QuantityPerHa = 300,
-                                                  EstimatedAmount = 2070000
-                                              }
-                                          }
+                                          ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>(),
                                       }
                                   }
                             },

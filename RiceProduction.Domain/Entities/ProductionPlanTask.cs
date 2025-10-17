@@ -34,10 +34,7 @@ public class ProductionPlanTask : BaseAuditableEntity
     public decimal EstimatedMaterialCost { get; set; } = 0;
 
     // Navigation properties
-    var productionPlanGuid1 = new Guid("E9C0A252-10B9-4190-96AC-4F1E19617CF5");
-    var productionPlanStageGuid1 = new Guid("86170DE5-672C-48B6-89EC-67113BDB1EBD");
-    var productionPlanTaskGuid1 = new Guid("86170DE5-672C-48B6-89EC-67113BDB1EBD");
-
+    
     [ForeignKey("ProductionStageId")]
     public ProductionStage ProductionStage { get; set; } = null!;
     
