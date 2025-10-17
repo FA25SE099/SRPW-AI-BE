@@ -162,7 +162,7 @@ public class GeneratePlanDraftQueryHandler :
                         decimal amountPerUnit = materialDetail.AmmountPerMaterial.GetValueOrDefault(1M);
                         
                         // PricePerHa = (QuantityPerHa / AmmountPerMaterial) * PricePerMaterial
-                        decimal pricePerHa = (standardMaterial.QuantityPerHa / amountPerUnit) * unitPrice;
+                        decimal pricePerHa = Math.Ceiling(standardMaterial.QuantityPerHa / amountPerUnit) * unitPrice;
                         
                         decimal estimatedAmount = pricePerHa * effectiveTotalArea;
                         

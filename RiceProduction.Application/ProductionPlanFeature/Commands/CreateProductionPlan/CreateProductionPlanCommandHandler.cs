@@ -170,7 +170,7 @@ public class CreateProductionPlanCommandHandler :
                             decimal amountPerUnit = materialDetail.AmmountPerMaterial.Value;
                             
                             // Calculation: EstimatedAmount = (QuantityPerHa / AmmountPerMaterial) * PricePerMaterial * effectiveTotalArea
-                            decimal pricePerHa = (materialDto.QuantityPerHa / amountPerUnit) * unitPrice;
+                            decimal pricePerHa = Math.Ceiling(materialDto.QuantityPerHa / amountPerUnit) * unitPrice;
                             estimatedAmount = pricePerHa * effectiveTotalArea;
                         }
                         else
