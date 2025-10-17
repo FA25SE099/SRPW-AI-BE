@@ -62,7 +62,7 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest(result);
             }
-            // Trả về NoContent (204) cho hoạt động cập nhật
+            
             return NoContent(); 
         }
 
