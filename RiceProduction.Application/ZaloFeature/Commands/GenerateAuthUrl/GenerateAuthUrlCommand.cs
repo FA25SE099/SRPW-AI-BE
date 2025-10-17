@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models.Zalo;
 

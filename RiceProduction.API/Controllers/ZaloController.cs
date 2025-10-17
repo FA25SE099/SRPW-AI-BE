@@ -1,3 +1,4 @@
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.ZaloFeature.Commands.ExchangeAuthCode;
 using RiceProduction.Application.ZaloFeature.Commands.GenerateAuthUrl;

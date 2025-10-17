@@ -65,7 +65,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     // Monitoring and alerts
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<FieldWeather> FieldWeathers => Set<FieldWeather>();
-
+    public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
     // Assignments
     public DbSet<SupervisorFarmerAssignment> SupervisorFarmerAssignments => Set<SupervisorFarmerAssignment>();
 
