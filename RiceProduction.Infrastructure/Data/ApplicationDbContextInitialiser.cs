@@ -65,11 +65,17 @@ namespace RiceProduction.Infrastructure.Data
             await SeedUsersAsync();
 
             await SeedVietnameseRiceDataAsync();
+
             await SeedMaterialDataAsync();
 
             await SeedMaterialPriceDataAsync();
+
             await SeedSeasonalPlanDataAsync();
+
             await SeedClusterDataAsync();
+
+            await SeedProductionPlanAsync();
+
             await SeedCoreDataAsync();
 
         }
@@ -1549,6 +1555,110 @@ namespace RiceProduction.Infrastructure.Data
                 _logger.LogInformation("Cluster data already exists - skipping seeding");
             }
             _logger.LogInformation("Core data seeding completed");
+        }
+
+
+        private async Task SeedProductionPlanAsync()
+        {
+            // Kiểm tra xem dữ liệu ProductionPlan đã được thêm chưa
+            if (!_context.Set<ProductionPlan>().Any())
+            {
+
+                _logger.LogInformation("Seeding Core Data: Production Plans...");
+                // Lấy Group và StandardPlan đã seed trước
+                var group1 = await _context.Set<Group>()
+                    .FirstOrDefaultAsync(g => g.Id == new Guid("67B40A3C-4C9D-4F7F-9A52-E23B9B42B101")); // Group 1 trong Cluster 1
+                var group2 = await _context.Set<Group>()
+                    .FirstOrDefaultAsync(g => g.Id == new Guid("3E8F5D2B-8A1C-4E7A-A1B9-F9C3A021E202")); // Group 2 trong Cluster 1
+                var standardPlanDX = await _context.Set<StandardPlan>()
+                    .FirstOrDefaultAsync(sp => sp.PlanName.Contains("Đông Xuân"));
+                var standardPlanHT = await _context.Set<StandardPlan>()
+                    .FirstOrDefaultAsync(sp => sp.PlanName.Contains("Hè Thu"));
+                // Kiểm tra điều kiện cần thiết
+                if (group1 == null || group2 == null || standardPlanDX == null || standardPlanHT == null)
+                {
+                    _logger.LogError("Required Groups or Standard Plans for Production Plan seeding not found. Skipping Production Plan seeding.");
+                    return;
+                }
+                var productionPlanGuid1 = new Guid("E9C0A252-10B9-4190-96AC-4F1E19617CF5");
+                var productionStageGuid1 = new Guid("86170DE5-672C-48B6-89EC-67113BDB1EBD");
+                var productionPlanTaskGuid1 = new Guid("86170DE5-672C-48B6-89EC-67113BDB1EBD");
+
+                var productionPlanGuid2 = new Guid("AD439C33-BAC6-4420-88D7-E81DA81C499A");
+                // Tạo các ProductionPlan mẫu
+                var productionPlans = new List<ProductionPlan>
+                {
+                    new ProductionPlan
+                    {
+                        Id = productionPlanGuid1,
+                        GroupId = group1.Id,
+                        StandardPlanId = standardPlanDX.Id,
+                        PlanName = "Vụ Đông Xuân 2024–2025",
+                        BasePlantingDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19), DateTimeKind.Utc), // Dùng ngày nhóm sạ hoặc giả lập 30 ngày trước
+                        Status = TaskStatus.Approved,
+                        TotalArea = group1.TotalArea,
+                        SubmittedAt = DateTime.SpecifyKind(new DateTime(2024, 12, 12), DateTimeKind.Utc),
+                        ApprovedAt = DateTime.SpecifyKind(new DateTime(2024, 12, 15), DateTimeKind.Utc),
+                        ApprovedBy = null, // Giả lập không có người duyệt cụm
+                        SubmittedBy = group1.SupervisorId,
+                        LastModified = DateTime.UtcNow
+                        },
+                    //new ProductionPlan
+                    //{
+                    //    Id = productionPlanGuid2,
+                    //    GroupId = group2.Id,
+                    //    StandardPlanId = standardPlanDX.Id,
+                    //    PlanName = $"{group2.RiceVariety?.VarietyName} - {group2.SeasonId.Value} - Kế hoạch 1",
+                    //    BasePlantingDate = group2.PlantingDate ?? DateTime.UtcNow.AddDays(-5), // Dùng ngày nhóm sạ hoặc giả lập 5 ngày trước
+                    //    Status = TaskStatus.Completed,
+                    //    TotalArea = group2.TotalArea,
+                    //    SubmittedAt = DateTime.UtcNow.AddDays(-3),
+                    //    ApprovedAt = null, // Chưa duyệt
+                    //    ApprovedBy = null,
+                    //    SubmittedBy = group2.SupervisorId,
+                    //    LastModified = DateTime.UtcNow
+                    //}
+                    };
+                await _context.Set<ProductionPlan>().AddRangeAsync(productionPlans);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Seeded {Count} Production Plans", productionPlans.Count);
+
+            }
+            else
+            {
+                _logger.LogInformation("Production Plan data already exists - skipping seeding");
+            }
+            ;
+        }
+
+        private static TimeZoneInfo GetVietnamTimeZone()
+        {
+            try
+            {
+                // Try Windows timezone ID first
+                return TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                // Fallback to IANA timezone ID for Linux/Mac
+                return TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
+            }
+        }
+        /// <summary>
+        /// Gets current time in Vietnam timezone, then converts to UTC for database storage
+        /// </summary>
+        private DateTime GetVietnamTimeAsUtc()
+        {
+            var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, GetVietnamTimeZone());
+            return TimeZoneInfo.ConvertTimeToUtc(vietnamNow, GetVietnamTimeZone());
+        }
+
+        /// <summary>
+        /// Gets current Vietnam time (for logging/display purposes)
+        /// </summary>
+        private DateTime GetVietnamTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, GetVietnamTimeZone());
         }
 
         private async Task SeedCoreDataAsync()
