@@ -8,6 +8,8 @@ public class StandardPlanStage : BaseAuditableEntity
     [Required]
     public Guid StandardPlanId { get; set; }
 
+    [MaxLength(100)]
+    public string StageName { get; set; } = string.Empty;
 
     /// <summary>
     /// Expected duration for this stage in this specific plan
