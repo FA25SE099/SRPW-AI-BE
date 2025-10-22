@@ -32,10 +32,9 @@ public class ProductionPlanTask : BaseAuditableEntity
     // Cost tracking
     [Column(TypeName = "decimal(12,2)")]
     public decimal EstimatedMaterialCost { get; set; } = 0;
-    
+
     // Navigation properties
     
-
     [ForeignKey("ProductionStageId")]
     public ProductionStage ProductionStage { get; set; } = null!;
     

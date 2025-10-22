@@ -28,7 +28,7 @@ public class MaterialController : ControllerBase
     }
 
     [HttpPost("get-all")]
-    public async Task<ActionResult<PagedResult<List<MaterialResponse>>>> AllMaterialPaging([FromBody] MaterialListRequest request)
+    public async Task<ActionResult<PagedResult<List<MaterialResponse>>>> AllMaterialPaging([FromForm] MaterialListRequest request)
     {
         var query = new GetAllMaterialByTypeQuery
         {
