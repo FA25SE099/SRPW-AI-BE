@@ -13,7 +13,7 @@ namespace RiceProduction.Application.Common.Models
 {
     public class PlotDTO 
     {
-        public Guid Id { get; set; }
+        public Guid PlotId { get; set; }
         public Guid FarmerId { get; set; }
         public string? FarmerName { get; set; }
         public Guid? GroupId { get; set; }
@@ -25,6 +25,5 @@ namespace RiceProduction.Application.Common.Models
         public string? SoilType { get; set; }
         public PlotStatus Status { get; set; } 
         public string VarietyName { get; set; }
-        public ICollection<PlotCultivationDTO> PlotCultivations { get; set; } = new List<PlotCultivationDTO>();
     }
 }

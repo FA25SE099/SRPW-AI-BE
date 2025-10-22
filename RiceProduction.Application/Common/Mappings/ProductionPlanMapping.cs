@@ -14,7 +14,8 @@ namespace RiceProduction.Application.Common.Mappings
         {
             CreateMap<ProductionPlan, ProductionPlanDTO>()
                 .ForMember(dest => dest.ProductionPlanId, opt => opt.MapFrom(src => src.Id));
-
+            CreateMap<ProductionPlan, ProductionPlanDetailDTO>().IncludeBase<ProductionPlan, ProductionPlanDTO>()
+                .ForMember(dest => dest.ProductionStages, opt => opt.MapFrom(s => s.CurrentProductionStages));
         }
     }
 }

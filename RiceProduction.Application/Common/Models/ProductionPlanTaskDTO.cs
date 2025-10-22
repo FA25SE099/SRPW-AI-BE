@@ -19,8 +19,6 @@ namespace RiceProduction.Application.Common.Models
         public Domain.Enums.TaskStatus Status { get; set; }
         public TaskPriority Priority { get; set; } = TaskPriority.Normal;
         public int SequenceOrder { get; set; }
-        public ProductionStageDTO ProductionStage { get; set; } = null!;
-        public ICollection<CultivationTaskDTO> CultivationTasks { get; set; } = new List<CultivationTaskDTO>();
 
     }
 }

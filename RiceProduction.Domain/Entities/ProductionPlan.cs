@@ -45,7 +45,7 @@ public class ProductionPlan : BaseAuditableEntity
     [ForeignKey("SubmittedBy")]
     public Supervisor? Submitter { get; set; }
 
-    [ForeignKey("CurrentProductionStageId")]
-    public ICollection<ProductionStage> CurrentProductionStages { get; set; } = new List<ProductionStage>();
+    [ForeignKey("CurrentProductionStageId")] 
 
+    public ICollection<ProductionStage> CurrentProductionStages { get; set; } = new List<ProductionStage>();
 }

@@ -6,7 +6,10 @@ using RiceProduction.Domain.Enums;
 using RiceProduction.Infrastructure.Identity;
 using System;
 using System.Collections.Generic;
+using System.Composition;
+using System.Diagnostics.Metrics;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Data
@@ -58,20 +61,320 @@ namespace RiceProduction.Infrastructure.Data
             }
         }
 
+
         public async Task TrySeedAsync()
         {
             await SeedRolesAsync();
-
             await SeedUsersAsync();
-
             await SeedVietnameseRiceDataAsync();
             await SeedMaterialDataAsync();
-
             await SeedMaterialPriceDataAsync();
-
             await SeedCoreDataAsync();
             await SeedPlotDataAsync();
+            await SeedClusterAsync();
+            await SeedGroupAsync();
+            await SeedProductionStage();
+            await SeedStandardPlan();
+            await SeedProductionPlan();
 
+        }
+
+        private async Task SeedProductionPlan()
+        {
+            if (_context.ProductionPlans.Any())
+            {
+                _logger.LogInformation("Production Plan data already exists. Skipping seeding.");
+                return;
+            }
+            var submitter1 = await _userManager.FindByEmailAsync("supervisor1@ricepro.com") as Supervisor;
+            var approver1 = await _userManager.FindByEmailAsync("expert1@ricepro.com") as AgronomyExpert;
+            var standardPlanName = ("ST25 Standard").Normalize(NormalizationForm.FormC);
+            var ST25STD = await _context.StandardPlans.FirstOrDefaultAsync(s => s.PlanName == standardPlanName);
+            var stage1 = await _context.ProductionStages.FirstOrDefaultAsync(s => s.SequenceOrder == 1);
+            var group1 = await _context.Groups.FirstOrDefaultAsync(g => g.Plots.Any(p => p.SoThua == 15));
+            var group3 = await _context.Groups.FirstOrDefaultAsync(g => g.Plots.Any(p => p.SoThua == 16));
+
+            if (group1 == null || group3 == null || submitter1 == null || approver1 == null || ST25STD == null || stage1 == null)
+            {
+
+                _logger.LogWarning("One or more dependencies for Production Plan not found. Skipping seeding.");
+                if (group1 == null) _logger.LogWarning("--> group1 is null.");
+                if (group3 == null) _logger.LogWarning("--> group3 is null.");
+                if (submitter1 == null) _logger.LogWarning("--> supervisor is null.");
+                if (approver1 == null) _logger.LogWarning("--> expert is null.");
+                if (ST25STD == null) _logger.LogWarning("--> standardPlan is null.");
+                if (stage1 == null) _logger.LogWarning("--> firstStage is null.");
+                return;
+            }
+
+            var pdPlan = new List<ProductionPlan>
+            {
+                new()
+                {
+                    PlanName = "KHSX ST25 Vụ Hè Thu 2025 - Nhóm 1",
+                    GroupId = group1.Id,
+                    StandardPlanId = ST25STD.Id,
+                    BasePlantingDate = group1.PlantingDate ?? DateTime.UtcNow,
+                    Status = TaskStatus.InProgress,
+                    TotalArea = group1.TotalArea,
+                    SubmittedBy = submitter1.Id,
+                    SubmittedAt = DateTime.UtcNow,
+                    ApprovedBy = approver1.Id,
+                    ApprovedAt = DateTime.UtcNow,
+                    CurrentProductionStageId = stage1.Id
+                },
+                new()
+                {
+                    PlanName = "KHSX ST25 Vụ Hè Thu 2025 - Nhóm 3",
+                    GroupId = group3.Id,
+                    StandardPlanId = ST25STD.Id,
+                    BasePlantingDate = group3.PlantingDate ?? DateTime.UtcNow,
+                    Status = TaskStatus.InProgress,
+                    TotalArea = group3.TotalArea,
+                    SubmittedBy = submitter1.Id,
+                    SubmittedAt = DateTime.UtcNow,
+                    ApprovedBy = approver1.Id,
+                    ApprovedAt = DateTime.UtcNow,
+                    CurrentProductionStageId = stage1.Id
+                }
+            };
+            await _context.ProductionPlans.AddRangeAsync(pdPlan);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Successfully seeded {Count} Production Plans.", pdPlan.Count);
+        }
+        private async Task SeedGroupAsync()
+        {
+            if (_context.Groups.Any())
+            {
+                _logger.LogInformation("Group data already exists. Skipping seeding.");
+                return;
+            }
+            var supervisor1 = await _userManager.FindByEmailAsync("supervisor1@ricepro.com") as Supervisor;
+            var supervisor2 = await _userManager.FindByEmailAsync("supervisor2@ricepro.com") as Supervisor;
+
+            var st25Variety = await _context.RiceVarieties.FirstOrDefaultAsync(v => v.VarietyName == "ST25");
+            var heThuSeason = await _context.Seasons.FirstOrDefaultAsync(v => v.SeasonName == "Hè Thu");
+
+
+            var plot1 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 15); //farmer1
+            var plot2 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 18);//farmer2
+            var plot3 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 17);//farner3
+            var plot4 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 16);//farner3
+
+
+
+            var cluster1 = await _context.Clusters.FirstOrDefaultAsync(c => c.ClusterName == "DongThap1");
+            var cluster2 = await _context.Clusters.FirstOrDefaultAsync(c => c.ClusterName == "AnGiang2");
+
+            if (supervisor1 == null || supervisor2 == null)
+            {
+                _logger.LogError("Supervisor field is null. Skipping Group seeding");
+                return;
+            }
+            if (cluster1 == null || cluster2 == null)
+            {
+                _logger.LogError("Cluster field is null. Skipping Group seeding");
+                return;
+            }
+            if (st25Variety == null)
+            {
+                _logger.LogError("Rice variety is null. Skipping Group seeding");
+            }
+            if (plot1 == null || plot2 == null || plot3 == null || plot4 == null)
+            {
+                _logger.LogError("Plot is null. Skipping Group seeding");
+            }
+            var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            Geometry CalculateGroupBoundary(List<Plot> plots)
+            {
+                if (plots.Count == 1)
+                    return plots[0].Boundary;
+
+                return new GeometryCollection(plots.Select(p => p.Boundary).ToArray()).Union();
+            }
+
+            var plotsForGroup1 = new List<Plot> { plot1 };
+            var group1BoundaryGeometry = CalculateGroupBoundary(plotsForGroup1);
+            var group1Boundary = ConvertToPolygon(group1BoundaryGeometry);
+            var group1TotalArea = plotsForGroup1.Sum(p => p.Area);
+
+            var plotsForGroup2 = new List<Plot> { plot2 };
+            var group2BoundaryGeometry = CalculateGroupBoundary(plotsForGroup2);
+            var group2Boundary = ConvertToPolygon(group2BoundaryGeometry);
+            var group2TotalArea = plotsForGroup2.Sum(p => p.Area);
+
+            var plotsForGroup3 = new List<Plot> { plot3, plot4 };
+            var group3BoundaryGeometry = CalculateGroupBoundary(plotsForGroup3);
+            var group3Boundary = ConvertToPolygon(group3BoundaryGeometry);
+            var group3TotalArea = plotsForGroup3.Sum(p => p.Area);
+
+            var groupsToSeed = new List<Group>
+            {
+                new Group
+                {
+                    ClusterId = cluster1.Id,
+                    SupervisorId = supervisor1.Id,
+                    RiceVarietyId = st25Variety.Id,
+                    SeasonId = heThuSeason.Id,
+                    PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                    Status = GroupStatus.Active,
+                    Plots = plotsForGroup1,
+                    TotalArea = group1TotalArea,
+                    Area = group1Boundary
+                },
+
+                new Group
+            {
+                ClusterId = cluster1.Id,
+                SupervisorId = supervisor1.Id,
+                RiceVarietyId = st25Variety.Id,
+                SeasonId = heThuSeason.Id,
+                PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                Status = GroupStatus.Active,
+                Plots = plotsForGroup2,
+                TotalArea = group2TotalArea,
+                Area = group2Boundary
+            },
+                new Group
+            {
+                ClusterId = cluster2.Id,
+                SupervisorId = supervisor2.Id,
+                RiceVarietyId = st25Variety.Id,
+                SeasonId = heThuSeason.Id,
+                PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                Status = GroupStatus.Active,
+                Plots = plotsForGroup3,
+                TotalArea = group3TotalArea,
+                Area = group3Boundary
+            }
+            };
+            await _context.Groups.AddRangeAsync(groupsToSeed);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Successfully seeded {Count} Groups.", groupsToSeed.Count);
+        } 
+        private async Task SeedStandardPlan()
+        {
+            if (_context.StandardPlans.Any())
+            {
+                _logger.LogInformation("Standard Plan data already exists. Skipping seeding.");
+                return;
+            }
+
+            var creator1 = await _userManager.FindByEmailAsync("expert1@ricepro.com") as AgronomyExpert;
+            var creator2 = await _userManager.FindByEmailAsync("expert2@ricepro.com") as AgronomyExpert;
+
+            var ST25Name = "ST25".Normalize(NormalizationForm.FormC);
+            var ST25 = await _context.RiceVarieties.FirstOrDefaultAsync(r => r.VarietyName == ST25Name);
+            var DT8Name = "Đài Thơm 8".Normalize(NormalizationForm.FormC);
+            var DT8 = await _context.RiceVarieties.FirstOrDefaultAsync(r => r.VarietyName == DT8Name);
+
+            if (creator1 == null || creator2 == null)
+            {
+                _logger.LogError("Agronomy Expert field is null. Skipping Standard Plan seeding");
+                return;
+            }
+            if (ST25 == null || DT8 == null)
+            {
+                _logger.LogError("Rice Variety field is null. Skipping Standard Plan seeding");
+                return;
+            }
+
+            var standardPlan = new List <StandardPlan>
+            {
+                new(){
+                RiceVarietyId = ST25.Id,
+                ExpertId = creator1.Id,
+                PlanName = "ST25 Standard",
+                Description = "Create date: 17/10/2025",
+                TotalDurationDays = 36,
+                IsActive = true,
+                },
+                new()
+                {
+                RiceVarietyId = DT8.Id,
+                ExpertId = creator2.Id,
+                PlanName = "DT8 Standard",
+                Description = "Create Date: 17/10/2025",
+                TotalDurationDays = 36,
+                IsActive = true,
+                }
+            };
+            await _context.StandardPlans.AddRangeAsync(standardPlan);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Successfully seeded {Count} new Standard Plans.", standardPlan.Count);
+
+        }
+        private async Task SeedProductionStage()
+        {
+            if (_context.StandardPlans.Any())
+            {
+                _logger.LogInformation("Production Stage data already exists. Skipping seeding.");
+                return;
+            }
+
+            var stage = new List<ProductionStage>()
+            {
+                new(){StageName = "Làm đất", SequenceOrder = 1, TypicalDurationDays = 36, Description = "Chuẩn bị đất." },
+                new(){StageName = "Gieo sạ", SequenceOrder = 2, TypicalDurationDays = 36, Description = "Gieo hạt lúa đã ngâm ủ." },
+                new(){StageName = "Đẻ nhánh", SequenceOrder = 3, TypicalDurationDays = 36, Description = "Giai đoạn cây lúa phát triển thân, lá và đẻ nhánh." },
+            };
+            await _context.ProductionStages.AddRangeAsync(stage);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Successfully seeded {Count} stage.", stage.Count);
+        }
+       
+        private async Task SeedClusterAsync()
+        {
+            if (await _context.Clusters.AnyAsync())
+            {
+                _logger.LogInformation("Cluster data already exists. Skipping seeding.");
+                return;
+            }
+            var clusterManager1 = await _userManager.FindByEmailAsync("cluster1@ricepro.com") as ClusterManager;
+            var clusterManager2 = await _userManager.FindByEmailAsync("cluster2@ricepro.com") as ClusterManager;
+
+            if (clusterManager1 == null || clusterManager2 == null)
+            {
+                _logger.LogWarning("One or more Cluster Managers not found. Skipping Cluster seeding. Ensure users are seeded first.");
+                return;
+            }
+
+            var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            var clustersToSeed = new List<Cluster>
+            {
+        new Cluster
+        {
+            ClusterName = "DongThap1",
+            ClusterManagerId = clusterManager1.Id,
+            Area = 150.75m,
+            Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+            {
+                new Coordinate(105.70, 10.00), // Tọa độ góc 1
+                new Coordinate(105.70, 10.15), // Tọa độ góc 2
+                new Coordinate(105.85, 10.15), // Tọa độ góc 3
+                new Coordinate(105.85, 10.00), // Tọa độ góc 4
+                new Coordinate(105.70, 10.00)  // Quay về điểm đầu để khép kín vùng
+            })
+        },
+            new Cluster
+        {
+            ClusterName = "AnGiang2",
+            ClusterManagerId = clusterManager2.Id,
+            Area = 220.50m,
+            Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+            {
+                new Coordinate(105.40, 10.30),
+                new Coordinate(105.40, 10.45),
+                new Coordinate(105.55, 10.45),
+                new Coordinate(105.55, 10.30),
+                new Coordinate(105.40, 10.30)
+            })
+        }
+        };
+            await _context.Clusters.AddRangeAsync(clustersToSeed);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Successfully seeded {Count} new clusters.", clustersToSeed.Count);
         }
         private async Task SeedPlotDataAsync()
         {
@@ -899,10 +1202,27 @@ namespace RiceProduction.Infrastructure.Data
         {
             _logger.LogInformation("Core data seeding completed");
         }
-        
+
+        private Polygon ConvertToPolygon(Geometry geometry)
+        {
+            if (geometry is Polygon polygon)
+            {
+                return polygon;
+            }
+            if (geometry is MultiPolygon multiPolygon)
+            {
+                if (multiPolygon.Count == 1)
+                {
+                    return (Polygon)multiPolygon.GetGeometryN(0);
+                }
+                _logger.LogWarning($"MultiPolygon with {multiPolygon.Count} polygons detected. Using first polygon only.");
+                return (Polygon)multiPolygon.GetGeometryN(0);
+            }
+            throw new InvalidOperationException($"Cannot convert {geometry.GeometryType} to Polygon");
+        }
     }
 
-        class VarietySeasonSeedData
+        class VarietySeasonSeedData 
         {
             public string VarietyName { get; set; }
             public Guid SeasonId { get; set; }

@@ -25,19 +25,14 @@ namespace RiceProduction.Application.Common.Mappings
                 .ForMember(dest => dest.IsVerified, opt => opt.MapFrom(src => src.IsVerified))
                 .ForMember(dest => dest.PlotCount, opt => opt.MapFrom(src => src.OwnedPlots != null ? src.OwnedPlots.Count : 0));
 
-
-        //    CreateMap<Farmer, FarmerDetailDTO>()
-        //        .ForMember(dest => dest.Plots, opt => opt.MapFrom(src => src.OwnedPlots))
-        //        .ForMember(dest => dest.ProductionPlans, opt => opt.MapFrom(src =>
-        //            src.OwnedPlots
-        //            .SelectMany(p => p.PlotCultivations).SelectMany(cul => cul.ProductionPlans)
-        //        ))
-        //        .ForMember(dest => dest.ProductionPlansTask, opt => opt.MapFrom(src =>
-        //        src.OwnedPlots
-        //        .SelectMany(cul => cul.PlotCultivations)
-        //        .SelectMany(pl => pl.ProductionPlans)
-        //        .SelectMany(s => s.CurrentProductionStages)
-        //        .SelectMany(tsk => tsk.ProductionPlanTasks)));
+            CreateMap<Farmer, FarmerDetailDTO>().IncludeBase<Farmer, FarmerDTO>()
+            .ForMember(dest => dest.Plots, opt => opt.MapFrom(src => src.OwnedPlots))
+            .ForMember(dest => dest.Groups, opt => opt.MapFrom(src =>
+            src.OwnedPlots
+            .Select(p => p.Group)
+            .Where(g => g != null)
+            .Distinct()
+            ));
         }
     }
 }
