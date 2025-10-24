@@ -10,7 +10,7 @@ using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
 using RiceProduction.Domain.Entities;
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanDetail;
 
-public class GetPlanDetailsForExpertQueryHandler :
+public class GetPlanDetailsForExpertQueryHandler : 
     IRequestHandler<GetPlanDetailsForExpertQuery, Result<ExpertPlanDetailResponse>>
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -30,18 +30,33 @@ public class GetPlanDetailsForExpertQueryHandler :
             var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
                 match: p => p.Id == request.PlanId,
                 includeProperties: q => q
-                    .Include(p => p.Group).ThenInclude(g => g!.Cluster) // Group và Cluster
-                    .Include(p => p.Group).ThenInclude(g => g!.Plots) // Plots thuộc Group
-                    .Include(p => p.CurrentProductionStages) // Stages
-                        .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder)) // Tasks trong Stages
-                            .ThenInclude(t => t.ProductionPlanTaskMaterials) // Materials trong Tasks
-                                .ThenInclude(m => m.Material) // Chi tiết Material
+                    .Include(p => p.Group).ThenInclude(g => g!.Cluster)
+                    .Include(p => p.Group).ThenInclude(g => g!.Plots) // Load Plots
+                        .ThenInclude(plot => plot.Farmer) // Include Farmer for Plot detail
+                    .Include(p => p.CurrentProductionStages)
+                        .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
+                            .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                                .ThenInclude(m => m.Material)
             );
 
             if (plan == null)
             {
                 return Result<ExpertPlanDetailResponse>.Failure($"Plan with ID {request.PlanId} not found.", "PlanNotFound");
             }
+            
+            // Map Plot Details
+            var plotsResponse = plan.Group?.Plots
+                .Select(plot => new ExpertPlotResponse
+                {
+                    Id = plot.Id,
+                    Area = plot.Area,
+                    SoThua = plot.SoThua,
+                    SoTo = plot.SoTo,
+                    SoilType = plot.SoilType,
+                    Status = plot.Status,
+                    FarmerId = plot.FarmerId
+                })
+                .ToList() ?? new List<ExpertPlotResponse>();
 
             // Map Group Details
             var groupDetails = plan.Group != null ? new ExpertPlanGroupDetailResponse
@@ -50,10 +65,10 @@ public class GetPlanDetailsForExpertQueryHandler :
                 ClusterName = plan.Group.Cluster?.ClusterName ?? "N/A",
                 TotalArea = plan.Group.TotalArea,
                 Status = plan.Group.Status,
-                PlotNames = plan.Group.Plots.Select(p => p.Id.ToString()).ToList()
+                Plots = plotsResponse // Gán danh sách Plots chi tiết
             } : null;
 
-            // Calculate total cost for the entire plan
+            // Calculate total cost and map stages/tasks/materials
             decimal estimatedTotalPlanCost = 0M;
 
             var stagesResponse = plan.CurrentProductionStages
@@ -109,7 +124,7 @@ public class GetPlanDetailsForExpertQueryHandler :
                 Status = plan.Status,
                 GroupDetails = groupDetails,
                 Stages = stagesResponse,
-                EstimatedTotalPlanCost = estimatedTotalPlanCost // Total cost calculated above
+                EstimatedTotalPlanCost = estimatedTotalPlanCost
             };
 
             return Result<ExpertPlanDetailResponse>.Success(response, "Successfully retrieved plan details for expert review.");
