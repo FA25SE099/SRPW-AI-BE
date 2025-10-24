@@ -20,12 +20,13 @@ namespace RiceProduction.Infrastructure.Repository
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<GenericRepository<T>> _logger;
-
+        private readonly DbSet<T> _dbSet;
 
         public GenericRepository(ApplicationDbContext context, ILogger<GenericRepository<T>> logger)
         {
             _context = context;
             _logger = logger;
+            _dbSet = context.Set<T>();
         }
 
         public async Task<Guid> GenerateNewGuid(Guid guidInput)
@@ -153,7 +154,11 @@ namespace RiceProduction.Infrastructure.Repository
 
             return await query.SingleOrDefaultAsync(match);
         }
-
+        
+        public IQueryable<T> GetQueryable()
+        {
+            return _dbSet.AsQueryable();
+        }
 
     }
 }

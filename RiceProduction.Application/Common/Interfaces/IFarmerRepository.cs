@@ -13,10 +13,11 @@ namespace RiceProduction.Application.Common.Interfaces
     public interface IFarmerRepository
     {
        Task<Farmer?> GetFarmerByIdAsync (Guid id, CancellationToken cancellationToken = default);
+       Task<Farmer?> GetFarmerDetailByIdAsync (Guid id, CancellationToken cancellationToken = default);
        Task<IEnumerable<Farmer?>> GetAllFarmerAsync (CancellationToken cancellationToken = default);
        Task<Farmer?> GetFarmerByPhoneNumber (string phoneNumber, CancellationToken cancellationToken = default);
        Task<Farmer?> GetFarmerByPlotId (Guid plotId, CancellationToken cancellationToken = default);
-
+       
        IQueryable<Farmer> GetQueryable();
         Task<IEnumerable<Farmer>> FindAsync(
        Expression<Func<Farmer, bool>> predicate,
@@ -27,7 +28,7 @@ namespace RiceProduction.Application.Common.Interfaces
        CancellationToken cancellationToken = default);
         
         Task<bool> ExistAsync (Guid id, CancellationToken cancellationToken = default);
-
+        
         Task<(IEnumerable<Farmer> Items, int TotalCount)> GetPagedAsync(
        int pageNumber,
        int pageSize,

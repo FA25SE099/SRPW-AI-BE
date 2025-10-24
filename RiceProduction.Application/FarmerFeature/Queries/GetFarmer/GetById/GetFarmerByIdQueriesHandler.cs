@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.FarmerFeature.Queries
+namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById
 {
     public class GetFarmerByIdQueriesHandler : IRequestHandler<GetFarmerByIdQueries ,FarmerDTO>
     {

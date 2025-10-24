@@ -23,7 +23,17 @@ namespace RiceProduction.Application.Common.Mappings
                 .ForMember(dest => dest.BoundaryGeoJson, opt => opt.MapFrom(src => src.Boundary))
                 .ForMember(dest => dest.CoordinateGeoJson, opt => opt.MapFrom(src => src.Coordinate));
             CreateMap<Plot, PlotDetailDTO>().IncludeBase<Plot, PlotDTO>()
-                .ForMember(dest => dest.ProductionPlans, opt => opt.MapFrom(src => src.PlotCultivations.SelectMany(p => p.ProductionPlans).Distinct()));
+                .ForMember(dest => dest.ProductionPlans, opt => opt.MapFrom(src =>
+                src.Group != null ? src.Group.ProductionPlans : new List<ProductionPlan>()))
+                .ForMember(dest => dest.ProductionPlanTaskMaterials, opt => opt.MapFrom(src =>
+            src.Group != null ?
+            src.Group.ProductionPlans
+            .SelectMany(s => s.CurrentProductionStages)
+            .SelectMany(t => t.ProductionPlanTasks)
+            .SelectMany(m => m.ProductionPlanTaskMaterials)
+            .Distinct()
+            .ToList()
+            : new List<ProductionPlanTaskMaterial> ()));
         }
 
         

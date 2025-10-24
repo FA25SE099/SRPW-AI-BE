@@ -67,89 +67,22 @@ namespace RiceProduction.Infrastructure.Data
             await SeedRolesAsync();
             await SeedUsersAsync();
             await SeedVietnameseRiceDataAsync();
-
             await SeedMaterialDataAsync();
-
             await SeedMaterialPriceDataAsync();
-
             await SeedStandardPlanDataAsync();
-
             await SeedClusterDataAsync();
-
             await SeedProductionPlanAsync();
-
             await SeedCoreDataAsync();
             await SeedPlotDataAsync();
             await SeedClusterAsync();
             await SeedGroupAsync();
-            await SeedProductionStage();
-            await SeedStandardPlan();
-            await SeedProductionPlan();
-
+            await SeedProductionTask();
+            await SeedDataAsync();
         }
 
-        private async Task SeedProductionPlan()
+        private async Task SeedProductionTask()
         {
-            if (_context.ProductionPlans.Any())
-            {
-                _logger.LogInformation("Production Plan data already exists. Skipping seeding.");
-                return;
-            }
-            var submitter1 = await _userManager.FindByEmailAsync("supervisor1@ricepro.com") as Supervisor;
-            var approver1 = await _userManager.FindByEmailAsync("expert1@ricepro.com") as AgronomyExpert;
-            var standardPlanName = ("ST25 Standard").Normalize(NormalizationForm.FormC);
-            var ST25STD = await _context.StandardPlans.FirstOrDefaultAsync(s => s.PlanName == standardPlanName);
-            var stage1 = await _context.ProductionStages.FirstOrDefaultAsync(s => s.SequenceOrder == 1);
-            var group1 = await _context.Groups.FirstOrDefaultAsync(g => g.Plots.Any(p => p.SoThua == 15));
-            var group3 = await _context.Groups.FirstOrDefaultAsync(g => g.Plots.Any(p => p.SoThua == 16));
 
-            if (group1 == null || group3 == null || submitter1 == null || approver1 == null || ST25STD == null || stage1 == null)
-            {
-
-                _logger.LogWarning("One or more dependencies for Production Plan not found. Skipping seeding.");
-                if (group1 == null) _logger.LogWarning("--> group1 is null.");
-                if (group3 == null) _logger.LogWarning("--> group3 is null.");
-                if (submitter1 == null) _logger.LogWarning("--> supervisor is null.");
-                if (approver1 == null) _logger.LogWarning("--> expert is null.");
-                if (ST25STD == null) _logger.LogWarning("--> standardPlan is null.");
-                if (stage1 == null) _logger.LogWarning("--> firstStage is null.");
-                return;
-            }
-
-            var pdPlan = new List<ProductionPlan>
-            {
-                new()
-                {
-                    PlanName = "KHSX ST25 Vụ Hè Thu 2025 - Nhóm 1",
-                    GroupId = group1.Id,
-                    StandardPlanId = ST25STD.Id,
-                    BasePlantingDate = group1.PlantingDate ?? DateTime.UtcNow,
-                    Status = TaskStatus.InProgress,
-                    TotalArea = group1.TotalArea,
-                    SubmittedBy = submitter1.Id,
-                    SubmittedAt = DateTime.UtcNow,
-                    ApprovedBy = approver1.Id,
-                    ApprovedAt = DateTime.UtcNow,
-                    CurrentProductionStageId = stage1.Id
-                },
-                new()
-                {
-                    PlanName = "KHSX ST25 Vụ Hè Thu 2025 - Nhóm 3",
-                    GroupId = group3.Id,
-                    StandardPlanId = ST25STD.Id,
-                    BasePlantingDate = group3.PlantingDate ?? DateTime.UtcNow,
-                    Status = TaskStatus.InProgress,
-                    TotalArea = group3.TotalArea,
-                    SubmittedBy = submitter1.Id,
-                    SubmittedAt = DateTime.UtcNow,
-                    ApprovedBy = approver1.Id,
-                    ApprovedAt = DateTime.UtcNow,
-                    CurrentProductionStageId = stage1.Id
-                }
-            };
-            await _context.ProductionPlans.AddRangeAsync(pdPlan);
-            await _context.SaveChangesAsync();
-            _logger.LogInformation("Successfully seeded {Count} Production Plans.", pdPlan.Count);
         }
         private async Task SeedGroupAsync()
         {
@@ -260,78 +193,7 @@ namespace RiceProduction.Infrastructure.Data
             await _context.Groups.AddRangeAsync(groupsToSeed);
             await _context.SaveChangesAsync();
             _logger.LogInformation("Successfully seeded {Count} Groups.", groupsToSeed.Count);
-        } 
-        private async Task SeedStandardPlan()
-        {
-            if (_context.StandardPlans.Any())
-            {
-                _logger.LogInformation("Standard Plan data already exists. Skipping seeding.");
-                return;
-            }
-
-            var creator1 = await _userManager.FindByEmailAsync("expert1@ricepro.com") as AgronomyExpert;
-            var creator2 = await _userManager.FindByEmailAsync("expert2@ricepro.com") as AgronomyExpert;
-
-            var ST25Name = "ST25".Normalize(NormalizationForm.FormC);
-            var ST25 = await _context.RiceVarieties.FirstOrDefaultAsync(r => r.VarietyName == ST25Name);
-            var DT8Name = "Đài Thơm 8".Normalize(NormalizationForm.FormC);
-            var DT8 = await _context.RiceVarieties.FirstOrDefaultAsync(r => r.VarietyName == DT8Name);
-
-            if (creator1 == null || creator2 == null)
-            {
-                _logger.LogError("Agronomy Expert field is null. Skipping Standard Plan seeding");
-                return;
-            }
-            if (ST25 == null || DT8 == null)
-            {
-                _logger.LogError("Rice Variety field is null. Skipping Standard Plan seeding");
-                return;
-            }
-
-            var standardPlan = new List <StandardPlan>
-            {
-                new(){
-                RiceVarietyId = ST25.Id,
-                ExpertId = creator1.Id,
-                PlanName = "ST25 Standard",
-                Description = "Create date: 17/10/2025",
-                TotalDurationDays = 36,
-                IsActive = true,
-                },
-                new()
-                {
-                RiceVarietyId = DT8.Id,
-                ExpertId = creator2.Id,
-                PlanName = "DT8 Standard",
-                Description = "Create Date: 17/10/2025",
-                TotalDurationDays = 36,
-                IsActive = true,
-                }
-            };
-            await _context.StandardPlans.AddRangeAsync(standardPlan);
-            await _context.SaveChangesAsync();
-            _logger.LogInformation("Successfully seeded {Count} new Standard Plans.", standardPlan.Count);
-
         }
-        private async Task SeedProductionStage()
-        {
-            if (_context.StandardPlans.Any())
-            {
-                _logger.LogInformation("Production Stage data already exists. Skipping seeding.");
-                return;
-            }
-
-            var stage = new List<ProductionStage>()
-            {
-                new(){StageName = "Làm đất", SequenceOrder = 1, TypicalDurationDays = 36, Description = "Chuẩn bị đất." },
-                new(){StageName = "Gieo sạ", SequenceOrder = 2, TypicalDurationDays = 36, Description = "Gieo hạt lúa đã ngâm ủ." },
-                new(){StageName = "Đẻ nhánh", SequenceOrder = 3, TypicalDurationDays = 36, Description = "Giai đoạn cây lúa phát triển thân, lá và đẻ nhánh." },
-            };
-            await _context.ProductionStages.AddRangeAsync(stage);
-            await _context.SaveChangesAsync();
-            _logger.LogInformation("Successfully seeded {Count} stage.", stage.Count);
-        }
-       
         private async Task SeedClusterAsync()
         {
             if (await _context.Clusters.AnyAsync())
@@ -1225,7 +1087,7 @@ namespace RiceProduction.Infrastructure.Data
                         // Add other properties as per entity
                     };
                     await _context.Set<RiceVariety>().AddAsync(st25Variety);
-                    await _context.SaveChangesAsync(); 
+                    await _context.SaveChangesAsync();
                     _logger.LogInformation("Seeded ST25 RiceVariety");
                 }
                 var riceVarietyId = st25Variety.Id;
@@ -2152,8 +2014,6 @@ namespace RiceProduction.Infrastructure.Data
             }
             _logger.LogInformation("Core data seeding completed");
         }
-
-
         private async Task SeedProductionPlanAsync()
         {
             // Kiểm tra xem dữ liệu ProductionPlan đã được thêm chưa
@@ -2189,7 +2049,7 @@ namespace RiceProduction.Infrastructure.Data
                     .FirstOrDefaultAsync(v => v.SeasonName == "Đông Xuân");
                 // danh sách cultivation làm đất
                 var cultivationTaskBonLotList = new List<CultivationTask>();
-                foreach(var plot in group1.Plots)
+                foreach (var plot in group1.Plots)
                 {
                     var cultivationTaskId = Guid.NewGuid();
                     cultivationTaskBonLotList.Add(new CultivationTask
@@ -2317,8 +2177,6 @@ namespace RiceProduction.Infrastructure.Data
             }
             ;
         }
-
-
         private async Task SeedCoreDataAsync()
         {
             _logger.LogInformation("Core data seeding completed");
@@ -2327,16 +2185,40 @@ namespace RiceProduction.Infrastructure.Data
         {
             _logger.LogInformation("Core data seeding completed");
         }
-    }
-    class VarietySeasonSeedData
-    {
-        public string VarietyName { get; set; }
-        public Guid SeasonId { get; set; }
-        public int Duration { get; set; }
-        public decimal Yield { get; set; }
-        public RiskLevel Risk { get; set; }
-        public string Notes { get; set; }
-        public string PlantingStart { get; set; }
-        public string PlantingEnd { get; set; }
+        private Polygon ConvertToPolygon(Geometry geometry)
+        {
+            if (geometry is Polygon polygon)
+            {
+                return polygon;
+            }
+            if (geometry is MultiPolygon multiPolygon)
+            {
+                return multiPolygon.Geometries
+                    .Cast<Polygon>()
+                    .OrderByDescending(p => p.Area)
+                    .First();
+            }
+            if (geometry is GeometryCollection collection)
+            {
+                var firstPolygon = collection.Geometries
+                    .OfType<Polygon>()
+                    .FirstOrDefault();
+            }
+
+            return (Polygon)geometry.ConvexHull();
+
+        }
+
+        class VarietySeasonSeedData
+        {
+            public string VarietyName { get; set; }
+            public Guid SeasonId { get; set; }
+            public int Duration { get; set; }
+            public decimal Yield { get; set; }
+            public RiskLevel Risk { get; set; }
+            public string Notes { get; set; }
+            public string PlantingStart { get; set; }
+            public string PlantingEnd { get; set; }
+        }
     }
 }

@@ -5,7 +5,12 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
+using RiceProduction.Application.FarmerFeature.Command.ImportFarmer;
 using RiceProduction.Application.FarmerFeature.Queries;
+using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 
 namespace RiceProduction.API.Controllers
@@ -50,6 +55,35 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, "An error occurred while processing your request");
             }
         }
+        [HttpGet("Detail/{id}")]
+        [ProducesResponseType(typeof(FarmerDetailDTO), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<FarmerDetailDTO>> GetFarmerDetailById(Guid id)
+        {
+            try
+            {
+                if (id == null)
+                {
+                    return BadRequest("Invalid Farmer Id");
+                }
+                var query = new GetFarmerDetailQueries(id);
+                var result = await _mediator.Send(query);
+                if (result == null)
+                {
+                    return NotFound($"Farmer detail with ID {id} not found");
+                }
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting farmer {FarmerId}", id);
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+
+
         [HttpGet]
          public async Task<ActionResult<PagedResult<IEnumerable<FarmerDTO>>>> GetAllFarmers(
             [FromQuery] int pageNumber = 1,
@@ -72,7 +106,7 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
          }
-        [HttpPost("import")]
+        [HttpPost("Import")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ImportFarmerResult), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ImportFarmerResult), StatusCodes.Status400BadRequest)]

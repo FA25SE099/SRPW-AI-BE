@@ -26,6 +26,7 @@ namespace RiceProduction.Application.Common.Models
         public Guid? CurrentProductionStageId { get; set; }
         public GroupDTO? Group { get; set; }
         public SupervisorDTO? Submitter { get; set; }
+        public AgronomyExpertDTO? Approver { get; set; }
         public ICollection<ProductionStageDTO> CurrentProductionStages { get; set; } = new List<ProductionStageDTO>();
     }
 }

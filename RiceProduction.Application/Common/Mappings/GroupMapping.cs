@@ -14,7 +14,9 @@ namespace RiceProduction.Application.Common.Mappings
         public GroupMapping()
         {
             CreateMap<RiceProduction.Domain.Entities.Group, GroupDTO>()
-                .ForMember(dest => dest.GroupId, opt => opt.MapFrom(src => src.Id));
+                .ForMember(dest => dest.GroupId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Area, opt => opt.MapFrom(src => src.Area))
+                .ForMember(dest => dest.TotalArea, opt => opt.MapFrom(src => src.TotalArea));
             CreateMap<RiceProduction.Domain.Entities.Group, GroupDetailDTO>().IncludeBase<RiceProduction.Domain.Entities.Group, GroupDTO>()
                 .ForMember(dest => dest.Plots, opt => opt.MapFrom(src => src.Plots));
         }

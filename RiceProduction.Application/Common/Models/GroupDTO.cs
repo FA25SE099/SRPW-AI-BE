@@ -16,7 +16,7 @@ namespace RiceProduction.Application.Common.Models
         public Guid ClusterId { get; set; }
         public Guid? SupervisorId { get; set; }
         public GroupStatus Status { get; set; } = GroupStatus.Active;
-        public Polygon? Area { get; set; }
+        public string? Area { get; set; }
         public decimal? TotalArea { get; set; }
     }
 }

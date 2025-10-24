@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
 
-namespace RiceProduction.Application.FarmerFeature.Queries
+namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
 {
     public class DownloadAllFarmerExcelQuery : IRequest<Result<IActionResult>>
     {

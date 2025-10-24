@@ -10,15 +10,15 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Application.FarmerFeature.Queries
+namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
 {
     public class DownloadAllFarmerExcelQueryHandler : IRequestHandler<DownloadAllFarmerExcelQuery, Result<IActionResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IDownloadGenericExcel _downloadGenericExcel;
+        private readonly IGenericExcel _downloadGenericExcel;
         private readonly IMapper _mapper;
 
-        public DownloadAllFarmerExcelQueryHandler (IUnitOfWork unitOfWork, IDownloadGenericExcel downloadGenericExcel, IMapper mapper)
+        public DownloadAllFarmerExcelQueryHandler (IUnitOfWork unitOfWork, IGenericExcel downloadGenericExcel, IMapper mapper)
         {
             _unitOfWork = unitOfWork;
             _downloadGenericExcel = downloadGenericExcel;
@@ -36,7 +36,12 @@ namespace RiceProduction.Application.FarmerFeature.Queries
                     return Result<IActionResult>.Failure("No farmers found to export");
                 }
                 var farmerDTOs = _mapper.Map<List<FarmerDTO>>(farmers);
-                var result = await _downloadGenericExcel.DownloadGenericExcelFile(farmerDTOs, "Farmer date:" + request.InputDate);
+                var sheetName = $"Farmers_{request.InputDate:yyyyMMdd}";
+                var fileName = $"{sheetName}.xlsx";
+                var result = await _downloadGenericExcel.DownloadGenericExcelFile(
+                farmerDTOs,
+                sheetName,
+                fileName);
                 return Result<IActionResult>.Success(result, "Farmer download successfully");
             }
             catch (Exception ex)

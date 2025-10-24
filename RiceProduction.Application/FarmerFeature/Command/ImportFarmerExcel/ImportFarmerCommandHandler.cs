@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.FarmerFeature.Command
+namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
 {
     public class ImportFarmerCommandHandler : IRequestHandler<ImportFarmerCommand, ImportFarmerResult>
     {
