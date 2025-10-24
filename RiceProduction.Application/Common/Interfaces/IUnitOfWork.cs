@@ -1,4 +1,5 @@
 ﻿using RiceProduction.Domain.Common;
+using RiceProduction.Infrastructure.Repository;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,7 @@ namespace RiceProduction.Application.Common.Interfaces
 
         Task<int> CompleteAsync();
         IFarmerGenericRepository FarmerRepository { get; }
+        ISupervisorGenericRepository SupervisorRepository { get; }
         IPlotGenericRepository PlotRepository { get; }
     }
 }

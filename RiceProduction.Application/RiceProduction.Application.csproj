@@ -19,6 +19,7 @@
 	<ItemGroup>
 	  <Folder Include="RiceVarietyFeature\Commands\" />
 	  <Folder Include="RiceVarietyFeature\Queries\GetAllRiceVarietyBySeason\" />
+	  <Folder Include="SupervisorFeature\Commands\" />
 	</ItemGroup>
 
 </Project>

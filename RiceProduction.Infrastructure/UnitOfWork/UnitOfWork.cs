@@ -25,6 +25,7 @@ namespace RiceProduction.Infrastructure.UnitOfWork
         private ConcurrentDictionary<string, object> _repos;
 
         private IFarmerGenericRepository? _farmerRepository;
+        private ISupervisorGenericRepository? _supervisorRepository;
         private IPlotGenericRepository? _plotRepository;
 
         // ===================================
@@ -95,6 +96,18 @@ namespace RiceProduction.Infrastructure.UnitOfWork
                     _farmerRepository = new FarmerGenericRepository(_dbContext);
                 }
                 return _farmerRepository;
+            }
+        }
+
+        public ISupervisorGenericRepository SupervisorRepository
+        {
+            get
+            {
+                if (_supervisorRepository == null)
+                {
+                    _supervisorRepository = new SupervisorGenericRepository(_dbContext);
+                }
+                return _supervisorRepository;
             }
         }
         
