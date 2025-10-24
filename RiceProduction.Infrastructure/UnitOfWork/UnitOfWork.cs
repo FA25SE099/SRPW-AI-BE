@@ -26,6 +26,7 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
         private IFarmerGenericRepository? _farmerRepository;
         private ISupervisorGenericRepository? _supervisorRepository;
+        private IClusterManagerGenericRepository? _clusterManagerGenericRepository;
         private IPlotGenericRepository? _plotRepository;
 
         // ===================================
@@ -108,6 +109,18 @@ namespace RiceProduction.Infrastructure.UnitOfWork
                     _supervisorRepository = new SupervisorGenericRepository(_dbContext);
                 }
                 return _supervisorRepository;
+            }
+        }
+
+        public IClusterManagerGenericRepository ClusterManagerRepository
+        {
+            get
+            {
+                if (_clusterManagerGenericRepository == null)
+                {
+                    _clusterManagerGenericRepository = new ClusterManagerGenericRepository(_dbContext);
+                }
+                return _clusterManagerGenericRepository;
             }
         }
         

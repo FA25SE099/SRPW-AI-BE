@@ -15,6 +15,7 @@ namespace RiceProduction.Application.Common.Interfaces
         Task<int> CompleteAsync();
         IFarmerGenericRepository FarmerRepository { get; }
         ISupervisorGenericRepository SupervisorRepository { get; }
+        IClusterManagerGenericRepository ClusterManagerRepository { get; }
         IPlotGenericRepository PlotRepository { get; }
     }
 }

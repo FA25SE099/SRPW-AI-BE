@@ -1,0 +1,130 @@
+﻿using RiceProduction.Infrastructure.Data;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace RiceProduction.Infrastructure.Repository
+{
+    public class ClusterManagerGenericRepository : IClusterManagerGenericRepository
+    {
+        private readonly ApplicationDbContext _context;
+        private readonly DbSet<ClusterManager> _clusterManager;
+
+        public ClusterManagerGenericRepository(ApplicationDbContext context)
+        {
+            _context = context;
+            _clusterManager = context.Set<ClusterManager>();
+        }
+        public void UpdateRange(IEnumerable<ClusterManager> entities)
+        {
+            _context.Set<ClusterManager>().UpdateRange(entities);
+        }
+
+        public async Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager.AnyAsync(f => f.Id == id, cancellationToken);
+        }
+
+        public async Task<IEnumerable<ClusterManager>> FindAsync(Expression<Func<ClusterManager, bool>> predicate, CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<IEnumerable<ClusterManager?>> GetAllClusterManagerAsync(CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<IEnumerable<ClusterManager?>> GetAllClusterManagerByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default)
+        {
+            var query = _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .AsQueryable();
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(f => (f.FullName != null && f.FullName.Contains(search)) ||
+                                         (f.Email != null && f.Email.Contains(search)));
+            }
+            if (!string.IsNullOrEmpty(phoneNumber))
+            {
+                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber);
+            }
+            if (pageSize == 0)
+            {
+                return await query
+                .OrderBy(s => s.FullName)
+                .ToListAsync(cancellationToken);
+            }
+            return await query
+                .OrderBy(s => s.FullName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<ClusterManager?> GetClusterManagerByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+        }
+
+
+        public async Task<ClusterManager?> GetClusterManagerByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .FirstOrDefaultAsync(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber, cancellationToken);
+        }
+
+        public async Task<ClusterManager?> GetClusterManagerByNameOrEmail(string search, CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .FirstOrDefaultAsync(f => (f.FullName != null && f.FullName.Contains(search)) ||
+                                          (f.Email != null && f.Email.Contains(search)), cancellationToken);
+        }
+
+        public async Task<ClusterManager?> GetClusterManagerByClusterId(Guid ClusterId, CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .FirstOrDefaultAsync(s => s.ClusterId == ClusterId, cancellationToken);
+        }
+
+        public async Task<(IEnumerable<ClusterManager> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<ClusterManager, bool>>? predicate = null, CancellationToken cancellationToken = default)
+        {
+            var query = _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .AsQueryable();
+            if (predicate != null)
+            {
+                query = query.Where(predicate);
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var items = await query.OrderBy(f => f.FullName).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            return (items, totalCount);
+        }
+
+        public IQueryable<ClusterManager> GetQueryable()
+        {
+            return _clusterManager.AsQueryable();
+        }
+    }
+}
