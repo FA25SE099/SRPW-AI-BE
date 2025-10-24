@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Request.PlotRequests;
+using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Queries;
 
 namespace RiceProduction.API.Controllers
@@ -61,6 +63,23 @@ namespace RiceProduction.API.Controllers
                 SearchTerm = searchTerm
             };
             var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+        
+
+        [HttpPut]
+        public async Task<ActionResult<Result<UpdatePlotRequest>>> EditPlot([FromBody] UpdatePlotRequest input)
+        {
+            var command = new EditPlotCommand
+            {
+                Request = input
+            };
+            var result = await _mediator.Send(command);
 
             if (!result.Succeeded)
             {
