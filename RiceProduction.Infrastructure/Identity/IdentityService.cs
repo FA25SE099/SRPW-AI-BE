@@ -61,6 +61,7 @@ public class IdentityService : IIdentityService
         return userDto;
     }
 
+
     //public async Task<IList<string>> GetUserRolesAsync(Guid userId)
     //{
     //    var user = await _userManager.FindByIdAsync(userId.ToString());
