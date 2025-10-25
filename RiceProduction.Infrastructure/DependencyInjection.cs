@@ -14,6 +14,7 @@ using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
+using RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;
 using RiceProduction.Infrastructure.Implementation.Zalo;
 
 namespace RiceProduction.Infrastructure;
@@ -66,6 +67,8 @@ public static class DependencyInjection
         builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
+        builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
+
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();

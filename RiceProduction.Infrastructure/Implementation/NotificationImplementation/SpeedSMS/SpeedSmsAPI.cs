@@ -1,20 +1,25 @@
-﻿using System;
+﻿using RiceProduction.Application.Common.Interfaces;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS
 {
-    class SpeedSMSAPI
+  
+    public class SpeedSMSAPI : ISmSService
     {
         public const int TYPE_QC = 1;
         public const int TYPE_CSKH = 2;
         public const int TYPE_BRANDNAME = 3;
         public const int TYPE_BRANDNAME_NOTIFY = 4; // Gửi sms sử dụng brandname Notify
         public const int TYPE_GATEWAY = 5; // Gửi sms sử dụng app android từ số di động cá nhân, download app tại đây: https://speedsms.vn/sms-gateway-service/
-
+        private readonly HttpClient _httpClient;
         const String rootURL = "https://api.speedsms.vn/index.php";
         private String accessToken = "Your access token";
 
@@ -26,6 +31,9 @@ namespace RiceProduction.Infrastructure.Implementation.NotificationImplementatio
         public SpeedSMSAPI(String token)
         {
             this.accessToken = token;
+            _httpClient = new HttpClient();
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{token}:x")));
+            _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }
 
         private string EncodeNonAsciiCharacters(string value)
@@ -89,7 +97,26 @@ namespace RiceProduction.Infrastructure.Implementation.NotificationImplementatio
             String json = builder.ToString();
             return client.UploadString(url, json);
         }
+        public async Task<string> SendSMSAsync(string[] phones, string content, int type = TYPE_QC, string sender = "")
+        {
+            if (phones?.Length == 0 || string.IsNullOrEmpty(content)) return string.Empty;
 
+            if (type == TYPE_BRANDNAME && string.IsNullOrEmpty(sender)) return string.Empty;
+
+            var requestBody = new
+            {
+                to = phones,
+                content = Uri.EscapeDataString(content),
+                type,
+                sender
+            };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var contentBody = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync($"{rootURL}/sms/send", contentBody);
+            return await response.Content.ReadAsStringAsync();
+        }
         public String sendMMS(String[] phones, String content, String link, String sender)
         {
             String url = rootURL + "/mms/send";
