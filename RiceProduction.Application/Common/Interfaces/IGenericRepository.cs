@@ -12,7 +12,8 @@ namespace RiceProduction.Application.Common.Interfaces
     public interface IGenericRepository<T>
         where T : BaseAuditableEntity
     {
-        Task<T?> GetEntityByIdAsync(int id);
+        Task<Guid> GenerateNewGuid(Guid guidInput);
+        Task<T?> GetEntityByIdAsync(Guid id);
         Task<IReadOnlyList<T>> ListAllAsync();
         Task<T?> FindAsync(Expression<Func<T, bool>> match);
         Task AddAsync(T entity);

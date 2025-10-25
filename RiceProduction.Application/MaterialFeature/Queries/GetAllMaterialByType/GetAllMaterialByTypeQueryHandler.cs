@@ -1,7 +1,7 @@
 ﻿using RiceProduction.Application.Auth.Commands.Login;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Response;
+using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
@@ -28,9 +28,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByTyp
                 var materialRepo = await _unitOfWork.Repository<Material>().ListAsync(
                     filter: m => m.IsActive && m.Type == request.MaterialType,
                     orderBy: q => q.OrderBy(m => m.Name));
-                var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
-                // Filter for active materials of the requested type
-                Expression<Func<Material, bool>> filter = m => m.IsActive && m.Type == request.MaterialType;
+                var materialPriceRepoList = await _unitOfWork.Repository<MaterialPrice>().ListAsync();
 
                 // Get total count for pagination
                 var totalCount = materialRepo.Count();
@@ -40,15 +38,23 @@ namespace RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByTyp
                     .Skip((request.CurrentPage - 1) * request.PageSize)
                     .Take(request.PageSize)
                     .ToList();
-
+                var currentDate = DateTime.Now;
                 var materialResponses = pagedMaterials
                     .Select(m => new MaterialResponse
                     {
+                        MaterialId = m.Id,
                         Name = m.Name,
                         Type = m.Type,
                         AmmountPerMaterial = m.AmmountPerMaterial,
                         Showout = m.AmmountPerMaterial.ToString() + m.Unit,
-                        PricePerMaterial = materialPriceRepo.ListAsync(p=>p.MaterialId == m.Id && m.IsActive && p.ValidFrom<=DateTime.UtcNow).Result.FirstOrDefault().PricePerMaterial,
+                        PricePerMaterial = materialPriceRepoList
+                        .Where(p=>p.MaterialId == m.Id
+                        && m.IsActive 
+                        && (p.ValidFrom.CompareTo(currentDate) <=0)
+                        && (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
+                             )
+                        .OrderByDescending(p => p.ValidFrom)
+                        .FirstOrDefault()?.PricePerMaterial ?? 0,
                         Unit = m.Unit,
                         Description = m.Description,
                         Manufacturer = m.Manufacturer,

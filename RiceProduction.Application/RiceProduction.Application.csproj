@@ -17,6 +17,8 @@
 	  <ProjectReference Include="..\RiceProduction.Domain\RiceProduction.Domain.csproj" />
 	</ItemGroup>
 	<ItemGroup>
+	  <Folder Include="CultivationFeature\Commands\" />
+	  <Folder Include="CultivationFeature\Queries\" />
 	  <Folder Include="RiceVarietyFeature\Commands\" />
 	  <Folder Include="RiceVarietyFeature\Queries\GetAllRiceVarietyBySeason\" />
 	</ItemGroup>

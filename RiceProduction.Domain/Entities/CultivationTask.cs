@@ -10,11 +10,14 @@ public class CultivationTask : BaseAuditableEntity
     [Required]
     public Guid PlotCultivationId { get; set; }
 
-    // Assignment
     public Guid? AssignedToUserId { get; set; }
 
     public Guid? AssignedToVendorId { get; set; }
-
+    public string? CultivationTaskName { get; set; }
+    public string? Description { get; set; }
+    public TaskType? TaskType { get; set; }
+    public DateTime? ScheduledEndDate { get; set; }
+    public TaskStatus? Status { get; set; }
     /// <summary>
     /// Order for UAV route optimization
     /// </summary>
@@ -35,8 +38,6 @@ public class CultivationTask : BaseAuditableEntity
     [Column(TypeName = "decimal(12,2)")]
     public decimal ActualServiceCost { get; set; } = 0;
 
-    // Completion tracking
-    public int CompletionPercentage { get; set; } = 0;
 
     public DateTime? CompletedAt { get; set; }
 
@@ -44,7 +45,6 @@ public class CultivationTask : BaseAuditableEntity
 
     public DateTime? VerifiedAt { get; set; }
 
-    // Weather and conditions
     public string? WeatherConditions { get; set; }
     public string? InterruptionReason { get; set; }
 

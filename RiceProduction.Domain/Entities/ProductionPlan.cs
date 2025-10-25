@@ -29,14 +29,13 @@ public class ProductionPlan : BaseAuditableEntity
 
     public Guid? SubmittedBy { get; set; }
 
-    public Guid? CurrentProductionStageId { get; set; }
 
     // Navigation properties
     [ForeignKey("GroupId")]
     public Group? Group { get; set; }
 
 
-    [ForeignKey("StandardPlanId")]
+    [ForeignKey("StandardPlanId")] 
     public StandardPlan? StandardPlan { get; set; }
 
     [ForeignKey("ApprovedBy")]
@@ -45,7 +44,6 @@ public class ProductionPlan : BaseAuditableEntity
     [ForeignKey("SubmittedBy")]
     public Supervisor? Submitter { get; set; }
 
-    [ForeignKey("CurrentProductionStageId")]
     public ICollection<ProductionStage> CurrentProductionStages { get; set; } = new List<ProductionStage>();
 
 }
