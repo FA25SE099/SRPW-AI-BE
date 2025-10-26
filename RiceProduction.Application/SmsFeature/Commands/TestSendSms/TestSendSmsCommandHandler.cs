@@ -7,23 +7,22 @@ namespace RiceProduction.Application.SmsFeature.Commands.TestSendSms;
 
 public class TestSendSmsCommandHandler : IRequestHandler<TestSendSmsCommand, TestSendSmsResponse>
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IUnitOfWork _unit;
     private readonly ISmsRetryService _smsRetryService;
     private readonly ILogger<TestSendSmsCommandHandler> _logger;
 
     public TestSendSmsCommandHandler(
-        IApplicationDbContext context,
+        IUnitOfWork context,
         ISmsRetryService smsRetryService,
         ILogger<TestSendSmsCommandHandler> logger)
     {
-        _context = context;
+        _unit = context;
         _smsRetryService = smsRetryService;
         _logger = logger;
     }
 
     public async Task<TestSendSmsResponse> Handle(TestSendSmsCommand request, CancellationToken cancellationToken)
     {
-        // Create notification record with pending status
         var notification = new Notification
         {
             Id = Guid.NewGuid(),
@@ -38,8 +37,8 @@ public class TestSendSmsCommandHandler : IRequestHandler<TestSendSmsCommand, Tes
             MaxRetries = 3
         };
 
-        _context.Notifications.Add(notification);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _unit.Repository<Notification>().AddAsync(notification);
+        await _unit.CompleteAsync();
 
         try
         {
@@ -49,8 +48,8 @@ public class TestSendSmsCommandHandler : IRequestHandler<TestSendSmsCommand, Tes
             var result = await _smsRetryService.SendWithRetryAsync(notification.Id, cancellationToken);
 
             // Reload notification to get updated status
-            var updatedNotification = await _context.Notifications
-                .FindAsync(new object[] { notification.Id }, cancellationToken);
+            var updatedNotification = await _unit.Repository<Notification>()
+                .FindAsync(c => c.Id == notification.Id);
 
             return new TestSendSmsResponse
             {

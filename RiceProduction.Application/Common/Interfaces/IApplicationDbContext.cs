@@ -1,14 +1,14 @@
-﻿using RiceProduction.Domain.Entities;
+﻿//using RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Application.Common.Interfaces;
+//namespace RiceProduction.Application.Common.Interfaces;
 
-public interface IApplicationDbContext
-{
-    DbSet<TodoList> TodoLists { get; }
+//public interface IApplicationDbContext
+//{
+//    DbSet<TodoList> TodoLists { get; }
 
-    DbSet<TodoItem> TodoItems { get; }
+//    DbSet<TodoItem> TodoItems { get; }
 
-    DbSet<Notification> Notifications { get; }
+//    DbSet<Notification> Notifications { get; }
 
-    Task<int> SaveChangesAsync(CancellationToken cancellationToken);
-}
+//    Task<int> SaveChangesAsync(CancellationToken cancellationToken);
+//}

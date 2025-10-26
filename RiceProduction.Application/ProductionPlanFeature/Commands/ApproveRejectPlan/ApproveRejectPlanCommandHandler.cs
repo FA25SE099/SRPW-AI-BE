@@ -13,13 +13,8 @@ public class ApproveRejectPlanCommandHandler :
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ApproveRejectPlanCommandHandler> _logger;
-<<<<<<< HEAD
     private readonly IUser _currentUser; // <-- Đã thêm IUser
     private readonly IMediator _mediator;
-=======
-    private readonly IUser _currentUser; 
-
->>>>>>> 5343389715bc02e6c28e1e8f2e5ee8316be542ad
     public ApproveRejectPlanCommandHandler(
         IUnitOfWork unitOfWork,
         ILogger<ApproveRejectPlanCommandHandler> logger,

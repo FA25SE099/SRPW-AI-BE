@@ -49,24 +49,22 @@ public class SmsRetryBackgroundService : BackgroundService
     private async Task ProcessPendingRetries(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
+        var context = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var retryService = scope.ServiceProvider.GetRequiredService<ISmsRetryService>();
 
         var now = DateTime.UtcNow;
 
         // Find notifications that are due for retry
-        var pendingRetries = await context.Notifications
+        var pendingRetries = context.Repository<Notification>().GetQueryable()
             .Where(n => n.Status == "pending_retry" &&
-                       n.NextRetryAt.HasValue &&
-                       n.NextRetryAt.Value <= now &&
-                       n.RetryCount < n.MaxRetries)
+                        n.NextRetryAt.HasValue &&
+                        n.NextRetryAt.Value <= now &&
+                        n.RetryCount < n.MaxRetries)
             .OrderBy(n => n.NextRetryAt)
-            .Take(10) // Process 10 at a time to avoid overwhelming the system
-            .ToListAsync(cancellationToken);
-
+            .Take(10); // Process 10 at a time to avoid overwhelming the system
         if (pendingRetries.Any())
         {
-            _logger.LogInformation("Processing {Count} pending SMS retries", pendingRetries.Count);
+            _logger.LogInformation("Processing {Count} pending SMS retries", pendingRetries.Count());
 
             foreach (var notification in pendingRetries)
             {
@@ -94,7 +92,7 @@ public class SmsRetryBackgroundService : BackgroundService
                 }
             }
 
-            _logger.LogInformation("Completed processing {Count} SMS retries", pendingRetries.Count);
+            _logger.LogInformation("Completed processing {Count} SMS retries", pendingRetries.Count());
         }
     }
 

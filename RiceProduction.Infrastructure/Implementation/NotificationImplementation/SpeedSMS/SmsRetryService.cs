@@ -8,13 +8,13 @@ namespace RiceProduction.Infrastructure.Implementation.NotificationImplementatio
 
 public class SmsRetryService : ISmsRetryService
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IUnitOfWork _context;
     private readonly ISmSService _smsService;
     private readonly ILogger<SmsRetryService> _logger;
     private readonly SmsRetryConfiguration _config;
 
     public SmsRetryService(
-        IApplicationDbContext context,
+        IUnitOfWork context,
         ISmSService smsService,
         ILogger<SmsRetryService> logger,
         IOptions<SmsRetryConfiguration> config)
@@ -27,8 +27,8 @@ public class SmsRetryService : ISmsRetryService
 
     public async Task<SmsResult> SendWithRetryAsync(Guid notificationId, CancellationToken cancellationToken)
     {
-        var notification = await _context.Notifications
-            .FirstOrDefaultAsync(n => n.Id == notificationId, cancellationToken);
+        var notification = await _context.Repository<Notification>()
+            .FindAsync(n => n.Id == notificationId);
 
         if (notification == null)
         {
@@ -44,8 +44,8 @@ public class SmsRetryService : ISmsRetryService
 
     public async Task<SmsResult> ProcessRetryAsync(Guid notificationId, CancellationToken cancellationToken)
     {
-        var notification = await _context.Notifications
-            .FirstOrDefaultAsync(n => n.Id == notificationId, cancellationToken);
+        var notification = await _context.Repository<Notification>()
+            .FindAsync(n => n.Id == notificationId);
 
         if (notification == null)
         {
@@ -60,7 +60,7 @@ public class SmsRetryService : ISmsRetryService
         {
             notification.Status = "failed";
             notification.ErrorMessage = $"Maximum retry attempts ({notification.MaxRetries}) exceeded";
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.CompleteAsync();
 
             return new SmsResult 
             { 
@@ -185,7 +185,7 @@ public class SmsRetryService : ISmsRetryService
                 }
             }
 
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.CompleteAsync();
             return result;
         }
         catch (Exception ex)
@@ -216,7 +216,7 @@ public class SmsRetryService : ISmsRetryService
                 notification.NextRetryAt = null;
             }
 
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.CompleteAsync();
 
             return new SmsResult
             {

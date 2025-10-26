@@ -33,21 +33,18 @@ namespace RiceProduction.Infrastructure.Repository
 
             _cacheOptions = new MemoryCacheEntryOptions
             {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) // Adjust as needed
-                // SlidingExpiration = TimeSpan.FromMinutes(2), // Uncomment for sliding
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) 
             };
         }
 
         public async Task<Guid> GenerateNewGuid(Guid guidInput)
         {
-            // Always uncached for uniqueness checks
             return await _repository.GenerateNewGuid(guidInput);
         }
 
         public async Task AddAsync(T entity)
         {
             await _repository.AddAsync(entity);
-            // Invalidate list (new item will be in next refresh)
             InvalidateListCache();
         }
 
@@ -89,7 +86,6 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<int> CountAsync()
         {
-            // Uncached for accuracy
             return await _repository.CountAsync();
         }
 
@@ -103,7 +99,7 @@ namespace RiceProduction.Infrastructure.Repository
 
         public T? Delete(object id)
         {
-            var idGuid = (Guid)id; // Assuming Guid; cast as needed
+            var idGuid = (Guid)id; 
             var deleted = _repository.Delete(id);
             InvalidateByIdCache(idGuid);
             InvalidateListCache();
@@ -119,13 +115,11 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate)
         {
-            // Uncached to avoid false positives from stale data
             return await _repository.ExistsAsync(predicate);
         }
 
         public async Task<T?> FindAsync(Expression<Func<T, bool>> match)
         {
-            // Uncached due to variable match (extend with key gen if needed)
             return await _repository.FindAsync(match);
         }
 
@@ -133,8 +127,12 @@ namespace RiceProduction.Infrastructure.Repository
             Expression<Func<T, bool>> match,
             Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null)
         {
-            // Uncached due to variable match/include
             return await _repository.FindAsync(match, includeProperties);
+        }
+
+        public IQueryable<T?> GetQueryable()
+        {
+            throw new NotImplementedException();
         }
 
         public async Task<T?> GetEntityByIdAsync(Guid id)
@@ -164,14 +162,12 @@ namespace RiceProduction.Infrastructure.Repository
             Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null,
             Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null)
         {
-            // Uncached due to variable params (simple case: if all null, could cache as ListAll)
             return await _repository.ListAsync(filter, orderBy, includeProperties);
         }
 
         public async Task<int> SaveChangesAsync()
         {
             var changes = await _repository.SaveChangesAsync();
-            // Invalidate after save (covers any pending adds/updates/deletes)
             InvalidateListCache();
             _logger.LogInformation("Saved {ChangeCount} changes for {EntityType}; invalidated list cache", changes, typeof(T).Name);
             return changes;

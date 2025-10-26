@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -9,6 +10,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Queries;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
@@ -17,8 +19,9 @@ using RiceProduction.Infrastructure.Identity;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;
 using RiceProduction.Infrastructure.Implementation.Zalo;
+using RiceProduction.Infrastructure.Repository;
+using RiceProduction.Infrastructure.Services;
 using System.Text.Json.Serialization;
-using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 
 namespace RiceProduction.Infrastructure;
 
@@ -93,6 +96,9 @@ public static class DependencyInjection
         // Register Zalo Services
         builder.Services.AddHttpClient<IZaloOAuthService, ZaloOAuthService>();
         builder.Services.AddHttpClient<IZaloZnsService, ZaloZnsService>();
+        builder.Services.AddScoped<IMemoryCache, MemoryCache>();
+        builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+        builder.Services.AddScoped<ICacheInvalidator, CacheInvalidator>();
 
     }
 }

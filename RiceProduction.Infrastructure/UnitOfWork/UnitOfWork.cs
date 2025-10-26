@@ -101,7 +101,6 @@ namespace RiceProduction.Infrastructure.UnitOfWork
             var repoInstanceTypeT = _repos.GetOrAdd(typeEntityName,
                 valueFactory: _ =>
                 {
-                    // Create inner plain GenericRepository<T>
                     var innerRepoType = typeof(GenericRepository<T>);
                     var innerRepoLogger = _loggerFactory.CreateLogger<GenericRepository<T>>();
                     var innerRepoInstance = Activator.CreateInstance(
@@ -109,7 +108,6 @@ namespace RiceProduction.Infrastructure.UnitOfWork
                         _dbContext,
                         innerRepoLogger);
 
-                    // Create CachedGenericRepository<T> wrapping the inner
                     var cachedRepoType = typeof(DecoratorGenericRepository<T>);
                     var cachedRepoLogger = _loggerFactory.CreateLogger<DecoratorGenericRepository<T>>();
 

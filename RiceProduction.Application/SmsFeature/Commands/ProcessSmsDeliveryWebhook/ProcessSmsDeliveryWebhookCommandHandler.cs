@@ -2,16 +2,17 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SmsFeature.Commands.ProcessSmsDeliveryWebhook;
 
 public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSmsDeliveryWebhookCommand, WebhookResponse>
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IUnitOfWork _context;
     private readonly ILogger<ProcessSmsDeliveryWebhookCommandHandler> _logger;
 
     public ProcessSmsDeliveryWebhookCommandHandler(
-        IApplicationDbContext context,
+        IUnitOfWork context,
         ILogger<ProcessSmsDeliveryWebhookCommandHandler> logger)
     {
         _context = context;
@@ -25,7 +26,6 @@ public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSm
             _logger.LogInformation("Processing SpeedSMS webhook - Type: {Type}, TranId: {TranId}, Phone: {Phone}, Status: {Status}",
                 request.Type, request.TranId, request.Phone, request.Status);
 
-            // Only process delivery reports
             if (request.Type != "report")
             {
                 _logger.LogWarning("Received non-report webhook type: {Type}", request.Type);
@@ -37,9 +37,8 @@ public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSm
             }
 
             // Find notification by MessageId (tranId from SpeedSMS)
-            var notification = await _context.Notifications
-                .Where(n => n.MessageId == request.TranId && n.PhoneNumber == request.Phone)
-                .FirstOrDefaultAsync(cancellationToken);
+            var notification = await _context.Repository<Notification>()
+                .FindAsync(n => n.MessageId == request.TranId && n.PhoneNumber == request.Phone);
 
             if (notification == null)
             {
@@ -51,13 +50,11 @@ public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSm
                 };
             }
 
-            // Determine status based on SpeedSMS status code
             string newStatus;
             string errorMessage = null;
 
             if (request.Status == 0)
             {
-                // Success
                 newStatus = "delivered";
                 _logger.LogInformation("SMS delivered successfully - TranId: {TranId}, Phone: {Phone}", request.TranId, request.Phone);
             }
@@ -86,7 +83,7 @@ public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSm
             }
             notification.LastModified = DateTimeOffset.UtcNow;
 
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.CompleteAsync();
 
             _logger.LogInformation("Notification updated successfully - Id: {NotificationId}, Status: {Status}", 
                 notification.Id, newStatus);
