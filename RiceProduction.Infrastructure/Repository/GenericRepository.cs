@@ -103,7 +103,7 @@ namespace RiceProduction.Infrastructure.Repository
             return await _context.Set<T>().SingleOrDefaultAsync(match);
         }
 
-        public async Task<T?> GetEntityByIdAsync(int id)
+        public async Task<T?> GetEntityByIdAsync(Guid id)
         {
             return await _context.Set<T>().FindAsync(id);
         }

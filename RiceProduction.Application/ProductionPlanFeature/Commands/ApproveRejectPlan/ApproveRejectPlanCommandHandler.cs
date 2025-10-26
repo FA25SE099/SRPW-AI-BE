@@ -2,6 +2,8 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.CultivationFeature.Event;
+using RiceProduction.Application.SmsFeature.Event;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 namespace RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
@@ -11,8 +13,8 @@ public class ApproveRejectPlanCommandHandler :
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ApproveRejectPlanCommandHandler> _logger;
-    private readonly IUser _currentUser; 
-
+    private readonly IUser _currentUser; // <-- Đã thêm IUser
+    private readonly IMediator _mediator;
     public ApproveRejectPlanCommandHandler(
         IUnitOfWork unitOfWork,
         ILogger<ApproveRejectPlanCommandHandler> logger,
@@ -67,6 +69,14 @@ public class ApproveRejectPlanCommandHandler :
             await _unitOfWork.Repository<ProductionPlan>().SaveChangesAsync();
 
             string action = request.Approved ? "Approved" : "Rejected";
+            if (request.Approved)
+            {
+                 await _mediator.Publish(new ProductionPlanApprovalEvent()
+                {
+                    PlanId = plan.Id
+                }, cancellationToken);
+            }
+            
             return Result<Guid>.Success(plan.Id, $"Production Plan '{plan.PlanName}' successfully {action}.");
         }
         catch (Exception ex)

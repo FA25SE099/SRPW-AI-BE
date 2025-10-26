@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.SmsFeature.Event;
 
 namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
 {
@@ -9,11 +10,12 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
     {
         private readonly IFarmerExcel _farmerExcel;
         private readonly ILogger<ImportFarmerCommandHandler> _logger;
-
-        public ImportFarmerCommandHandler(IFarmerExcel farmerExcel, ILogger<ImportFarmerCommandHandler> logger)
+        private readonly IMediator _mediator;
+        public ImportFarmerCommandHandler(IFarmerExcel farmerExcel, ILogger<ImportFarmerCommandHandler> logger, IMediator mediator)
         {
             _farmerExcel = farmerExcel;
             _logger = logger;
+            _mediator = mediator;
         }
 
         public async Task<ImportFarmerResult> Handle(ImportFarmerCommand request, CancellationToken cancellationToken)
@@ -45,7 +47,12 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
                 result.SuccessCount,
                 result.FailureCount
             );
-
+            //await _mediator.Publish(new UserCreatedEvent
+            //{
+            //    PhoneNumber = userId,
+            //    Name = request.Name,
+            //    Phone = request.Phone
+            //}, cancellationToken);
             return result;
         }
     }

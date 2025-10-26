@@ -2061,7 +2061,6 @@ namespace RiceProduction.Infrastructure.Data
                         ActualMaterialCost = 2070000 * plot.Area,
                         ActualServiceCost = 7300000,
                         CompletedAt = DateTime.SpecifyKind(new DateTime(2024, 12, 20), DateTimeKind.Utc),
-                        CompletionPercentage = 100,
                         CultivationTaskMaterials = new List<CultivationTaskMaterial>()
                         {
                             new CultivationTaskMaterial
