@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
+using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Domain.Entities;
@@ -76,6 +77,12 @@ public static class DependencyInjection
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
         builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
 
+        // Configure SMS Retry Strategy
+        builder.Services.Configure<SmsRetryConfiguration>(
+            builder.Configuration.GetSection("SmsRetry"));
+        
+        builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
+        builder.Services.AddHostedService<SmsRetryBackgroundService>();
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
