@@ -44,6 +44,8 @@ namespace RiceProduction.Application.Common.Interfaces
             Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null
         );
 
+        IQueryable<T?> GetQueryable();
+
     }
 
 }

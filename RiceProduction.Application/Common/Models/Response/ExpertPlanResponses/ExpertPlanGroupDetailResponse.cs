@@ -8,5 +8,5 @@ public class ExpertPlanGroupDetailResponse
     public string ClusterName { get; set; } = string.Empty;
     public decimal? TotalArea { get; set; }
     public GroupStatus Status { get; set; }
-    public List<string> PlotNames { get; set; } = new(); // Tên các Plot thuộc Group
+    public List<ExpertPlotResponse> Plots { get; set; } = new();
 }

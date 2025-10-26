@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.FarmerFeature.Queries
+namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById
 {
     public class GetFarmerByIdQueries : IRequest<FarmerDTO?>
     {

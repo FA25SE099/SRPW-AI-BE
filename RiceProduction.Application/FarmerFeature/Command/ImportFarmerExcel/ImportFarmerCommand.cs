@@ -7,7 +7,7 @@ using Azure.Core;
 using Microsoft.AspNetCore.Http;
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.FarmerFeature.Command
+namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
 {
     public class ImportFarmerCommand : IRequest<ImportFarmerResult>
     {

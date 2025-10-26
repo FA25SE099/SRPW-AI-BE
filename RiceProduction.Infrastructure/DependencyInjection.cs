@@ -18,6 +18,7 @@ using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;
 using RiceProduction.Infrastructure.Implementation.Zalo;
 using System.Text.Json.Serialization;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 
 namespace RiceProduction.Infrastructure;
 
@@ -84,6 +85,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
         builder.Services.AddHostedService<SmsRetryBackgroundService>();
 
+        builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<ITokenService, TokenService>();

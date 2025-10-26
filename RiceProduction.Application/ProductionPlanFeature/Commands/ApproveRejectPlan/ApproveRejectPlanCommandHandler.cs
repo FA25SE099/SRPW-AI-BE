@@ -13,16 +13,21 @@ public class ApproveRejectPlanCommandHandler :
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ApproveRejectPlanCommandHandler> _logger;
+<<<<<<< HEAD
     private readonly IUser _currentUser; // <-- Đã thêm IUser
     private readonly IMediator _mediator;
+=======
+    private readonly IUser _currentUser; 
+
+>>>>>>> 5343389715bc02e6c28e1e8f2e5ee8316be542ad
     public ApproveRejectPlanCommandHandler(
         IUnitOfWork unitOfWork,
         ILogger<ApproveRejectPlanCommandHandler> logger,
-        IUser currentUser) // <-- Inject IUser
+        IUser currentUser) 
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _currentUser = currentUser; // <-- Khởi tạo
+        _currentUser = currentUser; 
     }
 
     public async Task<Result<Guid>> Handle(ApproveRejectPlanCommand request, CancellationToken cancellationToken)
@@ -58,7 +63,7 @@ public class ApproveRejectPlanCommandHandler :
             else
             {
                 plan.Status = RiceProduction.Domain.Enums.TaskStatus.Cancelled;
-                // Nếu bạn có trường RejectionNotes trong Plan entity, hãy gán request.Notes vào đây.
+                
                 _logger.LogInformation("Plan {PlanId} rejected by Expert {ExpertId}. Reason: {Notes}", plan.Id, expertId, request.Notes);
             }
 

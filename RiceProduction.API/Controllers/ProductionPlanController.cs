@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.ProductionPlanFeature.Commands.CreateProductionPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GeneratePlanDraft;
+using RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved;
 namespace RiceProduction.API.Controllers;
 
 [ApiController]
@@ -11,10 +12,11 @@ namespace RiceProduction.API.Controllers;
 public class ProductionPlanController : ControllerBase
 {
     private readonly IMediator _mediator;
-
-    public ProductionPlanController(IMediator mediator)
+    private readonly ILogger<ProductionPlanController> _logger;
+    public ProductionPlanController(IMediator mediator, ILogger<ProductionPlanController> logger)
     {
         _mediator = mediator;
+        _logger = logger;
     }
 
     /// <summary>
@@ -55,5 +57,37 @@ public class ProductionPlanController : ControllerBase
         }
 
         return Ok(result);
+    }
+    [HttpGet("approved")]
+    public async Task<IActionResult> GetApprovedProductionPlans(
+        [FromQuery] Guid? groupId,
+        [FromQuery] Guid? supervisorId,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate)
+    {
+        try
+        {
+            _logger.LogInformation("Received request to get approved production plans");
+            var query = new GetApprovedQueries
+            {
+                GroupId = groupId,
+                SupervisorId = supervisorId,
+                FromDate = fromDate,
+                ToDate = toDate
+            };
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to retrieve approved production plans: {Message}", result.Message);
+                return BadRequest(result);
+            }
+            _logger.LogInformation("Successfully retrieved approved production plans");
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred in GetApprovedProductionPlans endpoint");
+            return StatusCode(500, new { message = "An error occurred while processing your request" });
+        }
     }
 }

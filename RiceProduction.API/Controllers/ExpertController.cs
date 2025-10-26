@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
 using RiceProduction.Application.ProductionPlanFeature.Commands.EditPlan;
+using RiceProduction.Application.ProductionPlanFeature.Queries.GetApprovedPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPendingApprovals;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanDetail;
 namespace RiceProduction.API.Controllers
@@ -17,9 +18,6 @@ namespace RiceProduction.API.Controllers
             _mediator = mediator;
         }
 
-        /// <summary>
-        /// GET /api/expert/pending-approvals - Lấy danh sách các kế hoạch chờ chuyên gia phê duyệt.
-        /// </summary>
         [HttpGet("pending-approvals")]
         public async Task<IActionResult> GetPendingApprovals([FromQuery] GetPendingApprovalsQuery query)
         {
@@ -31,10 +29,18 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
         }
+        [HttpGet("approved")]
+        public async Task<IActionResult> GetApprovedPlans([FromQuery] GetApprovedPlansQuery query)
+        {
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
 
-        /// <summary>
-        /// GET /api/expert/plans/{planId} - Lấy chi tiết một kế hoạch cụ thể, bao gồm tất cả các mối quan hệ lồng nhau.
-        /// </summary>
+            return Ok(result);
+        }
+
         [HttpGet("plans/{planId}")]
         public async Task<IActionResult> GetPlanDetails(Guid planId)
         {
@@ -83,6 +89,5 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
         }
-
     }
 }

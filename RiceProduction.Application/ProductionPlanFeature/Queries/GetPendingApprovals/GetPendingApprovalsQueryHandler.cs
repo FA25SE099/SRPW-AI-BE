@@ -8,8 +8,8 @@ using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPendingApprovals;
 
-public class GetPendingApprovalsQueryHandler :
-    IRequestHandler<GetPendingApprovalsQuery, Result<List<ExpertPendingPlanItemResponse>>>
+public class GetPendingApprovalsQueryHandler : 
+    IRequestHandler<GetPendingApprovalsQuery, PagedResult<List<ExpertPendingPlanItemResponse>>>
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<GetPendingApprovalsQueryHandler> _logger;
@@ -20,14 +20,14 @@ public class GetPendingApprovalsQueryHandler :
         _logger = logger;
     }
 
-    public async Task<Result<List<ExpertPendingPlanItemResponse>>> Handle(GetPendingApprovalsQuery request, CancellationToken cancellationToken)
+    public async Task<PagedResult<List<ExpertPendingPlanItemResponse>>> Handle(GetPendingApprovalsQuery request, CancellationToken cancellationToken)
     {
         try
         {
             var planRepo = _unitOfWork.Repository<ProductionPlan>();
 
-            // Query plans with Status = Submitted (chờ phê duyệt)
-            var plans = await planRepo.ListAsync(
+            // 1. Tải toàn bộ Plans phù hợp với filter
+            var allPlans = await planRepo.ListAsync(
                 filter: p => p.Status == RiceProduction.Domain.Enums.TaskStatus.PendingApproval,
                 orderBy: q => q.OrderBy(p => p.SubmittedAt),
                 includeProperties: q => q
@@ -35,7 +35,17 @@ public class GetPendingApprovalsQueryHandler :
                     .Include(p => p.Submitter)
             );
 
-            var response = plans.Select(p => new ExpertPendingPlanItemResponse
+            // 2. Lấy TotalCount
+            var totalCount = allPlans.Count;
+            
+            // 3. Áp dụng phân trang (in-memory paging)
+            var pagedPlans = allPlans
+                .Skip((request.CurrentPage - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToList();
+
+            // 4. Ánh xạ dữ liệu
+            var responseData = pagedPlans.Select(p => new ExpertPendingPlanItemResponse
             {
                 Id = p.Id,
                 PlanName = p.PlanName,
@@ -47,12 +57,17 @@ public class GetPendingApprovalsQueryHandler :
                 SubmitterName = p.Submitter != null ? p.Submitter.FullName : "Unknown"
             }).ToList();
 
-            return Result<List<ExpertPendingPlanItemResponse>>.Success(response, "Successfully retrieved pending approval plans.");
+            return PagedResult<List<ExpertPendingPlanItemResponse>>.Success(
+                responseData,
+                request.CurrentPage,
+                request.PageSize,
+                totalCount,
+                "Successfully retrieved pending approval plans.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting pending approval plans.");
-            return Result<List<ExpertPendingPlanItemResponse>>.Failure("Failed to retrieve pending plans.", "GetPendingApprovalsFailed");
+            return PagedResult<List<ExpertPendingPlanItemResponse>>.Failure("Failed to retrieve pending plans.", "GetPendingApprovalsFailed");
         }
     }
 }

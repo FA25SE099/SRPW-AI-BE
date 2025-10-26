@@ -4,7 +4,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.SmsFeature.Event;
 
-namespace RiceProduction.Application.FarmerFeature.Command
+namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
 {
     public class ImportFarmerCommandHandler : IRequestHandler<ImportFarmerCommand, ImportFarmerResult>
     {

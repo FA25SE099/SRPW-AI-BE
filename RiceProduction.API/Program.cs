@@ -105,7 +105,6 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
-
 var app = builder.Build();
 var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
 if (seedDatabase)
