@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
-using RiceProduction.Application.FarmerFeature.Queries;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
@@ -72,7 +72,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
-
+        builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<ITokenService, TokenService>();

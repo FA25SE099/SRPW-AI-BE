@@ -41,6 +41,6 @@ public class ProductionStage : BaseAuditableEntity
 
     // Navigation properties
     public ICollection<ProductionPlanTask> ProductionPlanTasks { get; set; } = new List<ProductionPlanTask>();
-    public ProductionPlan ProductionPlan { get; set; }
+    public ProductionPlan ProductionPlan { get; set; } 
 }
 

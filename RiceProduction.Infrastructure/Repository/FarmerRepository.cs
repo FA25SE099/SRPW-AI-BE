@@ -12,12 +12,12 @@ using RiceProduction.Infrastructure.Data;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public class FarmerGenericRepository : IFarmerGenericRepository
+    public class FarmerRepository : IFarmerRepository
     {
         private readonly ApplicationDbContext _context;
         private readonly DbSet<Farmer> _farmers;
 
-        public FarmerGenericRepository(ApplicationDbContext context)
+        public FarmerRepository(ApplicationDbContext context)
         {
             _context = context;
             _farmers = context.Set<Farmer>();
@@ -80,6 +80,22 @@ namespace RiceProduction.Infrastructure.Repository
                 .Any(p => p.Id == plotId), cancellationToken);
         }
 
+        public async Task<Farmer?> GetFarmerDetailByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await _farmers
+                .Include(f => f.OwnedPlots)
+                    .ThenInclude(p => p.Group)
+                        .ThenInclude(g => g.ProductionPlans)
+                            .ThenInclude(pp => pp.CurrentProductionStages)
+                                .ThenInclude(ps => ps.ProductionPlanTasks)
+                .Include(f => f.OwnedPlots).ThenInclude(p => p.Group)
+                .Include(f => f.OwnedPlots).ThenInclude(p => p.Group).ThenInclude(r => r.RiceVariety)
+                .Include(f => f.OwnedPlots).ThenInclude(p => p.Group).ThenInclude(c => c.Cluster)
+                .Include(f => f.OwnedPlots).ThenInclude(p => p.Group).ThenInclude(s => s.Supervisor)
+                .Include(f => f.FarmerAssignments).ThenInclude(a => a.Supervisor)
+                .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+        }
+
         public async Task<(IEnumerable<Farmer> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<Farmer, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
             var query = _farmers.Include(f => f.OwnedPlots).AsQueryable();
@@ -92,6 +108,8 @@ namespace RiceProduction.Infrastructure.Repository
             var items = await query.OrderBy(f => f.FullName).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
             return (items, totalCount);
         }
+
+
 
         public IQueryable<Farmer> GetQueryable()
         {

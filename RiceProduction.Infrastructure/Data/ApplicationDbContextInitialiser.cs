@@ -6,7 +6,10 @@ using RiceProduction.Domain.Enums;
 using RiceProduction.Infrastructure.Identity;
 using System;
 using System.Collections.Generic;
+using System.Composition;
+using System.Diagnostics.Metrics;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Data
@@ -58,28 +61,302 @@ namespace RiceProduction.Infrastructure.Data
             }
         }
 
+
         public async Task TrySeedAsync()
         {
             await SeedRolesAsync();
-
             await SeedUsersAsync();
-
             await SeedVietnameseRiceDataAsync();
-
             await SeedMaterialDataAsync();
-
             await SeedMaterialPriceDataAsync();
-
             await SeedStandardPlanDataAsync();
-
             await SeedClusterDataAsync();
-
             await SeedProductionPlanAsync();
-
             await SeedCoreDataAsync();
-
+            await SeedPlotDataAsync();
+            await SeedClusterAsync();
+            await SeedGroupAsync();
+            await SeedProductionTask();
+            await SeedDataAsync();
         }
 
+        private async Task SeedProductionTask()
+        {
+
+        }
+        private async Task SeedGroupAsync()
+        {
+            if (_context.Groups.Any())
+            {
+                _logger.LogInformation("Group data already exists. Skipping seeding.");
+                return;
+            }
+            var supervisor1 = await _userManager.FindByEmailAsync("supervisor1@ricepro.com") as Supervisor;
+            var supervisor2 = await _userManager.FindByEmailAsync("supervisor2@ricepro.com") as Supervisor;
+
+            var st25Variety = await _context.RiceVarieties.FirstOrDefaultAsync(v => v.VarietyName == "ST25");
+            var heThuSeason = await _context.Seasons.FirstOrDefaultAsync(v => v.SeasonName == "Hè Thu");
+
+
+            var plot1 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 15); //farmer1
+            var plot2 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 18);//farmer2
+            var plot3 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 17);//farner3
+            var plot4 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 16);//farner3
+
+
+
+            var cluster1 = await _context.Clusters.FirstOrDefaultAsync(c => c.ClusterName == "DongThap1");
+            var cluster2 = await _context.Clusters.FirstOrDefaultAsync(c => c.ClusterName == "AnGiang2");
+
+            if (supervisor1 == null || supervisor2 == null)
+            {
+                _logger.LogError("Supervisor field is null. Skipping Group seeding");
+                return;
+            }
+            if (cluster1 == null || cluster2 == null)
+            {
+                _logger.LogError("Cluster field is null. Skipping Group seeding");
+                return;
+            }
+            if (st25Variety == null)
+            {
+                _logger.LogError("Rice variety is null. Skipping Group seeding");
+            }
+            if (plot1 == null || plot2 == null || plot3 == null || plot4 == null)
+            {
+                _logger.LogError("Plot is null. Skipping Group seeding");
+            }
+            var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            Geometry CalculateGroupBoundary(List<Plot> plots)
+            {
+                if (plots.Count == 1)
+                    return plots[0].Boundary;
+
+                return new GeometryCollection(plots.Select(p => p.Boundary).ToArray()).Union();
+            }
+
+            var plotsForGroup1 = new List<Plot> { plot1 };
+            var group1BoundaryGeometry = CalculateGroupBoundary(plotsForGroup1);
+            var group1Boundary = ConvertToPolygon(group1BoundaryGeometry);
+            var group1TotalArea = plotsForGroup1.Sum(p => p.Area);
+
+            var plotsForGroup2 = new List<Plot> { plot2 };
+            var group2BoundaryGeometry = CalculateGroupBoundary(plotsForGroup2);
+            var group2Boundary = ConvertToPolygon(group2BoundaryGeometry);
+            var group2TotalArea = plotsForGroup2.Sum(p => p.Area);
+
+            var plotsForGroup3 = new List<Plot> { plot3, plot4 };
+            var group3BoundaryGeometry = CalculateGroupBoundary(plotsForGroup3);
+            var group3Boundary = ConvertToPolygon(group3BoundaryGeometry);
+            var group3TotalArea = plotsForGroup3.Sum(p => p.Area);
+
+            var groupsToSeed = new List<Group>
+            {
+                new Group
+                {
+                    ClusterId = cluster1.Id,
+                    SupervisorId = supervisor1.Id,
+                    RiceVarietyId = st25Variety.Id,
+                    SeasonId = heThuSeason.Id,
+                    PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                    Status = GroupStatus.Active,
+                    Plots = plotsForGroup1,
+                    TotalArea = group1TotalArea,
+                    Area = group1Boundary
+                },
+
+                new Group
+            {
+                ClusterId = cluster1.Id,
+                SupervisorId = supervisor1.Id,
+                RiceVarietyId = st25Variety.Id,
+                SeasonId = heThuSeason.Id,
+                PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                Status = GroupStatus.Active,
+                Plots = plotsForGroup2,
+                TotalArea = group2TotalArea,
+                Area = group2Boundary
+            },
+                new Group
+            {
+                ClusterId = cluster2.Id,
+                SupervisorId = supervisor2.Id,
+                RiceVarietyId = st25Variety.Id,
+                SeasonId = heThuSeason.Id,
+                PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                Status = GroupStatus.Active,
+                Plots = plotsForGroup3,
+                TotalArea = group3TotalArea,
+                Area = group3Boundary
+            }
+            };
+            await _context.Groups.AddRangeAsync(groupsToSeed);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Successfully seeded {Count} Groups.", groupsToSeed.Count);
+        }
+        private async Task SeedClusterAsync()
+        {
+            if (await _context.Clusters.AnyAsync())
+            {
+                _logger.LogInformation("Cluster data already exists. Skipping seeding.");
+                return;
+            }
+            var clusterManager1 = await _userManager.FindByEmailAsync("cluster1@ricepro.com") as ClusterManager;
+            var clusterManager2 = await _userManager.FindByEmailAsync("cluster2@ricepro.com") as ClusterManager;
+
+            if (clusterManager1 == null || clusterManager2 == null)
+            {
+                _logger.LogWarning("One or more Cluster Managers not found. Skipping Cluster seeding. Ensure users are seeded first.");
+                return;
+            }
+
+            var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            var clustersToSeed = new List<Cluster>
+            {
+        new Cluster
+        {
+            ClusterName = "DongThap1",
+            ClusterManagerId = clusterManager1.Id,
+            Area = 150.75m,
+            Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+            {
+                new Coordinate(105.70, 10.00), // Tọa độ góc 1
+                new Coordinate(105.70, 10.15), // Tọa độ góc 2
+                new Coordinate(105.85, 10.15), // Tọa độ góc 3
+                new Coordinate(105.85, 10.00), // Tọa độ góc 4
+                new Coordinate(105.70, 10.00)  // Quay về điểm đầu để khép kín vùng
+            })
+        },
+            new Cluster
+        {
+            ClusterName = "AnGiang2",
+            ClusterManagerId = clusterManager2.Id,
+            Area = 220.50m,
+            Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+            {
+                new Coordinate(105.40, 10.30),
+                new Coordinate(105.40, 10.45),
+                new Coordinate(105.55, 10.45),
+                new Coordinate(105.55, 10.30),
+                new Coordinate(105.40, 10.30)
+            })
+        }
+        };
+            await _context.Clusters.AddRangeAsync(clustersToSeed);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Successfully seeded {Count} new clusters.", clustersToSeed.Count);
+        }
+        private async Task SeedPlotDataAsync()
+        {
+            _logger.LogInformation("Core data seeding completed");
+            var farmerUser = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
+            var farmerUser2 = await _userManager.FindByEmailAsync("farmer2@ricepro.com") as Farmer;
+            var farmerUser3 = await _userManager.FindByEmailAsync("farmer3@ricepro.com") as Farmer;
+            if (farmerUser == null)
+            {
+                _logger.LogWarning("Farmer 'farmer1@ricepro.com' could not found. Skipping plot seeding. Ensure users are seeded first");
+                return;
+            }
+
+            if (farmerUser2 == null)
+            {
+                _logger.LogWarning("Farmer 'farmer2@ricepro.com' could not found. Skipping plot seeding. Ensure users are seeded first");
+                return;
+            }
+
+            var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+
+            if (!_context.Plots.Any())
+            {
+                var plots = new List<Plot>
+                {
+                    new Plot {
+                        FarmerId = farmerUser.Id,
+                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                        {
+                            new Coordinate(105.700, 10.000),    // SW corner
+                            new Coordinate(105.700, 10.005),    // NW corner
+                            new Coordinate(105.708, 10.005),    // NE corner
+                            new Coordinate(105.708, 10.000),    // SE corner
+                            new Coordinate(105.700, 10.000)     // Back to SW corner (close the ring)
+                        }),
+                        SoThua = 15,
+                        SoTo = 36,
+                        Area = 5.5m,
+                        SoilType = "Đất phù sa",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(105.704, 10.0025)),
+                        Status = PlotStatus.Active,
+                    },
+
+                    new Plot
+                    {
+                        FarmerId = farmerUser2.Id,
+                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                    {
+                        new Coordinate(105.800, 10.100),
+                        new Coordinate(105.800, 10.110),
+                        new Coordinate(105.815, 10.110),
+                        new Coordinate(105.815, 10.100),
+                        new Coordinate(105.800, 10.100)
+                        }),
+                        SoThua = 18,
+                        SoTo = 12,
+                        Area = 12,
+                        SoilType = "Đất phù sa",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(105.8075, 10.105)),
+                        Status = PlotStatus.Active
+                    },
+                    new Plot
+                    {
+                        FarmerId = farmerUser3.Id,
+                    Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                        {
+                            new Coordinate(11.210168500427, 106.42701488353),
+                            new Coordinate(11.20919692067,  106.42252632102),
+                            new Coordinate(11.213582994862, 106.42153433778),
+                            new Coordinate(11.214553605806, 106.42601646253),
+                            new Coordinate(11.210168500427, 106.42701488353),
+                        }),
+                        SoThua = 16,
+                        SoTo = 58,
+                        Area =  25.0857m,
+                        SoilType = "Đất nông nghiệp",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(11.211290, 106.425131)),
+                        Status = PlotStatus.Active
+                    },
+                    new Plot
+                    {
+                        FarmerId = farmerUser3.Id,
+                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
+                        {
+                            new Coordinate(11.215557861556,  106.4305890557),
+                            new Coordinate(11.211197392783,  106.43148705062),
+                            new Coordinate(11.211014284582,  106.43080189246),
+                            new Coordinate(11.210198687479,  106.42708240463),
+                            new Coordinate(11.214569243013,  106.42608561738),
+                            new Coordinate(11.215557861556,  106.4305890557),
+                        }),
+                        SoThua = 17,
+                        SoTo = 58,
+                        Area =  25.0857m,
+                        SoilType = "Đất nông nghiệp",
+                        Coordinate = geometryFactory.CreatePoint(new Coordinate(11.212688, 106.427436)),
+                        Status = PlotStatus.Active
+                    }
+
+                };
+                await _context.AddRangeAsync(plots);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Seeded {Count} plots for Farmer {FarmerEmail}.");
+            }
+            else
+            {
+                _logger.LogInformation("Plots already exist. Skipping plot seeding.");
+            }
+
+            _logger.LogInformation("Core data seeding completed. 🌾");
+        }
         private async Task SeedRolesAsync()
         {
             var rolesToSeed = Enum.GetValues<UserRole>()
@@ -115,7 +392,6 @@ namespace RiceProduction.Infrastructure.Data
                 }
             }
         }
-
         private async Task SeedUsersAsync()
         {
             var usersToSeed = new List<object>
@@ -811,7 +1087,7 @@ namespace RiceProduction.Infrastructure.Data
                         // Add other properties as per entity
                     };
                     await _context.Set<RiceVariety>().AddAsync(st25Variety);
-                    await _context.SaveChangesAsync(); 
+                    await _context.SaveChangesAsync();
                     _logger.LogInformation("Seeded ST25 RiceVariety");
                 }
                 var riceVarietyId = st25Variety.Id;
@@ -1738,8 +2014,6 @@ namespace RiceProduction.Infrastructure.Data
             }
             _logger.LogInformation("Core data seeding completed");
         }
-
-
         private async Task SeedProductionPlanAsync()
         {
             // Kiểm tra xem dữ liệu ProductionPlan đã được thêm chưa
@@ -1775,7 +2049,7 @@ namespace RiceProduction.Infrastructure.Data
                     .FirstOrDefaultAsync(v => v.SeasonName == "Đông Xuân");
                 // danh sách cultivation làm đất
                 var cultivationTaskBonLotList = new List<CultivationTask>();
-                foreach(var plot in group1.Plots)
+                foreach (var plot in group1.Plots)
                 {
                     var cultivationTaskId = Guid.NewGuid();
                     cultivationTaskBonLotList.Add(new CultivationTask
@@ -1903,8 +2177,6 @@ namespace RiceProduction.Infrastructure.Data
             }
             ;
         }
-
-
         private async Task SeedCoreDataAsync()
         {
             _logger.LogInformation("Core data seeding completed");
@@ -1913,16 +2185,40 @@ namespace RiceProduction.Infrastructure.Data
         {
             _logger.LogInformation("Core data seeding completed");
         }
-    }
-    class VarietySeasonSeedData
-    {
-        public string VarietyName { get; set; }
-        public Guid SeasonId { get; set; }
-        public int Duration { get; set; }
-        public decimal Yield { get; set; }
-        public RiskLevel Risk { get; set; }
-        public string Notes { get; set; }
-        public string PlantingStart { get; set; }
-        public string PlantingEnd { get; set; }
+        private Polygon ConvertToPolygon(Geometry geometry)
+        {
+            if (geometry is Polygon polygon)
+            {
+                return polygon;
+            }
+            if (geometry is MultiPolygon multiPolygon)
+            {
+                return multiPolygon.Geometries
+                    .Cast<Polygon>()
+                    .OrderByDescending(p => p.Area)
+                    .First();
+            }
+            if (geometry is GeometryCollection collection)
+            {
+                var firstPolygon = collection.Geometries
+                    .OfType<Polygon>()
+                    .FirstOrDefault();
+            }
+
+            return (Polygon)geometry.ConvexHull();
+
+        }
+
+        class VarietySeasonSeedData
+        {
+            public string VarietyName { get; set; }
+            public Guid SeasonId { get; set; }
+            public int Duration { get; set; }
+            public decimal Yield { get; set; }
+            public RiskLevel Risk { get; set; }
+            public string Notes { get; set; }
+            public string PlantingStart { get; set; }
+            public string PlantingEnd { get; set; }
+        }
     }
 }

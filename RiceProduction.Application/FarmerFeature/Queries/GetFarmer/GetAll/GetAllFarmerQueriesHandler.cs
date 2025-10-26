@@ -10,7 +10,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Application.FarmerFeature.Queries
+namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll
 {
     public class GetAllFarmerQueriesHandler : IRequestHandler<GetAllFarmerQueries, PagedResult<IEnumerable<FarmerDTO>>>
     {

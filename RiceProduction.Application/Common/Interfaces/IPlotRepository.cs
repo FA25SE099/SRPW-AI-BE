@@ -8,7 +8,7 @@ using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.Common.Interfaces
 {
-    public interface IPlotGenericRepository
+    public interface IPlotRepository
     {
         Task<(IEnumerable<Plot> Items, int TotalCount)> GetAllPlotPagedAsync (
             int pageNumber,
