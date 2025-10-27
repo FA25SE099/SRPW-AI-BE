@@ -196,10 +196,10 @@ public class IdentityService : IIdentityService
                     await _context.SaveChangesAsync();
                 }
             }
-
-            // Revoke all refresh tokens for the user
             var userTokens = await _context.RefreshTokens
-                .Where(rt => rt.UserId == userId && rt.IsActive)
+                .Where(rt => rt.UserId == userId
+                             && !rt.IsRevoked
+                             && rt.ExpiresAt > DateTime.UtcNow)
                 .ToListAsync();
 
             foreach (var token in userTokens)
@@ -216,6 +216,7 @@ public class IdentityService : IIdentityService
         {
             return Result.Failure(new[] { $"Logout failed: {ex.Message}" });
         }
+    
     }
 
     public async Task<AuthenticationResult> RefreshTokenAsync(RefreshTokenRequest request)

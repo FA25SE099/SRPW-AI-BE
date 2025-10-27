@@ -27,19 +27,19 @@ public class GetAllStandardPlansQueryHandler : IRequestHandler<GetAllStandardPla
         try
         {
             _logger.LogInformation(
-                "Getting all standard plans with filters: RiceVariety={RiceVarietyId}, Season={SeasonId}, Search={SearchTerm}, IsActive={IsActive}",
-                request.RiceVarietyId, request.SeasonId, request.SearchTerm, request.IsActive);
+                "Getting all standard plans with filters: Category={CategoryId}, Search={SearchTerm}, IsActive={IsActive}",
+                request.CategoryId, request.SearchTerm, request.IsActive);
 
             var query = _unitOfWork.Repository<StandardPlan>()
                 .GetQueryable()
-                .Include(sp => sp.RiceVariety)
-                .Include(sp => sp.StandardPlanStages) // Include stages first
-                .ThenInclude(sps => sps.StandardPlanTasks) // Then tasks through stages
+                .Include(sp => sp.Category)
+                .Include(sp => sp.StandardPlanStages)
+                .ThenInclude(sps => sps.StandardPlanTasks)
                 .AsQueryable();
 
-            if (request.RiceVarietyId.HasValue)
+            if (request.CategoryId.HasValue)
             {
-                query = query.Where(sp => sp.RiceVarietyId == request.RiceVarietyId.Value);
+                query = query.Where(sp => sp.CategoryId == request.CategoryId.Value);
             }
 
             if (request.IsActive.HasValue)
@@ -64,14 +64,16 @@ public class GetAllStandardPlansQueryHandler : IRequestHandler<GetAllStandardPla
                 Id = sp.Id,
                 Name = sp.PlanName,
                 Description = sp.Description,
-                RiceVarietyId = sp.RiceVarietyId,
-                RiceVarietyName = sp.RiceVariety.VarietyName,
+                CategoryId = sp.CategoryId,
+                CategoryName = sp.Category.CategoryName,
                 TotalDuration = sp.TotalDurationDays,
                 IsActive = sp.IsActive,
                 TotalTasks = sp.StandardPlanStages?
                     .SelectMany(sps => sps.StandardPlanTasks)
                     .Count() ?? 0,
                 TotalStages = sp.StandardPlanStages?.Count ?? 0,
+                CreatedAt = sp.CreatedAt,
+                CreatedBy = sp.CreatedBy,
                 LastModified = sp.LastModified,
                 LastModifiedBy = sp.LastModifiedBy
             }).ToList();

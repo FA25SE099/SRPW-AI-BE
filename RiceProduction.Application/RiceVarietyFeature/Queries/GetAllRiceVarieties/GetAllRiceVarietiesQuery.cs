@@ -12,6 +12,11 @@ public class GetAllRiceVarietiesQuery : IRequest<Result<List<RiceVarietyResponse
     /// Filter by the activity status of the rice variety
     /// </summary>
     public bool? IsActive { get; set; }
+    
+    /// <summary>
+    /// Filter by rice variety category
+    /// </summary>
+    public Guid? CategoryId { get; set; }
 }
 
 public class GetAllRiceVarietiesQueryValidator : AbstractValidator<GetAllRiceVarietiesQuery>

@@ -6,9 +6,9 @@ public class RiceVariety : BaseAuditableEntity
     [MaxLength(255)]
     public string VarietyName { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Base growth duration - actual duration may vary by season (see RiceVarietySeason)
-    /// </summary>
+    [Required]
+    public Guid CategoryId { get; set; }
+
     public int? BaseGrowthDurationDays { get; set; }
 
     /// <summary>
@@ -29,9 +29,10 @@ public class RiceVariety : BaseAuditableEntity
     /// </summary>
     public bool IsActive { get; set; } = true;
 
-    // Navigation properties
+    [ForeignKey("CategoryId")]
+    public RiceVarietyCategory Category { get; set; } = null!;
+    
     public ICollection<RiceVarietySeason> RiceVarietySeasons { get; set; } = new List<RiceVarietySeason>();
     public ICollection<Group> Groups { get; set; } = new List<Group>();
     public ICollection<PlotCultivation> PlotCultivations { get; set; } = new List<PlotCultivation>();
-    public ICollection<StandardPlan> StandardPlans { get; set; } = new List<StandardPlan>();
 }

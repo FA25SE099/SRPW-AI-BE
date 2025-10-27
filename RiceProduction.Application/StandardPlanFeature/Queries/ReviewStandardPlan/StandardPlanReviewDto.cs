@@ -7,32 +7,25 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.ReviewStandardP
 /// </summary>
 public class StandardPlanReviewDto
 {
-    // Plan Information
     public Guid StandardPlanId { get; set; }
     public string PlanName { get; set; } = string.Empty;
     public string? Description { get; set; }
     
-    // Rice Variety Information
-    public Guid RiceVarietyId { get; set; }
-    public string RiceVarietyName { get; set; } = string.Empty;
+    public Guid CategoryId { get; set; }
+    public string CategoryName { get; set; } = string.Empty;
     
-    // Input Parameters
     public DateTime SowDate { get; set; }
     public decimal AreaInHectares { get; set; }
     
-    // Calculated Timeline
     public DateTime EstimatedStartDate { get; set; }
     public DateTime EstimatedEndDate { get; set; }
     public int TotalDurationDays { get; set; }
     
-    // Cost Summary
     public decimal EstimatedTotalCost { get; set; }
     public decimal EstimatedCostPerHectare { get; set; }
     
-    // Hierarchical Data with Calculated Values
     public List<StandardPlanStageReviewDto> Stages { get; set; } = new();
     
-    // Statistics
     public int TotalStages { get; set; }
     public int TotalTasks { get; set; }
     public int TotalMaterialTypes { get; set; }
