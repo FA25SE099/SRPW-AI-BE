@@ -9,7 +9,7 @@ namespace RiceProduction.Application.Common.Models.Request.MaterialRequests
 {
     public class MaterialListRequest
     {
-        public int CurrentPage { get; set; }
+        public int CurrentPage { get; set; } = 1;
         public int PageSize { get; set; }
         public MaterialType Type { get; set; }
     }
