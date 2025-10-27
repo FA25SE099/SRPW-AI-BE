@@ -7,6 +7,9 @@ using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMaterialExcel;
+using RiceProduction.Application.MaterialFeature.Commands.CreateMaterial;
+using RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial;
+using RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
@@ -97,6 +100,44 @@ public class MaterialController : ControllerBase
             return null;
         }
         return result;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateMaterial([FromBody] CreateMaterialCommand command)
+    {
+        var result = await _mediator.Send(command);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateMaterial(Guid id, [FromBody] UpdateMaterialCommand command)
+    {
+        if (id != command.MaterialId)
+        {
+            return BadRequest(new { message = "Route ID does not match command ID" });
+        }
+        var result = await _mediator.Send(command);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteMaterial(Guid id)
+    {
+        var command = new DeleteMaterialCommand { MaterialId = id };
+        var result = await _mediator.Send(command);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
     }
 
 }

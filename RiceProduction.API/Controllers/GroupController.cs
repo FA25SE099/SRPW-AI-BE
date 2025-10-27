@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.GroupRequests;
 using RiceProduction.Application.Common.Models.Response.GroupResponses;
+using RiceProduction.Application.GroupFeature.Queries.GetGroupDetail;
 using RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId;
 
 namespace RiceProduction.API.Controllers;

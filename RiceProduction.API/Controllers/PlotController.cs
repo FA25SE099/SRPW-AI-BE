@@ -70,9 +70,7 @@ namespace RiceProduction.API.Controllers
             }
             return Ok(result);
         }
-<<<<<<< HEAD
         
-
         [HttpPut]
         public async Task<ActionResult<Result<UpdatePlotRequest>>> EditPlot([FromBody] UpdatePlotRequest input)
         {
@@ -88,7 +86,6 @@ namespace RiceProduction.API.Controllers
             }
             return Ok(result);
         }
-=======
         [HttpGet("detail/{id}")]
         [ProducesResponseType(typeof(Result<PlotDetailDTO>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -109,7 +106,6 @@ namespace RiceProduction.API.Controllers
                     _logger.LogWarning("Failed to get plot detail: {Message}", result.Message);
                     return NotFound(result);
                 }
->>>>>>> 3d2167984c1f2c13d6e27c6c9dbdb52ac7f9736d
 
                 return Ok(result);
             }

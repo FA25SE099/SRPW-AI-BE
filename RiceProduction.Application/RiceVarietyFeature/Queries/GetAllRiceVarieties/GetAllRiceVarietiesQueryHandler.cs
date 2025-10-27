@@ -38,9 +38,11 @@ public class GetAllRiceVarietiesQueryHandler :
             var riceVarieties = await _unitOfWork.Repository<RiceVariety>().ListAsync(
                 filter: filter,
                 orderBy: q => q.OrderBy(v => v.VarietyName),
-                includeProperties: q => q.Include(v => v.Category));
+                includeProperties: q => q
+                    .Include(v => v.Category)
+                    .Include(v => v.RiceVarietySeasons)
+                        .ThenInclude(rvs => rvs.Season));
 
-            // Map the List<RiceVariety> to List<RiceVarietyResponse>
             var varietyResponses = riceVarieties
                 .Select(v => new RiceVarietyResponse
                 {
@@ -52,7 +54,20 @@ public class GetAllRiceVarietiesQueryHandler :
                     BaseYieldPerHectare = v.BaseYieldPerHectare,
                     Description = v.Description,
                     Characteristics = v.Characteristics,
-                    IsActive = v.IsActive
+                    IsActive = v.IsActive,
+                    AssociatedSeasons = v.RiceVarietySeasons.Select(rvs => new RiceVarietySeasonInfo
+                    {
+                        SeasonId = rvs.SeasonId,
+                        SeasonName = rvs.Season.SeasonName,
+                        StartDate = rvs.Season.StartDate,
+                        EndDate = rvs.Season.EndDate,
+                        GrowthDurationDays = rvs.GrowthDurationDays,
+                        ExpectedYieldPerHectare = rvs.ExpectedYieldPerHectare,
+                        OptimalPlantingStart = rvs.OptimalPlantingStart,
+                        OptimalPlantingEnd = rvs.OptimalPlantingEnd,
+                        RiskLevel = rvs.RiskLevel,
+                        IsRecommended = rvs.IsRecommended
+                    }).ToList()
                 })
                 .ToList();
 
