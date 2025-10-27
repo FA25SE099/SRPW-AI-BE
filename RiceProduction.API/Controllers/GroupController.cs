@@ -22,9 +22,8 @@ public class GroupController : Controller
     public async Task<ActionResult<PagedResult<List<GroupResponse>>>> GetGroupsByClusterIdPaging([FromBody] GroupListRequest request)
     {
         
-        var query = new GetGroupsByClusterManagerIdQuery()
+        var query = new GetGroupsByClusterManagerIdQuery
         {
-            ClusterManagerUserId = new Guid("019a0806-24ef-7df0-ac28-74495da52a12"),
             CurrentPage = request.CurrentPage,
             PageSize = request.PageSize
         };

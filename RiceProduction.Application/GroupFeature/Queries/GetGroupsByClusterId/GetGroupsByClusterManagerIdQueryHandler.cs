@@ -16,22 +16,30 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly WKTWriter _wktWriter;
+        private readonly IUser _currentUser;
 
-        public GetGroupsByClusterManagerIdQueryHandler(IUnitOfWork unitOfWork)
+        public GetGroupsByClusterManagerIdQueryHandler(IUnitOfWork unitOfWork, IUser currentUser)
         {
             _unitOfWork = unitOfWork;
             _wktWriter = new WKTWriter();
+            _currentUser = currentUser;
         }
 
         public async Task<PagedResult<List<GroupResponse>>> Handle(GetGroupsByClusterManagerIdQuery request, CancellationToken cancellationToken)
         {
             try
             {
-                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(request.ClusterManagerUserId, cancellationToken);
+                var userId = (Guid)_currentUser.Id;
+                if (userId == null || userId == Guid.Empty)
+                {
+                    return PagedResult<List<GroupResponse>>.Failure(
+                        "Current user ID not found");
+                }
+
+                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(userId, cancellationToken);
                 if (clusterManager == null)
                     return PagedResult<List<GroupResponse>>.Failure(
-                                        $"Cluster Manager with ID {request.ClusterManagerUserId} not found");
-
+                                        $"Cluster Manager with ID {userId} not found");
                 var groupListBelongToCluster = await _unitOfWork.Repository<Group>().ListAsync(g => g.ClusterId == clusterManager.ClusterId);
                 var supervisorRepo = _unitOfWork.SupervisorRepository;
                 var groupResponses = groupListBelongToCluster.Select(g => new GroupResponse

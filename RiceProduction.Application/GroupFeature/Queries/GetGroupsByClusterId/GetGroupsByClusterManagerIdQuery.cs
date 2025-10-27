@@ -11,7 +11,6 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId
 {
     public class GetGroupsByClusterManagerIdQuery : IRequest<PagedResult<List<GroupResponse>>>
     {
-        public Guid ClusterManagerUserId { get; set; }
         public int CurrentPage { get; set; }
         public int PageSize { get; set; }
     }

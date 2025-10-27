@@ -27,19 +27,8 @@ public class SupervisorController : Controller
     [HttpPost("get-paging")]
     public async Task<ActionResult<PagedResult<List<SupervisorResponse>>>> GetAllSupervisorPaging([FromForm] SupervisorListRequest request)
     {
-        //var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        //if (string.IsNullOrEmpty(userId))
-        //{
-        //    return Unauthorized(PagedResult<List<SupervisorResponse>>.Failure("User not authenticated"));
-        //}
-
-        //if (!Guid.TryParse(userId, out var userIdReal) || userIdReal == Guid.Empty)
-        //{
-        //    return Unauthorized(PagedResult<List<SupervisorResponse>>.Failure("Invalid user ID"));
-        //}
         var query = new GetAllSupervisorQuery
         {
-            ClusterManagerUserId = new Guid("019a0806-24ef-7df0-ac28-74495da52a12"),
             SearchNameOrEmail = request.SearchNameOrEmail,
             SearchPhoneNumber = request.SearchPhoneNumber,
             CurrentPage = request.CurrentPage,
