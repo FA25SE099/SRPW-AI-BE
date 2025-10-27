@@ -18,7 +18,8 @@
 	</ItemGroup>
 	<ItemGroup>
 	  <Folder Include="GroupFeature\Commands\" />
-	  <Folder Include="RiceVarietyFeature\Commands\" />
+	  <Folder Include="CultivationFeature\Commands\" />
+	  <Folder Include="CultivationFeature\Queries\" />
 	  <Folder Include="RiceVarietyFeature\Queries\GetAllRiceVarietyBySeason\" />
 	  <Folder Include="SupervisorFeature\Commands\" />
 	</ItemGroup>

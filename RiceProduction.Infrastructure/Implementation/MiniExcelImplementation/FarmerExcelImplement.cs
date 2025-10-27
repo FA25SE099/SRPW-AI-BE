@@ -34,8 +34,7 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
 
             await using (var stream = file.OpenReadStream())
             {
-                // Bỏ tiêu đề, đọc từ A2
-                var farmerDtos = stream.Query<FarmerImportDto>(startCell: "A2").ToList();
+                var farmerDtos = stream.Query<FarmerImportDto>().ToList();
                 result.TotalRows = farmerDtos.Count;
 
                 foreach (var dto in farmerDtos)
@@ -68,7 +67,7 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                         continue;
                     }
 
-                    // Kiểm tra PhoneNumber đã tồn tại chưa (trong database)
+                    
                     var existingFarmer = await _farmers
                         .FirstOrDefaultAsync(f => f.PhoneNumber == dto.PhoneNumber, cancellationToken);
 
@@ -126,11 +125,10 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                     {
                         Id = farmerId ?? Guid.NewGuid(), 
                         PhoneNumber = dto.PhoneNumber,
+                        UserName = dto.PhoneNumber,
                         FullName = dto.FullName,
                         Address = dto.Address,
                         FarmCode = dto.FarmCode,
-                        Email = $"{dto.PhoneNumber}@temp.com",
-                        UserName = dto.PhoneNumber,
                         EmailConfirmed = true,
                         IsActive = true,
                     };
@@ -140,6 +138,13 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                     if (createResult.Succeeded)
                     {
                         result.SuccessCount++;
+                        result.ImportedFarmers.Add(new ImportedFarmerData
+                        {
+                            PhoneNumber = dto.PhoneNumber,
+                            FullName = dto.FullName,
+                            Address = dto.Address,
+                            FarmCode = dto.FarmCode,
+                        });
                     }
                     else
                     {

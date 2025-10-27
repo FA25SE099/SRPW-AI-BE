@@ -5,10 +5,22 @@ using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPendingApprovals;
 
-public class GetPendingApprovalsQuery : IRequest<Result<List<ExpertPendingPlanItemResponse>>>
+public class GetPendingApprovalsQuery : IRequest<PagedResult<List<ExpertPendingPlanItemResponse>>>
 {
-    // Status filter (chỉ dùng để xác nhận, nhưng Status cứng là Submitted trong Handler)
+    public int CurrentPage { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
+
     public RiceProduction.Domain.Enums.TaskStatus Status { get; set; } = RiceProduction.Domain.Enums.TaskStatus.PendingApproval;
 
-    public TaskPriority? Priority { get; set; }
+    public RiceProduction.Domain.Enums.TaskPriority? Priority { get; set; }
 }
+
+public class GetPendingApprovalsQueryValidator : AbstractValidator<GetPendingApprovalsQuery>
+{
+    public GetPendingApprovalsQueryValidator()
+    {
+        RuleFor(x => x.CurrentPage).GreaterThanOrEqualTo(1).WithMessage("CurrentPage must be 1 or greater.");
+        RuleFor(x => x.PageSize).GreaterThanOrEqualTo(1).WithMessage("PageSize must be 1 or greater.");
+    }
+}
+

@@ -20,16 +20,7 @@ public class GroupController : Controller
     [HttpPost()]
     public async Task<ActionResult<PagedResult<List<GroupResponse>>>> GetGroupsByClusterIdPaging([FromBody] GroupListRequest request)
     {
-        //var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        //if (string.IsNullOrEmpty(userId))
-        //{
-        //    return Unauthorized(PagedResult<List<SupervisorResponse>>.Failure("User not authenticated"));
-        //}
-
-        //if (!Guid.TryParse(userId, out var userIdReal) || userIdReal == Guid.Empty)
-        //{
-        //    return Unauthorized(PagedResult<List<SupervisorResponse>>.Failure("Invalid user ID"));
-        //}
+        
         var query = new GetGroupsByClusterManagerIdQuery()
         {
             ClusterManagerUserId = new Guid("019a0806-24ef-7df0-ac28-74495da52a12"),
@@ -41,6 +32,19 @@ public class GroupController : Controller
         {
             return BadRequest(result);
         }
+        return Ok(result);
+    }
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetGroupDetail(Guid id)
+    {
+        var query = new GetGroupDetailQuery { GroupId = id };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
         return Ok(result);
     }
 }

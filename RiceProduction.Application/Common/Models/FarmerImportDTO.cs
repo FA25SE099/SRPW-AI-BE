@@ -21,6 +21,7 @@ namespace RiceProduction.Application.Common.Models
         public int SuccessCount { get; set; }
         public int FailureCount { get; set; }
         public List<ImportError> Errors { get; set; } = new();
+        public List<ImportedFarmerData> ImportedFarmers { get; set; } = new List<ImportedFarmerData>();
     }
 
     public class ImportError
@@ -28,5 +29,13 @@ namespace RiceProduction.Application.Common.Models
         public int RowNumber { get; set; }
         public string FieldName { get; set; }
         public string ErrorMessage { get; set; }    
+    }
+
+    public class ImportedFarmerData
+    {
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public string? FarmCode { get; set; }
     }
 }

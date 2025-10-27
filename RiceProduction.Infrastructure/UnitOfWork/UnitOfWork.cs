@@ -1,14 +1,15 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Domain.Common;
 using RiceProduction.Infrastructure.Data;
+using RiceProduction.Infrastructure.Repository;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using RiceProduction.Domain.Common;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Infrastructure.UnitOfWork
 {
@@ -24,18 +25,28 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
         private ConcurrentDictionary<string, object> _repos;
 
+<<<<<<< HEAD
         private IFarmerGenericRepository? _farmerRepository;
         private ISupervisorGenericRepository? _supervisorRepository;
         private IClusterManagerGenericRepository? _clusterManagerGenericRepository;
         private IPlotGenericRepository? _plotRepository;
+=======
+        private readonly IMemoryCache _memoryCache;
+        private IFarmerRepository? _farmerRepository;
+        private IPlotRepository? _plotRepository;
+>>>>>>> 3d2167984c1f2c13d6e27c6c9dbdb52ac7f9736d
 
         // ===================================
         // === Constructors
         // ===================================
-        public UnitOfWork(ApplicationDbContext context, ILoggerFactory loggerFactory)
+        public UnitOfWork(
+            ApplicationDbContext context,
+            ILoggerFactory loggerFactory,
+            IMemoryCache memoryCache)
         {
-            _dbContext = context;
-            _loggerFactory = loggerFactory;
+            _dbContext = context ?? throw new ArgumentNullException(nameof(context));
+            _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+            _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
         }
 
         // ===================================
@@ -69,8 +80,6 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
             var typeEntityName = typeof(T).Name;
 
-            // Using reflection to create an instanceof GenericRepository with type T
-            // Passing db context for each repository
             var repoInstanceTypeT = _repos.GetOrAdd(typeEntityName,
             valueFactory: _ =>
             {
@@ -87,14 +96,46 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
             return (IGenericRepository<T>)repoInstanceTypeT;
         }
+        public IGenericRepository<T> CachedRepository<T>() where T : BaseAuditableEntity
+        {
+            if (_repos == null) _repos = new ConcurrentDictionary<string, object>();
 
-        public IFarmerGenericRepository FarmerRepository
+            var typeEntityName = typeof(T).Name;
+
+            // Using reflection to create an instance of CachedGenericRepository<T> with type T
+            // This wraps a plain GenericRepository<T> as the inner decorator
+            // Passing db context, logger, and memory cache for each repository
+            var repoInstanceTypeT = _repos.GetOrAdd(typeEntityName,
+                valueFactory: _ =>
+                {
+                    var innerRepoType = typeof(GenericRepository<T>);
+                    var innerRepoLogger = _loggerFactory.CreateLogger<GenericRepository<T>>();
+                    var innerRepoInstance = Activator.CreateInstance(
+                        innerRepoType,
+                        _dbContext,
+                        innerRepoLogger);
+
+                    var cachedRepoType = typeof(DecoratorGenericRepository<T>);
+                    var cachedRepoLogger = _loggerFactory.CreateLogger<DecoratorGenericRepository<T>>();
+
+                    var cachedRepoInstance = Activator.CreateInstance(
+                        cachedRepoType,
+                        (IGenericRepository<T>)innerRepoInstance,
+                        _memoryCache,
+                        cachedRepoLogger);
+
+                    return cachedRepoInstance;
+                });
+
+            return (IGenericRepository<T>)repoInstanceTypeT;
+        }
+        public IFarmerRepository FarmerRepository
         {
             get
             {
                 if (_farmerRepository == null)
                 {
-                    _farmerRepository = new FarmerGenericRepository(_dbContext);
+                    _farmerRepository = new FarmerRepository(_dbContext);
                 }
                 return _farmerRepository;
             }
@@ -124,13 +165,13 @@ namespace RiceProduction.Infrastructure.UnitOfWork
             }
         }
         
-        public IPlotGenericRepository PlotRepository
+        public IPlotRepository PlotRepository
         {
             get
             {
                 if (_plotRepository == null)
                 {
-                    _plotRepository = new PlotGenericRepository(_dbContext);
+                    _plotRepository = new PlotRepository(_dbContext);
                 }
                 return _plotRepository;
             }

@@ -70,6 +70,7 @@ namespace RiceProduction.API.Controllers
             }
             return Ok(result);
         }
+<<<<<<< HEAD
         
 
         [HttpPut]
@@ -87,6 +88,36 @@ namespace RiceProduction.API.Controllers
             }
             return Ok(result);
         }
+=======
+        [HttpGet("detail/{id}")]
+        [ProducesResponseType(typeof(Result<PlotDetailDTO>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<Result<PlotDetailDTO>>> GetPlotDetail(Guid id)
+        {
+            try
+            {
+                if (id == Guid.Empty)
+                {
+                    return BadRequest(new { message = "Invalid Plot ID" });
+                }
+                _logger.LogInformation("Getting plot detail with ID: {PlotId}", id);
+                var query = new GetPlotDetailQueries(id);
+                var result = await _mediator.Send(query);
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to get plot detail: {Message}", result.Message);
+                    return NotFound(result);
+                }
+>>>>>>> 3d2167984c1f2c13d6e27c6c9dbdb52ac7f9736d
 
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting plot detail {PlotId}", id);
+                return StatusCode(500, new { message = "An error occurred while processing your request" });
+            }
+        }
     }
 }

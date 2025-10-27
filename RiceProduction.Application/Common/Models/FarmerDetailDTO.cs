@@ -1,32 +1,37 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.Common.Models
 {
     public class FarmerDetailDTO : FarmerDTO
     {
-       public List<PlotDTO> Plots { get; set; }
-       public List<FarmLogDTO> FarmLogs { get; set; }
-       public List<PlotCultivationDTO> PlotCultivations { get; set; }
-       public List<CultivationTaskDTO> CultivationTasks { get; set; }
+        public ICollection<GroupDetailDTO> Groups { get; set; }
+        public ICollection<PlotDetailDTO> Plots { get; set; } = new List<PlotDetailDTO>();
+       
     }
-
-    public class FarmLogDTO
+    public class GroupDetailDTO : GroupDTO
     {
-
+        public ICollection<PlotDTO> Plots { get; set; } 
     }
-
-    public class PlotCultivationDTO
+    public class PlotDetailDTO : PlotDTO
     {
-
+        public ICollection<ProductionPlanDTO> ProductionPlans { get; set; }
+        public ICollection<ProductionPlanTaskMaterialDTO> ProductionPlanTaskMaterials{ get; set; }
     }
-
-    public class CultivationTaskDTO
+    public class ProductionPlanDetailDTO : ProductionPlanDTO
     {
-
+        public ICollection<ProductionStageDTO> ProductionStages { get; set; }
     }
+    public class ProductionStageDetailDTO : ProductionStageDTO
+    {
+        public ICollection<ProductionPlanTaskDTO> ProductionPlanTasks { get; set; } = new List<ProductionPlanTaskDTO>();
+    }
+
+
 }

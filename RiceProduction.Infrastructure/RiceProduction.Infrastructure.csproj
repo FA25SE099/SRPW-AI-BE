@@ -13,6 +13,7 @@
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9" />
 		<PackageReference Include="MiniExcel" Version="1.41.4" />
 		
+		
 
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.9" />
@@ -20,7 +21,9 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+		<PackageReference Include="Polly" Version="8.4.2" />
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
+		<PackageReference Include="vng.zalo.ZaloDotNetSDK" Version="2.1.2" />
 	</ItemGroup>
 	<ItemGroup>
 	  <ProjectReference Include="..\RiceProduction.Application\RiceProduction.Application.csproj" />

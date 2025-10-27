@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Behaviours;
+using YourApp.Application.Common.Behaviors;
 
 namespace RiceProduction.Application;
 
@@ -20,6 +21,7 @@ public static class DependencyInjection
             cfg.AddOpenBehavior(typeof(AuthorizationBehaviour<,>));
             cfg.AddOpenBehavior(typeof(ValidationBehaviour<,>));
             cfg.AddOpenBehavior(typeof(PerformanceBehaviour<,>));
+            cfg.AddOpenBehavior(typeof(CachingBehavior<,>));
         });
     }
 }

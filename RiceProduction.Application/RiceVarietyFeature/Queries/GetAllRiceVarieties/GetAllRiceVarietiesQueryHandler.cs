@@ -31,12 +31,14 @@ public class GetAllRiceVarietiesQueryHandler :
             // Build the filter expression
             Expression<Func<RiceVariety, bool>> filter = v =>
                 (string.IsNullOrEmpty(request.Search) || v.VarietyName.Contains(request.Search) || (v.Characteristics != null && v.Characteristics.Contains(request.Search))) &&
-                (request.IsActive == null || v.IsActive == request.IsActive.Value);
+                (request.IsActive == null || v.IsActive == request.IsActive.Value) &&
+                (request.CategoryId == null || v.CategoryId == request.CategoryId.Value);
 
             // Use ListAsync to retrieve all matching records (no paging)
             var riceVarieties = await _unitOfWork.Repository<RiceVariety>().ListAsync(
                 filter: filter,
-                orderBy: q => q.OrderBy(v => v.VarietyName));
+                orderBy: q => q.OrderBy(v => v.VarietyName),
+                includeProperties: q => q.Include(v => v.Category));
 
             // Map the List<RiceVariety> to List<RiceVarietyResponse>
             var varietyResponses = riceVarieties
@@ -44,12 +46,13 @@ public class GetAllRiceVarietiesQueryHandler :
                 {
                     Id = v.Id,
                     VarietyName = v.VarietyName,
+                    CategoryId = v.CategoryId,
+                    CategoryName = v.Category.CategoryName,
                     BaseGrowthDurationDays = v.BaseGrowthDurationDays,
                     BaseYieldPerHectare = v.BaseYieldPerHectare,
                     Description = v.Description,
                     Characteristics = v.Characteristics,
                     IsActive = v.IsActive
-                    // Manually map any other properties
                 })
                 .ToList();
 

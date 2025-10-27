@@ -30,6 +30,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     // Core entities
     public DbSet<Cluster> Clusters => Set<Cluster>();
     public DbSet<Season> Seasons => Set<Season>();
+    public DbSet<RiceVarietyCategory> RiceVarietyCategories => Set<RiceVarietyCategory>();
     public DbSet<RiceVariety> RiceVarieties => Set<RiceVariety>();
     public DbSet<RiceVarietySeason> RiceVarietySeasons => Set<RiceVarietySeason>();
     public DbSet<Group> Groups => Set<Group>();
@@ -65,7 +66,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     // Monitoring and alerts
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<FieldWeather> FieldWeathers => Set<FieldWeather>();
-
+    public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
+    
+    // Notifications
+    public DbSet<Notification> Notifications => Set<Notification>();
+    
     // Assignments
     public DbSet<SupervisorFarmerAssignment> SupervisorFarmerAssignments => Set<SupervisorFarmerAssignment>();
 

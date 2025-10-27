@@ -13,7 +13,7 @@ namespace RiceProduction.Application.Common.Interfaces
         where T : BaseAuditableEntity
     {
         Task<Guid> GenerateNewGuid(Guid guidInput);
-        Task<T?> GetEntityByIdAsync(int id);
+        Task<T?> GetEntityByIdAsync(Guid id);
         Task<IReadOnlyList<T>> ListAllAsync();
         Task<T?> FindAsync(Expression<Func<T, bool>> match);
         Task AddAsync(T entity);
@@ -43,6 +43,8 @@ namespace RiceProduction.Application.Common.Interfaces
             Expression<Func<T, bool>> match,
             Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null
         );
+
+        IQueryable<T?> GetQueryable();
 
     }
 
