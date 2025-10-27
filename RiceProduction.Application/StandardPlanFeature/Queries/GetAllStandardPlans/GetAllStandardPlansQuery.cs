@@ -6,8 +6,7 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.GetAllStandardP
 
 public record GetAllStandardPlansQuery : IRequest<Result<List<StandardPlanDto>>>,ICacheable
 {
-    public Guid? RiceVarietyId { get; init; }
-    public Guid? SeasonId { get; init; }
+    public Guid? CategoryId { get; init; }
     public string? SearchTerm { get; init; }
     public bool? IsActive { get; init; }
     public string CacheKey => "StandardPlans";

@@ -13,20 +13,16 @@ public class StandardPlanDetailDto
     public int TotalDurationDays { get; set; }
     public bool IsActive { get; set; }
     
-    // Rice Variety Information
-    public Guid RiceVarietyId { get; set; }
-    public string RiceVarietyName { get; set; } = string.Empty;
+    public Guid CategoryId { get; set; }
+    public string CategoryName { get; set; } = string.Empty;
     
-    // Creator Information
     public Guid? CreatedBy { get; set; }
     public string CreatorName { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastModified { get; set; }
     
-    // Hierarchical Data
     public List<StandardPlanStageDetailDto> Stages { get; set; } = new();
     
-    // Summary Statistics
     public int TotalStages { get; set; }
     public int TotalTasks { get; set; }
     public int TotalMaterialTypes { get; set; }

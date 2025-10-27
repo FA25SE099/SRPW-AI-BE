@@ -8,6 +8,9 @@ public class RiceVarietyConfiguration : IEntityTypeConfiguration<RiceVariety>
             .IsRequired()
             .HasMaxLength(255);
 
+        builder.Property(rv => rv.CategoryId)
+            .IsRequired();
+
         builder.Property(rv => rv.BaseGrowthDurationDays)
             .HasComment("Base growth duration - actual duration may vary by season");
 
@@ -31,10 +34,18 @@ public class RiceVarietyConfiguration : IEntityTypeConfiguration<RiceVariety>
                .IsUnique()
                .HasDatabaseName("IX_RiceVariety_VarietyName");
 
+        builder.HasIndex(rv => rv.CategoryId)
+               .HasDatabaseName("IX_RiceVariety_CategoryId");
+
         builder.HasIndex(rv => rv.IsActive)
                .HasDatabaseName("IX_RiceVariety_IsActive");
 
         builder.HasIndex(rv => rv.BaseGrowthDurationDays)
                .HasDatabaseName("IX_RiceVariety_BaseGrowthDuration");
+
+        builder.HasOne(rv => rv.Category)
+            .WithMany(c => c.RiceVarieties)
+            .HasForeignKey(rv => rv.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

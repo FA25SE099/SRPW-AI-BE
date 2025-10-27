@@ -27,8 +27,7 @@ public class StandardPlanController : ControllerBase
   
     [HttpGet]
     public async Task<ActionResult<Result<List<StandardPlanDto>>>> GetAll(
-        [FromQuery] Guid? riceVarietyId = null,
-        [FromQuery] Guid? seasonId = null,
+        [FromQuery] Guid? categoryId = null,
         [FromQuery] string? searchTerm = null,
         [FromQuery] bool? isActive = null)
     {
@@ -38,8 +37,7 @@ public class StandardPlanController : ControllerBase
 
             var query = new GetAllStandardPlansQuery
             {
-                RiceVarietyId = riceVarietyId,
-                SeasonId = seasonId,
+                CategoryId = categoryId,
                 SearchTerm = searchTerm,
                 IsActive = isActive
             };

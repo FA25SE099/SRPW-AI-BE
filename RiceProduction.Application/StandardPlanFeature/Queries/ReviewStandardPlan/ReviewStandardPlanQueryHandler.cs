@@ -35,7 +35,7 @@ public class ReviewStandardPlanQueryHandler :
             var standardPlan = await _unitOfWork.Repository<StandardPlan>().FindAsync(
                 match: sp => sp.Id == request.StandardPlanId && sp.IsActive,
                 includeProperties: q => q
-                    .Include(sp => sp.RiceVariety)
+                    .Include(sp => sp.Category)
                     .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
                         .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
                             .ThenInclude(task => task.StandardPlanTaskMaterials)
@@ -191,8 +191,8 @@ public class ReviewStandardPlanQueryHandler :
                 StandardPlanId = standardPlan.Id,
                 PlanName = standardPlan.PlanName,
                 Description = standardPlan.Description,
-                RiceVarietyId = standardPlan.RiceVarietyId,
-                RiceVarietyName = standardPlan.RiceVariety.VarietyName,
+                CategoryId = standardPlan.CategoryId,
+                CategoryName = standardPlan.Category.CategoryName,
                 SowDate = request.SowDate,
                 AreaInHectares = request.AreaInHectares,
                 EstimatedStartDate = earliestTaskDate ?? request.SowDate,

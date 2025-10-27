@@ -32,8 +32,8 @@ public class GetStandardPlanDetailQueryHandler :
             var standardPlan = await _unitOfWork.Repository<StandardPlan>().FindAsync(
                 match: sp => sp.Id == request.StandardPlanId,
                 includeProperties: q => q
-                    .Include(sp => sp.RiceVariety)
-                    .Include(sp => sp.Creator) // Expert who created it
+                    .Include(sp => sp.Category)
+                    .Include(sp => sp.Creator)
                     .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
                         .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
                             .ThenInclude(task => task.StandardPlanTaskMaterials)
@@ -56,8 +56,8 @@ public class GetStandardPlanDetailQueryHandler :
                 TotalDurationDays = standardPlan.TotalDurationDays,
                 IsActive = standardPlan.IsActive,
                 
-                RiceVarietyId = standardPlan.RiceVarietyId,
-                RiceVarietyName = standardPlan.RiceVariety.VarietyName,
+                CategoryId = standardPlan.CategoryId,
+                CategoryName = standardPlan.Category.CategoryName,
                 
                 CreatedBy = standardPlan.CreatedBy,
                 CreatorName = standardPlan.Creator?.FullName ?? "N/A",

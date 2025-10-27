@@ -66,6 +66,7 @@ namespace RiceProduction.Infrastructure.Data
         {
             await SeedRolesAsync();
             await SeedUsersAsync();
+            await SeedRiceVarietyCategoriesAsync();
             await SeedVietnameseRiceDataAsync();
             await SeedMaterialDataAsync();
             await SeedMaterialPriceDataAsync();
@@ -392,6 +393,44 @@ namespace RiceProduction.Infrastructure.Data
                 }
             }
         }
+        private async Task SeedRiceVarietyCategoriesAsync()
+        {
+            if (!_context.RiceVarietyCategories.Any())
+            {
+                var categories = new List<RiceVarietyCategory>
+                {
+                    new RiceVarietyCategory
+                    {
+                        Id = new Guid("10000000-0000-0000-0000-000000000001"),
+                        CategoryName = "Giống ngắn ngày",
+                        CategoryCode = "short",
+                        Description = "Giống lúa có thời gian sinh trưởng ngắn (60-95 ngày)",
+                        MinGrowthDays = 60,
+                        MaxGrowthDays = 95,
+                        IsActive = true
+                    },
+                    new RiceVarietyCategory
+                    {
+                        Id = new Guid("10000000-0000-0000-0000-000000000002"),
+                        CategoryName = "Giống dài ngày",
+                        CategoryCode = "long",
+                        Description = "Giống lúa có thời gian sinh trưởng dài (100-120 ngày)",
+                        MinGrowthDays = 100,
+                        MaxGrowthDays = 120,
+                        IsActive = true
+                    }
+                };
+
+                await _context.RiceVarietyCategories.AddRangeAsync(categories);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Seeded {Count} rice variety categories", categories.Count);
+            }
+            else
+            {
+                _logger.LogInformation("Rice variety categories already exist - skipping seeding");
+            }
+        }
+
         private async Task SeedUsersAsync()
         {
             var usersToSeed = new List<object>
@@ -558,6 +597,17 @@ namespace RiceProduction.Infrastructure.Data
             // 1. Seed Rice Varieties
             // ----------------------------------------------------------------------
 
+            var shortCategory = await _context.RiceVarietyCategories
+                .FirstOrDefaultAsync(c => c.CategoryCode == "short");
+            var longCategory = await _context.RiceVarietyCategories
+                .FirstOrDefaultAsync(c => c.CategoryCode == "long");
+
+            if (shortCategory == null || longCategory == null)
+            {
+                _logger.LogError("Rice variety categories not found. Ensure categories are seeded first.");
+                return;
+            }
+
             var riceVarietiesData = new (string Name, int Duration, decimal Yield, string Characteristics)[]
             {
         ("OM5451", 95, 6.50m, "Giống lúa chất lượng cao, hạt dài, cơm dẻo, vị đậm. Phổ biến ở ĐBSCL."),
@@ -573,9 +623,12 @@ namespace RiceProduction.Infrastructure.Data
             {
                 if (!_context.RiceVarieties.Any(v => v.VarietyName == data.Name))
                 {
+                    var categoryId = data.Duration < 100 ? shortCategory.Id : longCategory.Id;
+                    
                     _context.RiceVarieties.Add(new RiceVariety
                     {
                         VarietyName = data.Name,
+                        CategoryId = categoryId,
                         BaseGrowthDurationDays = data.Duration,
                         BaseYieldPerHectare = data.Yield,
                         Characteristics = data.Characteristics,
@@ -1074,7 +1127,15 @@ namespace RiceProduction.Infrastructure.Data
         {
             if (!_context.Set<StandardPlan>().Any(p => p.PlanName.Contains("Vụ")))
             {
-                // Query for ST25 RiceVariety
+                var longCategory = await _context.RiceVarietyCategories
+                    .FirstOrDefaultAsync(c => c.CategoryCode == "long");
+                
+                if (longCategory == null)
+                {
+                    _logger.LogError("Long category not found. Ensure categories are seeded first.");
+                    return;
+                }
+
                 var st25Variety = await _context.Set<RiceVariety>().FirstOrDefaultAsync(v => v.VarietyName == "ST25");
                 if (st25Variety == null)
                 {
@@ -1082,15 +1143,14 @@ namespace RiceProduction.Infrastructure.Data
                     {
                         Id = new Guid("00000000-0000-0000-0000-000000000001"),
                         VarietyName = "ST25",
+                        CategoryId = longCategory.Id,
                         Description = "Lúa ST25 - Giống lúa chất lượng cao Việt Nam.",
                         IsActive = true
-                        // Add other properties as per entity
                     };
                     await _context.Set<RiceVariety>().AddAsync(st25Variety);
                     await _context.SaveChangesAsync();
                     _logger.LogInformation("Seeded ST25 RiceVariety");
                 }
-                var riceVarietyId = st25Variety.Id;
 
                 // Query for an AgronomyExpert (assume first active expert or seed one)
                 var expert = await _context.Set<AgronomyExpert>().FirstOrDefaultAsync(e => e.IsActive);
@@ -1130,11 +1190,11 @@ namespace RiceProduction.Infrastructure.Data
                     var seasonalPlan = new StandardPlan
                     {
                         Id = Guid.NewGuid(),
-                        RiceVarietyId = riceVarietyId,
+                        CategoryId = longCategory.Id,
                         ExpertId = expertId,
-                        PlanName = $"Quy Trình Canh Tác Lúa ST25 - Vụ {season.Name} giống {st25Variety.VarietyName}",
-                        Description = $"Quy trình sản xuất lúa ST25 cho vụ {season.Name} với ngày gieo sạ {season.StartDate}. Mùa: {season.Type}, Thời gian vụ: {season.StartDate} đến {season.EndDate}.",
-                        TotalDurationDays = 81, // Approx 75-80 days post-sowing
+                        PlanName = $"Quy Trình Canh Tác - Vụ {season.Name} (Giống dài ngày)",
+                        Description = $"Quy trình sản xuất lúa cho vụ {season.Name} với ngày gieo sạ {season.StartDate}. Mùa: {season.Type}, Thời gian vụ: {season.StartDate} đến {season.EndDate}.",
+                        TotalDurationDays = 81,
                         CreatedBy = creatorId,
                         IsActive = true
                     };
