@@ -12,7 +12,8 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMaterialExcel
 {
-    public class ImportCreateAllMaterialExcelCommandHandler : IRequestHandler<ImportCreateAllMaterialExcelCommand, Result<List<MaterialResponse>>>
+    public class ImportCreateAllMaterialExcelCommandHandler : IRequestHandler<ImportCreateAllMaterialExcelCommand,
+        Result<List<MaterialResponse>>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _genericExcel;
@@ -23,30 +24,86 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
             _genericExcel = genericExcel;
         }
 
-        public async Task<Result<List<MaterialResponse>>> Handle(ImportCreateAllMaterialExcelCommand request, CancellationToken cancellationToken)
+        public async Task<Result<List<MaterialResponse>>> Handle(ImportCreateAllMaterialExcelCommand request,
+            CancellationToken cancellationToken)
         {
             try
             {
                 //Change excel file back to list
-                var materialListCreateInput = await _genericExcel.ExcelToListT<MaterialCreateRequest>(request.ExcelFile);
+                var materialListCreateInput =
+                    await _genericExcel.ExcelToListT<MaterialCreateRequest>(request.ExcelFile);
                 if (materialListCreateInput == null || !materialListCreateInput.Any())
                 {
                     return Result<List<MaterialResponse>>.Failure("The uploaded Excel file is empty or invalid.");
                 }
+
                 var materialRepo = _unitOfWork.Repository<Material>();
                 var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
+
+                // Validate all materials before processing
+                var validationErrors = new List<string>();
+                for (int i = 0; i < materialListCreateInput.Count; i++)
+                {
+                    var material = materialListCreateInput[i];
+                    var rowNumber = i + 2; // Excel row number (accounting for header)
+
+                    if (string.IsNullOrWhiteSpace(material.Name))
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Material name is required");
+                    }
+                    else if (material.Name.Length > 255)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Material name must not exceed 255 characters");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(material.Unit))
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Unit is required");
+                    }
+                    else if (material.Unit.Length > 50)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Unit must not exceed 50 characters");
+                    }
+
+                    if (material.PricePerMaterial <= 0)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Price per material must be greater than 0");
+                    }
+
+                    if (material.AmmountPerMaterial.HasValue && material.AmmountPerMaterial.Value <= 0)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Amount per material must be greater than 0");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(material.Manufacturer) && material.Manufacturer.Length > 255)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Manufacturer must not exceed 255 characters");
+                    }
+                }
+
+                if (validationErrors.Any())
+                {
+                    return Result<List<MaterialResponse>>.Failure(
+                        $"Excel validation failed:\n{string.Join("\n", validationErrors)}");
+                }
+
                 //Check for duplicate in the input list (check if exist already in the db with all fields)
                 foreach (var material in materialListCreateInput)
                 {
                     var duplicateCount = await materialRepo.FindAsync(m => m.Name == material.Name
-                    && m.Type == material.Type && m.AmmountPerMaterial == material.AmmountPerMaterial
-                    && m.Unit == material.Unit && m.Description == material.Description
-                    && m.Manufacturer == material.Manufacturer);
+                                                                           && m.Type == material.Type &&
+                                                                           m.AmmountPerMaterial ==
+                                                                           material.AmmountPerMaterial
+                                                                           && m.Unit == material.Unit &&
+                                                                           m.Description == material.Description
+                                                                           && m.Manufacturer == material.Manufacturer);
                     if (duplicateCount != null)
                     {
-                        return Result<List<MaterialResponse>>.Failure($"The uploaded Excel file contain duplicate material in the system, material name {material.Name}. Please check again!");
+                        return Result<List<MaterialResponse>>.Failure(
+                            $"The uploaded Excel file contain duplicate material in the system, material name {material.Name}. Please check again!");
                     }
                 }
+
                 //list to hold material will be created
                 var materialList = new List<Material>();
                 //list to hold result to response to api
@@ -77,14 +134,6 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
                             }
                         }
                     };
-                    //var newMaterialPrice = new MaterialPrice
-                    //{
-                    //    MaterialId = id,
-                    //    PricePerMaterial = material.PricePerMaterial,
-                    //    ValidFrom = request.ImportDate,
-                    //    ValidTo = null
-                    //};
-                    //materialPriceCreateList.Add(newMaterialPrice);
 
                     materialList.Add(newMaterial);
                 }
@@ -95,18 +144,13 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
                     await materialRepo.AddRangeAsync(materialList);
                 }
 
-                //// Add new price records
-                //if (materialPriceCreateList.Any())
-                //{
-                //    await materialPriceRepo.AddRangeAsync(materialPriceCreateList);
-                //}
-
                 // Save all changes
                 var result = await _unitOfWork.CompleteAsync();
                 if (result <= 0)
                 {
                     return Result<List<MaterialResponse>>.Failure("Failed to import materials.");
                 }
+
                 foreach (var material in materialList)
                 {
                     var materialResponse = new MaterialResponse
@@ -117,8 +161,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
                         AmmountPerMaterial = material.AmmountPerMaterial,
                         Showout = material.AmmountPerMaterial.ToString() + material.Unit,
                         PricePerMaterial = materialPriceRepo
-                        .ListAsync(p => p.MaterialId == material.Id).Result
-                        .OrderByDescending(p => p.ValidFrom).FirstOrDefault()?.PricePerMaterial ?? 0,
+                            .ListAsync(p => p.MaterialId == material.Id).Result
+                            .OrderByDescending(p => p.ValidFrom).FirstOrDefault()?.PricePerMaterial ?? 0,
                         Unit = material.Unit,
                         Description = material.Description,
                         Manufacturer = material.Manufacturer,
@@ -126,13 +170,15 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
                     };
                     materialCreateSuccessList.Add(materialResponse);
                 }
+
                 return Result<List<MaterialResponse>>.Success(
                     materialCreateSuccessList,
                     $"Successfully created {materialCreateSuccessList.Count} materials!");
             }
             catch (Exception ex)
             {
-                return Result<List<MaterialResponse>>.Failure($"An error occurred while importing materials: {ex.Message}");
+                return Result<List<MaterialResponse>>.Failure(
+                    $"An error occurred while importing materials: {ex.Message}");
             }
         }
     }

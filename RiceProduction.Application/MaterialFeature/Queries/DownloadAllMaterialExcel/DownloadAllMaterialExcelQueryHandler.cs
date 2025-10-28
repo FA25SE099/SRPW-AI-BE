@@ -34,7 +34,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
 
                 var currentDate = DateTime.Now;
                 var materialResponses = materialRepo
-                    .Select(m => new MaterialResponse
+                    .Select(m => new MaterialResponseInVietnamese()
                     {
                         MaterialId = m.Id,
                         Name = m.Name,

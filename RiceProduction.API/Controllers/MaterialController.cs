@@ -7,6 +7,7 @@ using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMaterialExcel;
+using RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Commands.CreateMaterial;
 using RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial;
 using RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial;
@@ -100,6 +101,22 @@ public class MaterialController : ControllerBase
             return null;
         }
         return result;
+    }
+
+    [HttpPost("import-upsert-excel")]
+    public async Task<IActionResult> ImportUpsertMaterialExcel([FromForm] ImportMaterialExcel input)
+    {
+        var command = new ImportUpsertMaterialExcelCommand
+        {
+            ExcelFile = input.ExcelFile,
+            ImportDate = input.ImportDate
+        };
+        var result = await _mediator.Send(command);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
     }
 
     [HttpPost]

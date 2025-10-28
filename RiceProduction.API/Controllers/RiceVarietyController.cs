@@ -5,6 +5,7 @@ using RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVariety;
 using RiceProduction.Application.RiceVarietyFeature.Commands.UpdateRiceVariety;
 using RiceProduction.Application.RiceVarietyFeature.Commands.DeleteRiceVariety;
 using RiceProduction.Application.RiceVarietyFeature.Queries.GetAllRiceVarieties;
+using RiceProduction.Application.RiceVarietyFeature.Queries.GetAllRiceVarietyCategories;
 using RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceVarietiesExcel;
 using RiceProduction.Application.RiceVarietyFeature.Queries.DownloadRiceVarietySampleExcel;
 
@@ -24,6 +25,19 @@ namespace RiceProduction.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] GetAllRiceVarietiesQuery query)
         {
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        [HttpGet("categories")]
+        public async Task<IActionResult> GetAllCategories([FromQuery] bool? isActive)
+        {
+            var query = new GetAllRiceVarietyCategoriesQuery { IsActive = isActive };
             var result = await _mediator.Send(query);
             if (!result.Succeeded)
             {
