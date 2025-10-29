@@ -13,16 +13,16 @@ public class ApproveRejectPlanCommandHandler :
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ApproveRejectPlanCommandHandler> _logger;
-    private readonly IUser _currentUser; // <-- Đã thêm IUser
     private readonly IMediator _mediator;
     public ApproveRejectPlanCommandHandler(
         IUnitOfWork unitOfWork,
         ILogger<ApproveRejectPlanCommandHandler> logger,
-        IUser currentUser) 
+        IMediator mediator
+        ) 
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _currentUser = currentUser; 
+        _mediator = mediator;
     }
 
     public async Task<Result<Guid>> Handle(ApproveRejectPlanCommand request, CancellationToken cancellationToken)
@@ -31,7 +31,7 @@ public class ApproveRejectPlanCommandHandler :
         {
             var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(p => p.Id == request.PlanId);
 
-            var expertId = _currentUser.Id;
+            var expertId = request.ExpertId;
 
             if (expertId == null)
             {

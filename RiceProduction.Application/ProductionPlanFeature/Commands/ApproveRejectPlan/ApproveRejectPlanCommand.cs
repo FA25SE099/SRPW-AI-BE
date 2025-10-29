@@ -21,6 +21,7 @@ public class ApproveRejectPlanCommand : IRequest<Result<Guid>>
     /// </summary>
     [MaxLength(1000)]
     public string? Notes { get; set; }
+    public Guid? ExpertId { get; set; }
 }
 
 public class ApproveRejectPlanCommandValidator : AbstractValidator<ApproveRejectPlanCommand>
