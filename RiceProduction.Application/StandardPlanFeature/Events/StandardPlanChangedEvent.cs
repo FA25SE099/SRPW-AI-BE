@@ -1,4 +1,5 @@
 using MediatR;
+using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Application.StandardPlanFeature.Events;
 
@@ -12,12 +13,4 @@ public class StandardPlanChangedEvent : INotification
         StandardPlanId = standardPlanId;
         ChangeType = changeType;
     }
-}
-
-public enum ChangeType
-{
-    Created,
-    Updated,
-    Deleted,
-    StatusChanged
 }

@@ -5,10 +5,14 @@ using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Application.StandardPlanFeature.Queries.GetStandardPlanDetail;
 
-public class GetStandardPlanDetailQuery : IRequest<Result<StandardPlanDetailDto>>,ICacheable
+public class GetStandardPlanDetailQuery : IRequest<Result<StandardPlanDetailDto>>, ICacheable
 {
     public Guid StandardPlanId { get; set; }
-    public string CacheKey => $"StandardPlan:{StandardPlanId}";
+    
+    public bool BypassCache { get; init; } = false;
+    public string CacheKey => $"StandardPlanDetail:{StandardPlanId}";
+    public int SlidingExpirationInMinutes => 60;
+    public int AbsoluteExpirationInMinutes => 120;
 }
 
 public class GetStandardPlanDetailQueryValidator : AbstractValidator<GetStandardPlanDetailQuery>

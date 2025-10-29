@@ -1,6 +1,8 @@
+using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.MaterialFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.MaterialFeature.Commands.CreateMaterial
@@ -8,11 +10,13 @@ namespace RiceProduction.Application.MaterialFeature.Commands.CreateMaterial
     public class CreateMaterialCommandHandler : IRequestHandler<CreateMaterialCommand, Result<Guid>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
         private readonly ILogger<CreateMaterialCommandHandler> _logger;
 
-        public CreateMaterialCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateMaterialCommandHandler> logger)
+        public CreateMaterialCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<CreateMaterialCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
             _logger = logger;
         }
 
@@ -53,6 +57,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.CreateMaterial
 
                 await materialRepo.AddAsync(newMaterial);
                 await _unitOfWork.CompleteAsync();
+
+                await _mediator.Publish(new MaterialChangedEvent(id, ChangeType.Created), cancellationToken);
 
                 _logger.LogInformation("Created material with ID: {MaterialId}", id);
                 return Result<Guid>.Success(id, "Material created successfully");
