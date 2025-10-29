@@ -746,7 +746,7 @@ namespace RiceProduction.Infrastructure.Data
                 Unit = "kg",
                 Description = "Bón lót trước sạ, Bổ sung vi sinh vật đối kháng Trichoderma",
                 Manufacturer = "DucThanh",
-                IsActive = true
+                IsActive = true,
             },
             new Material
             {

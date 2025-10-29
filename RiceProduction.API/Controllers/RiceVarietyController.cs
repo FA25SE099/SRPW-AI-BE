@@ -1,7 +1,11 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.RiceVarietyFeature.Commands;
+using RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVariety;
+using RiceProduction.Application.RiceVarietyFeature.Commands.UpdateRiceVariety;
+using RiceProduction.Application.RiceVarietyFeature.Commands.DeleteRiceVariety;
 using RiceProduction.Application.RiceVarietyFeature.Queries.GetAllRiceVarieties;
+using RiceProduction.Application.RiceVarietyFeature.Queries.GetAllRiceVarietyCategories;
 using RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceVarietiesExcel;
 using RiceProduction.Application.RiceVarietyFeature.Queries.DownloadRiceVarietySampleExcel;
 
@@ -21,6 +25,19 @@ namespace RiceProduction.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] GetAllRiceVarietiesQuery query)
         {
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        [HttpGet("categories")]
+        public async Task<IActionResult> GetAllCategories([FromQuery] bool? isActive)
+        {
+            var query = new GetAllRiceVarietyCategoriesQuery { IsActive = isActive };
             var result = await _mediator.Send(query);
             if (!result.Succeeded)
             {
@@ -64,6 +81,44 @@ namespace RiceProduction.API.Controllers
                 return BadRequest(new { message = result.Message });
             }
             return result.Data;
+        }
+
+        [HttpPost("create")]
+        public async Task<IActionResult> CreateRiceVariety([FromBody] CreateRiceVarietyCommand command)
+        {
+            var result = await _mediator.Send(command);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateRiceVariety(Guid id, [FromBody] UpdateRiceVarietyCommand command)
+        {
+            if (id != command.RiceVarietyId)
+            {
+                return BadRequest(new { message = "Route ID does not match command ID" });
+            }
+            var result = await _mediator.Send(command);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteRiceVariety(Guid id)
+        {
+            var command = new DeleteRiceVarietyCommand { RiceVarietyId = id };
+            var result = await _mediator.Send(command);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
         }
     }
 }

@@ -71,7 +71,6 @@ namespace RiceProduction.API.Controllers
             return Ok(result);
         }
         
-
         [HttpPut]
         public async Task<ActionResult<Result<UpdatePlotRequest>>> EditPlot([FromBody] UpdatePlotRequest input)
         {

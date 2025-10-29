@@ -7,6 +7,8 @@ using RiceProduction.Application.StandardPlanFeature.Queries.GetAllStandardPlans
 using RiceProduction.Application.StandardPlanFeature.Queries.GetStandardPlanDetail;
 using RiceProduction.Application.StandardPlanFeature.Queries.ReviewStandardPlan;
 using RiceProduction.Application.StandardPlanFeature.Commands.UpdateStandardPlan;
+using RiceProduction.Application.StandardPlanFeature.Queries.DownloadAllStandardPlansExcel;
+using RiceProduction.Application.StandardPlanFeature.Queries.DownloadStandardPlanSampleExcel;
 
 namespace RiceProduction.API.Controllers;
 
@@ -169,5 +171,28 @@ public class StandardPlanController : ControllerBase
             return StatusCode(500, Result<Guid>.Failure(
                 "An unexpected error occurred"));
         }
+    }
+
+    [HttpPost("download-excel")]
+    public async Task<IActionResult> DownloadStandardPlansExcel([FromBody] DownloadAllStandardPlansExcelQuery query)
+    {
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded || result.Data == null)
+        {
+            return BadRequest(new { message = result.Message });
+        }
+        return result.Data;
+    }
+
+    [HttpGet("download-sample-excel")]
+    public async Task<IActionResult> DownloadSampleExcel()
+    {
+        var query = new DownloadStandardPlanSampleExcelQuery();
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded || result.Data == null)
+        {
+            return BadRequest(new { message = result.Message });
+        }
+        return result.Data;
     }
 }
