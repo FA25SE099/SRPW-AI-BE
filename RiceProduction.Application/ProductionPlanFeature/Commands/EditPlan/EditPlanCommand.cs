@@ -26,6 +26,7 @@ public class EditPlanCommand : IRequest<Result<Guid>>
     /// Toàn bộ cấu trúc Stages, Tasks và Materials mới.
     /// </summary>
     public List<ProductionStageRequest> Stages { get; set; } = new();
+    public Guid? ExpertId { get; set; }
 }
 
 public class EditPlanCommandValidator : AbstractValidator<EditPlanCommand>

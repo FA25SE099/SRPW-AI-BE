@@ -23,16 +23,14 @@ public class EditPlanCommandHandler :
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<EditPlanCommandHandler> _logger;
-    private readonly IUser _currentUser; 
 
     public EditPlanCommandHandler(
         IUnitOfWork unitOfWork, 
-        ILogger<EditPlanCommandHandler> logger,
-        IUser currentUser)
+        ILogger<EditPlanCommandHandler> logger
+        )
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _currentUser = currentUser;
     }
 
     public async Task<Result<Guid>> Handle(EditPlanCommand request, CancellationToken cancellationToken)
@@ -40,7 +38,7 @@ public class EditPlanCommandHandler :
         try
         {
             // Lấy ID của người dùng hiện tại
-            var expertId = _currentUser.Id;
+            var expertId = request.ExpertId;
 
             if (expertId == null)
             {

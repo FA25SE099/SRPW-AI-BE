@@ -746,7 +746,7 @@ namespace RiceProduction.Infrastructure.Data
                 Unit = "kg",
                 Description = "Bón lót trước sạ, Bổ sung vi sinh vật đối kháng Trichoderma",
                 Manufacturer = "DucThanh",
-                IsActive = true
+                IsActive = true,
             },
             new Material
             {
@@ -2213,21 +2213,70 @@ namespace RiceProduction.Infrastructure.Data
                             },
                         }
                         },
-                    //new ProductionPlan
-                    //{
-                    //    Id = productionPlanGuid2,
-                    //    GroupId = group2.Id,
-                    //    StandardPlanId = standardPlanDX.Id,
-                    //    PlanName = $"{group2.RiceVariety?.VarietyName} - {group2.SeasonId.Value} - Kế hoạch 1",
-                    //    BasePlantingDate = group2.PlantingDate ?? DateTime.UtcNow.AddDays(-5), // Dùng ngày nhóm sạ hoặc giả lập 5 ngày trước
-                    //    Status = TaskStatus.Completed,
-                    //    TotalArea = group2.TotalArea,
-                    //    SubmittedAt = DateTime.UtcNow.AddDays(-3),
-                    //    ApprovedAt = null, // Chưa duyệt
-                    //    ApprovedBy = null,
-                    //    SubmittedBy = group2.SupervisorId,
-                    //    LastModified = DateTime.UtcNow
-                    //}
+                    new ProductionPlan
+                    {
+                        Id = productionPlanGuid2,
+                        GroupId = group2.Id,
+                        StandardPlanId = standardPlanDX.Id,
+                        PlanName = "Vụ Đông Xuân 2023–2024",
+                        BasePlantingDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19), DateTimeKind.Utc), // Dùng ngày nhóm sạ hoặc giả lập 30 ngày trước
+                        Status = TaskStatus.PendingApproval,
+                        TotalArea = group2.TotalArea,
+                        SubmittedAt = DateTime.SpecifyKind(new DateTime(2024, 12, 12), DateTimeKind.Utc),
+                        ApprovedAt = DateTime.SpecifyKind(new DateTime(2024, 12, 15), DateTimeKind.Utc),
+                        ApprovedBy = null, // Giả lập không có người duyệt cụm
+                        SubmittedBy = group2.SupervisorId,
+                        LastModified = DateTime.UtcNow,
+                        CurrentProductionStages = new List<ProductionStage>()
+                        {
+                            new ProductionStage
+                            {
+                                  StageName = "Bón phân, làm đất",
+                                  Description = "Giai đoạn trước khi vào công đoạn chăm sóc",
+                                  IsActive = true,
+                                  Notes = "Bón phân, làm đất trước sạ",
+                                  SequenceOrder = 1,
+                                  TypicalDurationDays = 1,
+                                  ProductionPlanTasks = new List<ProductionPlanTask>()
+                                  {
+                                      new ProductionPlanTask
+                                      {
+                                          Priority = TaskPriority.High,
+                                          SequenceOrder = 1,
+                                          TaskName = "Bón lót",
+                                          TaskType = TaskType.Fertilization,
+                                          ScheduledDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12), DateTimeKind.Utc),
+                                          ScheduledEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 12).AddDays(1), DateTimeKind.Utc),
+                                          Description = "- Bón lót các loại phân như phân hữu cơ, lân để sau khi sạ cây mọc mầm có thể cung cấp dinh dưỡng\r\n- Bón trước khi bừa trục và trạc",
+                                          Status = TaskStatus.Completed,
+                                          EstimatedMaterialCost = 2070000,
+                                          ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>()
+                                          {
+                                              new ProductionPlanTaskMaterial
+                                              {
+                                                  MaterialId = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49"),
+                                                  QuantityPerHa = 300,
+                                                  EstimatedAmount = 2070000
+                                              }
+                                          },
+                                          CultivationTasks = cultivationTaskBonLotList
+                                      },
+                                      new ProductionPlanTask
+                                      {
+                                          Priority = TaskPriority.High,
+                                          SequenceOrder = 2,
+                                          TaskName = "Làm đất",
+                                          TaskType = TaskType.Sowing,
+                                          ScheduledDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19), DateTimeKind.Utc),
+                                          ScheduledEndDate = DateTime.SpecifyKind(new DateTime(2024, 12, 19).AddDays(1), DateTimeKind.Utc),
+                                          Description = "- Cày bừa lại theo phương pháp bừa trục và trạc để san phẳng mặt ruộng hạn chế chênh lệch tối đa các vùng cao thấp không quá 5cm\r\n- Kết hợp xử lý cỏ dại ven bờ, đánh rãnh để thoát phèn và diệt ốc",
+                                          Status = TaskStatus.Completed,
+                                          ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>(),
+                                      }
+                                  }
+                            },
+                        }
+                        },
                     };
                 await _context.Set<ProductionPlan>().AddRangeAsync(productionPlans);
                 await _context.SaveChangesAsync();

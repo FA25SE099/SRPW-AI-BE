@@ -29,7 +29,7 @@ public class LoggingBehaviour<TRequest> : IRequestPreProcessor<TRequest>
             userName = await _identityService.GetUserNameAsync((Guid)userId);
         }
 
-        _logger.LogInformation("CleanArchitecture Request: {Name} {@UserId} {@UserName} {@Request}",
+        _logger.LogInformation("Request: {Name} - {@UserId} - {@UserName} - {@Request}",
             requestName, userId, userName, request);
     }
 }
