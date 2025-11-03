@@ -8,12 +8,12 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public class ClusterManagerGenericRepository : IClusterManagerGenericRepository
+    public class ClusterManagerRepository : IClusterManagerRepository
     {
         private readonly ApplicationDbContext _context;
         private readonly DbSet<ClusterManager> _clusterManager;
 
-        public ClusterManagerGenericRepository(ApplicationDbContext context)
+        public ClusterManagerRepository(ApplicationDbContext context)
         {
             _context = context;
             _clusterManager = context.Set<ClusterManager>();
@@ -50,6 +50,38 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .AsQueryable();
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(f => (f.FullName != null && f.FullName.Contains(search)) ||
+                                         (f.Email != null && f.Email.Contains(search)));
+            }
+            if (!string.IsNullOrEmpty(phoneNumber))
+            {
+                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber);
+            }
+            if (pageSize == 0)
+            {
+                return await query
+                .OrderBy(s => s.FullName)
+                .ToListAsync(cancellationToken);
+            }
+            return await query
+                .OrderBy(s => s.FullName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<IEnumerable<ClusterManager?>> GetAllClusterManagerAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, bool freeOrAssigned, CancellationToken cancellationToken = default)
+        {
+            var query = _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .AsQueryable();
+            if (freeOrAssigned)
+            {
+                query = query.Where(s => s.AssignedDate == null && !s.ClusterId.HasValue);
+            }
             if (!string.IsNullOrEmpty(search))
             {
                 query = query.Where(f => (f.FullName != null && f.FullName.Contains(search)) ||

@@ -25,8 +25,8 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
         private ConcurrentDictionary<string, object> _repos;
 
-        private ISupervisorGenericRepository? _supervisorRepository;
-        private IClusterManagerGenericRepository? _clusterManagerGenericRepository;
+        private ISupervisorRepository? _supervisorRepository;
+        private IClusterManagerRepository? _clusterManagerGenericRepository;
         private readonly IMemoryCache _memoryCache;
         private IFarmerRepository? _farmerRepository;
         private IPlotRepository? _plotRepository;
@@ -136,25 +136,25 @@ namespace RiceProduction.Infrastructure.UnitOfWork
             }
         }
 
-        public ISupervisorGenericRepository SupervisorRepository
+        public ISupervisorRepository SupervisorRepository
         {
             get
             {
                 if (_supervisorRepository == null)
                 {
-                    _supervisorRepository = new SupervisorGenericRepository(_dbContext);
+                    _supervisorRepository = new SupervisorRepository(_dbContext);
                 }
                 return _supervisorRepository;
             }
         }
 
-        public IClusterManagerGenericRepository ClusterManagerRepository
+        public IClusterManagerRepository ClusterManagerRepository
         {
             get
             {
                 if (_clusterManagerGenericRepository == null)
                 {
-                    _clusterManagerGenericRepository = new ClusterManagerGenericRepository(_dbContext);
+                    _clusterManagerGenericRepository = new ClusterManagerRepository(_dbContext);
                 }
                 return _clusterManagerGenericRepository;
             }

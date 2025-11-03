@@ -9,12 +9,12 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public class SupervisorGenericRepository : ISupervisorGenericRepository
+    public class SupervisorRepository : ISupervisorRepository
     {
         private readonly ApplicationDbContext _context;
         private readonly DbSet<Supervisor> _supervisor;
 
-        public SupervisorGenericRepository(ApplicationDbContext context)
+        public SupervisorRepository(ApplicationDbContext context)
         {
             _context = context;
             _supervisor = context.Set<Supervisor>();
