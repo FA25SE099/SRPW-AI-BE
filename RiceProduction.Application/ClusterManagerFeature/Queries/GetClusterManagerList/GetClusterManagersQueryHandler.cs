@@ -17,10 +17,10 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<GetClusterManagersQueryHandler> _logger;
 
-        public GetClusterManagersQueryHandler(IClusterManagerRepository clusterRepo, IUnitOfWork unitOfWork, ILogger<GetClusterManagersQueryHandler> logger)
+        public GetClusterManagersQueryHandler(IUnitOfWork unitOfWork, ILogger<GetClusterManagersQueryHandler> logger)
         {
-            _clusterRepo = clusterRepo;
             _unitOfWork = unitOfWork;
+            _clusterRepo = _unitOfWork.ClusterManagerRepository;
             _logger = logger;
         }
         public async Task<PagedResult<List<ClusterManagerResponse>>> Handle(GetClusterManagersQuery request, CancellationToken cancellationToken)
@@ -34,22 +34,21 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
                     request.PhoneNumber,
                     request.FreeOrAssigned,
                     cancellationToken);
-                var clusterManagerResponse = new List<ClusterManagerResponse>();
-                foreach (var clusterManager in result)
+
+                var resultList = result.ToList();
+
+                var clusterManagerResponse = resultList.Select(clusterManager => new ClusterManagerResponse
                 {
-                    clusterManagerResponse.Add(new ClusterManagerResponse
-                    {
-                        ClusterManagerName = clusterManager.FullName,
-                        ClusterManagerPhoneNumber = clusterManager.PhoneNumber,
-                        ClusterId = clusterManager.ClusterId,
-                        AssignedDate = clusterManager.AssignedDate,
-                    });
-                }
+                    ClusterManagerName = clusterManager.FullName,
+                    ClusterManagerPhoneNumber = clusterManager.PhoneNumber,
+                    ClusterId = clusterManager.ClusterId,
+                    AssignedDate = clusterManager.AssignedDate,
+                }).ToList();
                 return PagedResult<List<ClusterManagerResponse>>.Success(
                     clusterManagerResponse,
                     request.CurrentPage,
                     request.PageSize,
-                    result.Count(),
+                    resultList.Count(),
                     "Cluster managers retrieved successfully");
             }
             catch (Exception ex)
