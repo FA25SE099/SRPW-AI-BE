@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
 using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerList;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.MaterialRequests;
@@ -44,5 +45,16 @@ public class ClusterManagerController : Controller
             _logger.LogError(ex, "Error occurred while getting free cluster managers");
             return StatusCode(500, "An error occurred while processing your request");
         }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateClusterManager([FromBody] CreateClusterManagerCommand command)
+    {
+        var result = await _mediator.Send(command);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
     }
 }

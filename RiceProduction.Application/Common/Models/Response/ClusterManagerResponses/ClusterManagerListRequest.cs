@@ -11,8 +11,8 @@ namespace RiceProduction.Application.Common.Models.Response.ClusterManagerRespon
     {
         public int CurrentPage { get; set; } = 1;
         public int PageSize { get; set; }
-        // True = Free, False = Assigned
-        public bool FreeOrAssigned { get; set; }
+        // True = Free, False = Assigned, Null = All
+        public bool? FreeOrAssigned { get; set; }
         public string? Search { get; set; }
         public string? PhoneNumber { get; set; }
     }

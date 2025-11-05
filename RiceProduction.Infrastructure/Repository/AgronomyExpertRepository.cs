@@ -1,4 +1,5 @@
-﻿using RiceProduction.Infrastructure.Data;
+﻿using RiceProduction.Domain.Entities;
+using RiceProduction.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,45 +9,46 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public class ClusterManagerRepository : IClusterManagerRepository
+
+    public class AgronomyExpertRepository : IAgronomyExpertRepository
     {
         private readonly ApplicationDbContext _context;
-        private readonly DbSet<ClusterManager> _clusterManager;
+        private readonly DbSet<AgronomyExpert> _agronomyExpert;
 
-        public ClusterManagerRepository(ApplicationDbContext context)
+        public AgronomyExpertRepository(ApplicationDbContext context)
         {
             _context = context;
-            _clusterManager = context.Set<ClusterManager>();
+            _agronomyExpert = context.Set<AgronomyExpert>();
         }
-        public void UpdateRange(IEnumerable<ClusterManager> entities)
+        public void UpdateRange(IEnumerable<AgronomyExpert> entities)
         {
-            _context.Set<ClusterManager>().UpdateRange(entities);
+            _context.Set<AgronomyExpert>().UpdateRange(entities);
         }
 
         public async Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _clusterManager.AnyAsync(f => f.Id == id, cancellationToken);
+            return await _agronomyExpert.AnyAsync(f => f.Id == id, cancellationToken);
         }
 
-        public async Task<IEnumerable<ClusterManager>> FindAsync(Expression<Func<ClusterManager, bool>> predicate, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<AgronomyExpert>> FindAsync(Expression<Func<AgronomyExpert, bool>> predicate, CancellationToken cancellationToken = default)
         {
-            return await _clusterManager
+            return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<IEnumerable<ClusterManager?>> GetAllClusterManagerAsync(CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<AgronomyExpert?>> GetAllAgronomyExpertAsync(CancellationToken cancellationToken = default)
         {
-            return await _clusterManager
+            return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<IEnumerable<ClusterManager?>> GetAllClusterManagerByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<AgronomyExpert?>> GetAllAgronomyExpertByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default)
         {
-            var query = _clusterManager
+            var query = _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .AsQueryable();
@@ -72,9 +74,9 @@ namespace RiceProduction.Infrastructure.Repository
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<IEnumerable<ClusterManager?>> GetAllClusterManagerAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, bool? freeOrAssigned, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<AgronomyExpert?>> GetAllAgronomyExpertAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, bool? freeOrAssigned, CancellationToken cancellationToken = default)
         {
-            var query = _clusterManager
+            var query = _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .AsQueryable();
@@ -107,43 +109,43 @@ namespace RiceProduction.Infrastructure.Repository
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<ClusterManager?> GetClusterManagerByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        public async Task<AgronomyExpert?> GetAgronomyExpertByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _clusterManager
+            return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
         }
 
 
-        public async Task<ClusterManager?> GetClusterManagerByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default)
+        public async Task<AgronomyExpert?> GetAgronomyExpertByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default)
         {
-            return await _clusterManager
+            return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .FirstOrDefaultAsync(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber, cancellationToken);
         }
 
-        public async Task<ClusterManager?> GetClusterManagerByNameOrEmail(string search, CancellationToken cancellationToken = default)
+        public async Task<AgronomyExpert?> GetAgronomyExpertByNameOrEmail(string search, CancellationToken cancellationToken = default)
         {
-            return await _clusterManager
+            return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .FirstOrDefaultAsync(f => (f.FullName != null && f.FullName.Contains(search)) ||
                                           (f.Email != null && f.Email.Contains(search)), cancellationToken);
         }
 
-        public async Task<ClusterManager?> GetClusterManagerByClusterId(Guid ClusterId, CancellationToken cancellationToken = default)
+        public async Task<AgronomyExpert?> GetAgronomyExpertByClusterId(Guid ClusterId, CancellationToken cancellationToken = default)
         {
-            return await _clusterManager
+            return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .FirstOrDefaultAsync(s => s.ClusterId == ClusterId, cancellationToken);
         }
 
-        public async Task<(IEnumerable<ClusterManager> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<ClusterManager, bool>>? predicate = null, CancellationToken cancellationToken = default)
+        public async Task<(IEnumerable<AgronomyExpert> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<AgronomyExpert, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
-            var query = _clusterManager
+            var query = _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .AsQueryable();
@@ -157,9 +159,9 @@ namespace RiceProduction.Infrastructure.Repository
             return (items, totalCount);
         }
 
-        public IQueryable<ClusterManager> GetQueryable()
+        public IQueryable<AgronomyExpert> GetQueryable()
         {
-            return _clusterManager.AsQueryable();
+            return _agronomyExpert.AsQueryable();
         }
     }
 }

@@ -28,17 +28,30 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
             {
                 var clusterRepo = _unitOfWork.Repository<Cluster>();
 
-                var duplicate = await clusterRepo.FindAsync(m => m.ClusterName == request.ClusterName && m.ClusterManagerId == request.ClusterManagerId);
+                var duplicate = await clusterRepo.FindAsync(m => m.ClusterName == request.ClusterName);
                 if (duplicate != null)
                 {
-                    return Result<Guid>.Failure($"Cluster with name '{request.ClusterName}' and belonged to cluster manager ID = '{request.ClusterManagerId}' already exists");
+                    return Result<Guid>.Failure($"Cluster with name '{request.ClusterName}' already exists");
+                }
+
+                duplicate = await clusterRepo.FindAsync(m => m.ClusterManagerId == request.ClusterManagerId);
+                if (duplicate != null)
+                {
+                    return Result<Guid>.Failure($"Cluster manager ID = '{request.ClusterManagerId}' already managing another cluster with ID = '{duplicate.Id}'");
+                }
+
+                duplicate = await clusterRepo.FindAsync(m => m.AgronomyExpertId == request.AgronomyExpertId);
+                if (duplicate != null)
+                {
+                    return Result<Guid>.Failure($"Agronomy Expert ID = '{request.AgronomyExpertId}' already managing another cluster with ID = '{duplicate.Id}'");
                 }
 
                 var id = await clusterRepo.GenerateNewGuid(Guid.NewGuid());
                 var newCluster = new Cluster
                 {
                     ClusterName = request.ClusterName,
-                    ClusterManagerId = request.ClusterManagerId
+                    ClusterManagerId = request.ClusterManagerId,
+                    AgronomyExpertId = request.AgronomyExpertId
                 };
 
                 await clusterRepo.AddAsync(newCluster);

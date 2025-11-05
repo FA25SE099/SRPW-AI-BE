@@ -17,5 +17,6 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
         public string ClusterName { get; set; } = string.Empty;
 
         public Guid? ClusterManagerId { get; set; }
+        public Guid? AgronomyExpertId { get; set; }
     }
 }

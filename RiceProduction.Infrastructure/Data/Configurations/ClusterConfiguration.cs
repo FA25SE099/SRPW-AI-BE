@@ -19,6 +19,7 @@ public class ClusterConfiguration : IEntityTypeConfiguration<Cluster>
         builder.HasIndex(c => c.Boundary)
             .HasMethod("GIST");
         builder.HasIndex(c => c.ClusterManagerId);
+        builder.HasIndex(c => c.AgronomyExpertId);
 
     }
 }

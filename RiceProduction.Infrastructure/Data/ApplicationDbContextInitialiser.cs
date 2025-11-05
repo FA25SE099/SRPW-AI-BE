@@ -64,6 +64,7 @@ namespace RiceProduction.Infrastructure.Data
 
         public async Task TrySeedAsync()
         {
+            //await SeedProductionPlanAsync();
             await SeedRolesAsync();
             await SeedUsersAsync();
             await SeedRiceVarietyCategoriesAsync();
@@ -72,7 +73,6 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
             await SeedClusterDataAsync();
-            await SeedProductionPlanAsync();
             await SeedCoreDataAsync();
             await SeedPlotDataAsync();
             await SeedClusterAsync();
@@ -581,6 +581,7 @@ namespace RiceProduction.Infrastructure.Data
                 }
             }
         }
+
         private async Task SeedVietnameseRiceDataAsync()
         {
 

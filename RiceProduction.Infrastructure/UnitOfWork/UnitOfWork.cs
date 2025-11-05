@@ -27,6 +27,7 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
         private ISupervisorRepository? _supervisorRepository;
         private IClusterManagerRepository? _clusterManagerGenericRepository;
+        private IAgronomyExpertRepository? _agronomyExpertRepository;
         private readonly IMemoryCache _memoryCache;
         private IFarmerRepository? _farmerRepository;
         private IPlotRepository? _plotRepository;
@@ -157,6 +158,18 @@ namespace RiceProduction.Infrastructure.UnitOfWork
                     _clusterManagerGenericRepository = new ClusterManagerRepository(_dbContext);
                 }
                 return _clusterManagerGenericRepository;
+            }
+        }
+
+        public IAgronomyExpertRepository AgronomyExpertRepository
+        {
+            get
+            {
+                if (_agronomyExpertRepository == null)
+                {
+                    _agronomyExpertRepository = new AgronomyExpertRepository(_dbContext);
+                }
+                return _agronomyExpertRepository;
             }
         }
         
