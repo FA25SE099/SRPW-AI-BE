@@ -18,5 +18,6 @@ namespace RiceProduction.Application.Common.Interfaces
         IAgronomyExpertRepository AgronomyExpertRepository { get; }
         IFarmerRepository FarmerRepository { get; }
         IPlotRepository PlotRepository { get; }
+        IClusterRepository? ClusterRepository { get; }
     }
 }

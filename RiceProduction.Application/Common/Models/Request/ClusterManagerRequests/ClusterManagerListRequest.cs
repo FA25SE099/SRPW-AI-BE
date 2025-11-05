@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.Common.Models.Response.ClusterManagerResponses
+namespace RiceProduction.Application.Common.Models.Request.ClusterManagerRequests
 {
     public class ClusterManagerListRequest
     {

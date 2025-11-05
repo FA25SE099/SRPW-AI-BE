@@ -1,8 +1,10 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
+using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerById;
 using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerList;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Request.ClusterManagerRequests;
 using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 
@@ -56,5 +58,27 @@ public class ClusterManagerController : Controller
             return BadRequest(result);
         }
         return Ok(result);
+    }
+    [HttpGet("Get-by-id")]
+    public async Task<IActionResult> GetClusterManagerById([FromQuery] Guid clusterManagerId)
+    {
+        try
+        {
+            var query = new GetClusterManagerByIdQuery
+            {
+                ClusterManagerId = clusterManagerId
+            };
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while getting cluster manager by ID");
+            return StatusCode(500, "An error occurred while processing your request");
+        }
     }
 }

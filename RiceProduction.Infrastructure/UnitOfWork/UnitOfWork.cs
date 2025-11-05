@@ -31,6 +31,7 @@ namespace RiceProduction.Infrastructure.UnitOfWork
         private readonly IMemoryCache _memoryCache;
         private IFarmerRepository? _farmerRepository;
         private IPlotRepository? _plotRepository;
+        private IClusterRepository? _clusterRepository;
 
         // ===================================
         // === Constructors
@@ -182,6 +183,18 @@ namespace RiceProduction.Infrastructure.UnitOfWork
                     _plotRepository = new PlotRepository(_dbContext);
                 }
                 return _plotRepository;
+            }
+        }
+        
+        public IClusterRepository ClusterRepository
+        {
+            get
+            {
+                if (_clusterRepository == null)
+                {
+                    _clusterRepository = new ClusterRepository(_dbContext);
+                }
+                return _clusterRepository;
             }
         }
     }

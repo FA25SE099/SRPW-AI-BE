@@ -46,40 +46,44 @@ namespace RiceProduction.Infrastructure.Repository
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<IEnumerable<AgronomyExpert?>> GetAllAgronomyExpertByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default)
+        public async Task<(IEnumerable<AgronomyExpert?>, int totalCount)> GetAllAgronomyExpertByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default)
         {
             var query = _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .AsQueryable();
+            var totalCount = await query.CountAsync(cancellationToken);
+            search = search?.ToLower();
             if (!string.IsNullOrEmpty(search))
             {
-                query = query.Where(f => (f.FullName != null && f.FullName.Contains(search)) ||
-                                         (f.Email != null && f.Email.Contains(search)));
+                query = query.Where(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
+                                         (f.Email != null && f.Email.ToLower().Contains(search)));
             }
             if (!string.IsNullOrEmpty(phoneNumber))
             {
-                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber);
+                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber));
             }
             if (pageSize == 0)
             {
-                return await query
+                return (await query
                 .OrderBy(s => s.FullName)
-                .ToListAsync(cancellationToken);
+                .ToListAsync(cancellationToken), totalCount);
             }
-            return await query
+            return (await query
                 .OrderBy(s => s.FullName)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
-                .ToListAsync(cancellationToken);
+                .ToListAsync(cancellationToken), totalCount);
         }
 
-        public async Task<IEnumerable<AgronomyExpert?>> GetAllAgronomyExpertAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, bool? freeOrAssigned, CancellationToken cancellationToken = default)
+        public async Task<(IEnumerable<AgronomyExpert?>, int totalCount)> GetAllAgronomyExpertAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, bool? freeOrAssigned, CancellationToken cancellationToken = default)
         {
             var query = _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
                 .AsQueryable();
+            var totalCount = await query.CountAsync(cancellationToken);
+            search = search?.ToLower();
             if (freeOrAssigned.HasValue)
             {
                 if (freeOrAssigned.Value)
@@ -89,24 +93,24 @@ namespace RiceProduction.Infrastructure.Repository
             }
             if (!string.IsNullOrEmpty(search))
             {
-                query = query.Where(f => (f.FullName != null && f.FullName.Contains(search)) ||
-                                         (f.Email != null && f.Email.Contains(search)));
+                query = query.Where(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
+                                         (f.Email != null && f.Email.ToLower().Contains(search)));
             }
             if (!string.IsNullOrEmpty(phoneNumber))
             {
-                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber);
+                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber));
             }
             if (pageSize == 0)
             {
-                return await query
+                return (await query
                 .OrderBy(s => s.FullName)
-                .ToListAsync(cancellationToken);
+                .ToListAsync(cancellationToken), totalCount);
             }
-            return await query
+            return (await query
                 .OrderBy(s => s.FullName)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
-                .ToListAsync(cancellationToken);
+                .ToListAsync(cancellationToken), totalCount);
         }
 
         public async Task<AgronomyExpert?> GetAgronomyExpertByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -123,16 +127,17 @@ namespace RiceProduction.Infrastructure.Repository
             return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
-                .FirstOrDefaultAsync(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber, cancellationToken);
+                .FirstOrDefaultAsync(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber), cancellationToken);
         }
 
         public async Task<AgronomyExpert?> GetAgronomyExpertByNameOrEmail(string search, CancellationToken cancellationToken = default)
         {
+            search = search.ToLower();
             return await _agronomyExpert
                 .Include(s => s.ManagedCluster)
                 .OrderBy(s => s.AssignedDate)
-                .FirstOrDefaultAsync(f => (f.FullName != null && f.FullName.Contains(search)) ||
-                                          (f.Email != null && f.Email.Contains(search)), cancellationToken);
+                .FirstOrDefaultAsync(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
+                                          (f.Email != null && f.Email.ToLower().Contains(search)), cancellationToken);
         }
 
         public async Task<AgronomyExpert?> GetAgronomyExpertByClusterId(Guid ClusterId, CancellationToken cancellationToken = default)

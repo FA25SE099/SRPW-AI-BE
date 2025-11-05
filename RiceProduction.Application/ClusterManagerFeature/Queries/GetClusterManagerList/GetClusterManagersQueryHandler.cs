@@ -27,7 +27,7 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
         {
             try
             {
-                var result = await _clusterRepo.GetAllClusterManagerAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(
+                var (result, totalCount) = await _clusterRepo.GetAllClusterManagerAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(
                     request.CurrentPage,
                     request.PageSize,
                     request.Search,
@@ -39,8 +39,10 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
 
                 var clusterManagerResponse = resultList.Select(clusterManager => new ClusterManagerResponse
                 {
+                    ClusterManagerId = clusterManager.Id,
                     ClusterManagerName = clusterManager.FullName,
                     ClusterManagerPhoneNumber = clusterManager.PhoneNumber,
+                    Email = clusterManager.Email,
                     ClusterId = clusterManager.ClusterId,
                     AssignedDate = clusterManager.AssignedDate,
                 }).ToList();
@@ -48,7 +50,7 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
                     clusterManagerResponse,
                     request.CurrentPage,
                     request.PageSize,
-                    resultList.Count(),
+                    totalCount,
                     "Cluster managers retrieved successfully");
             }
             catch (Exception ex)

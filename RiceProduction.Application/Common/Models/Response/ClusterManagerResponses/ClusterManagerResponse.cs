@@ -10,8 +10,10 @@ namespace RiceProduction.Application.Common.Models.Response.ClusterManagerRespon
 {
     public class ClusterManagerResponse
     {
+        public Guid ClusterManagerId { get; set; }
         public string? ClusterManagerName { get; set; }
         public string? ClusterManagerPhoneNumber { get; set; }
+        public string? Email { get; set; }
         public Guid? ClusterId { get; set; }
 
         public DateTime? AssignedDate { get; set; }
