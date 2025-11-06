@@ -21,19 +21,15 @@ namespace RiceProduction.Application.Common.Mappings
                 .ForMember(dest => dest.VarietyName, opt => opt.MapFrom(src => src.Group != null && src.Group.RiceVariety != null ? src.Group.RiceVariety.VarietyName : string.Empty))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
                 .ForMember(dest => dest.BoundaryGeoJson, opt => opt.MapFrom(src => src.Boundary))
-                .ForMember(dest => dest.CoordinateGeoJson, opt => opt.MapFrom(src => src.Coordinate));
+                .ForMember(dest => dest.CoordinateGeoJson, opt => opt.MapFrom(src => src.Coordinate))
+                .ForMember(dest => dest.Seasons, opt => opt.MapFrom(src => src.PlotCultivations.Select(s => s.Season).Where(s => s != null).Distinct()));
             CreateMap<Plot, PlotDetailDTO>().IncludeBase<Plot, PlotDTO>()
+                .ForMember(dest => dest.PlotCultivations, opt => opt.MapFrom(src =>
+                src.Group != null ? src.PlotCultivations : new List<PlotCultivation>()))
                 .ForMember(dest => dest.ProductionPlans, opt => opt.MapFrom(src =>
-                src.Group != null ? src.Group.ProductionPlans : new List<ProductionPlan>()))
-                .ForMember(dest => dest.ProductionPlanTaskMaterials, opt => opt.MapFrom(src =>
-            src.Group != null ?
-            src.Group.ProductionPlans
-            .SelectMany(s => s.CurrentProductionStages)
-            .SelectMany(t => t.ProductionPlanTasks)
-            .SelectMany(m => m.ProductionPlanTaskMaterials)
-            .Distinct()
-            .ToList()
-            : new List<ProductionPlanTaskMaterial> ()));
+                src.Group != null ? src.Group.ProductionPlans : new List<ProductionPlan>()));
+            CreateMap<Season, SeasonDTO>()
+                .ForMember(dest => dest.SeasonId, opt => opt.MapFrom(src => src.Id));
         }
 
         

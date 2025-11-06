@@ -8,6 +8,7 @@ using RiceProduction.Application.FarmerFeature.Command;
 using RiceProduction.Application.FarmerFeature.Command.ImportFarmer;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel;
+using RiceProduction.Application.FarmerFeature.Queries.ExportFarmerTemplateExcel;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
@@ -146,6 +147,17 @@ namespace RiceProduction.API.Controllers
             return result.Data;
         }
 
+        [HttpPost("Export-Template-Data")]
+        public async Task<IActionResult> ExportTemplate()
+        {
+            var query = new ExportFarmerTemplateQueries();
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded || result.Data == null)
+            {
+                return BadRequest(new { message = result.Message });
+            }
+            return result.Data;
+        }
 
     }
     }

@@ -5,6 +5,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequests;
 using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Queries;
+using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.API.Controllers
 {
@@ -114,6 +115,25 @@ namespace RiceProduction.API.Controllers
                 _logger.LogError(ex, "Error occurred while getting plot detail {PlotId}", id);
                 return StatusCode(500, new { message = "An error occurred while processing your request" });
             }
+        }
+        [HttpGet("out-season")]
+        [ProducesResponseType(typeof(Result<IEnumerable<PlotDTO>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetPlotsOutOfSeason ([FromQuery] DateTime? currentDate, [FromQuery] string? searchTerm)
+        {
+            var query = new GetPlotOutSeasonQueries
+            {
+                CurrentDate = currentDate,
+                SearchTerm = searchTerm
+            };
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to get plots out of season: {Message}", result.Message);
+                return BadRequest(result);
+            }
+
+            return Ok(result);
         }
     }
 }
