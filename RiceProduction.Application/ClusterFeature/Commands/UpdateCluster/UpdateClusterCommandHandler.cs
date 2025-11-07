@@ -40,22 +40,29 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 
                 var clusterRepo = _unitOfWork.Repository<Cluster>();
 
-                var duplicate = await clusterRepo.FindAsync(m => m.ClusterName == request.ClusterName);
-                if (duplicate != null)
+                var duplicateName = await clusterRepo.FindAsync(m => m.ClusterName == request.ClusterName);
+                if (duplicateName != null)
                 {
-                    return Result<Guid>.Failure($"Cluster with name '{request.ClusterName}' already exists");
+                    if (duplicateName.Id != cluster.Id)
+                    {
+                        return Result<Guid>.Failure($"Cluster with name '{request.ClusterName}' already exists");
+                    }
                 }
-
-                duplicate = await clusterRepo.FindAsync(m => m.ClusterManagerId == request.ClusterManagerId);
-                if (duplicate != null)
+                var duplicateMan = await clusterRepo.FindAsync(m => m.ClusterManagerId == request.ClusterManagerId);
+                if (duplicateMan != null)
                 {
-                    return Result<Guid>.Failure($"Cluster manager ID = '{request.ClusterManagerId}' already managing another cluster with ID = '{duplicate.Id}'");
+                    if (duplicateMan.Id != cluster.Id)
+                    {
+                        return Result<Guid>.Failure($"Cluster manager ID = '{request.ClusterManagerId}' already managing another cluster with ID = '{duplicateMan.Id}'");
+                    }
                 }
-
-                duplicate = await clusterRepo.FindAsync(m => m.AgronomyExpertId == request.AgronomyExpertId);
-                if (duplicate != null)
+                var duplicateExpert = await clusterRepo.FindAsync(m => m.AgronomyExpertId == request.AgronomyExpertId);
+                if (duplicateExpert != null)
                 {
-                    return Result<Guid>.Failure($"Agronomy Expert ID = '{request.AgronomyExpertId}' already managing another cluster with ID = '{duplicate.Id}'");
+                    if (duplicateExpert.Id != cluster.Id)
+                    {
+                        return Result<Guid>.Failure($"Agronomy Expert ID = '{request.AgronomyExpertId}' already managing another cluster with ID = '{duplicateExpert.Id}'");
+                    }
                 }
                 var result = await _clusterRepo.UpdateCluster(request.ClusterId, cluster, cancellationToken);
                 return Result<Guid>.Success(
