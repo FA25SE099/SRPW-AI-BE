@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
+using AutoMapper;
 
 namespace RiceProduction.Application.Common.Mappings
 {

@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
 using RiceProduction.Application.ProductionPlanFeature.Commands.EditPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetApprovedPlan;
@@ -12,10 +13,12 @@ namespace RiceProduction.API.Controllers
     public class ExpertController : ControllerBase
     {
         private readonly IMediator _mediator;
+        private readonly IUser _currentUser;
 
-        public ExpertController(IMediator mediator)
+        public ExpertController(IMediator mediator, IUser currentUser)
         {
             _mediator = mediator;
+            _currentUser = currentUser;
         }
 
         [HttpGet("pending-approvals")]
@@ -61,6 +64,7 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest("Plan ID in URL does not match Plan ID in body.");
             }
+            command.ExpertId = _currentUser.Id;
 
             var result = await _mediator.Send(command);
 
@@ -79,6 +83,7 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest("Plan ID in URL does not match Plan ID in body.");
             }
+            command.ExpertId = _currentUser.Id;
 
             var result = await _mediator.Send(command);
 

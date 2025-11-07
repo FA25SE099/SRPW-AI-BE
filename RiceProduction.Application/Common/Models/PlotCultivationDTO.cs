@@ -12,6 +12,7 @@ namespace RiceProduction.Application.Common.Models
 {
     public class PlotCultivationDTO
     {
+        public Guid PlotCultivationId { get; set; }
         public Guid PlotId { get; set; }
         public Guid SeasonId { get; set; }
         public Guid RiceVarietyId { get; set; }
@@ -20,5 +21,6 @@ namespace RiceProduction.Application.Common.Models
         public CultivationStatus Status { get; set; } = CultivationStatus.Planned;
         public Guid? CurrentProductionStageId { get; set; }
         public DateTime? CurrentStageStartDate { get; set; }
+        public ICollection<CultivationTaskDTO> CultivationTasks { get; set; } = new List<CultivationTaskDTO>();
     }
 }
