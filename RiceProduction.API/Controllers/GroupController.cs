@@ -20,25 +20,7 @@ public class GroupController : Controller
     {
         _mediator = mediator;
     }
-<<<<<<< HEAD
-    // [HttpPost()]
-    // public async Task<ActionResult<PagedResult<List<GroupResponse>>>> GetGroupsByClusterIdPaging([FromBody] GroupListRequest request)
-    // {
 
-    //     var query = new GetGroupsByClusterManagerIdQuery()
-    //     {
-    //         ClusterManagerUserId = new Guid("019a0806-24ef-7df0-ac28-74495da52a12"),
-    //         CurrentPage = request.CurrentPage,
-    //         PageSize = request.PageSize
-    //     };
-    //     var result = await _mediator.Send(query);
-    //     if (!result.Succeeded)
-    //     {
-    //         return BadRequest(result);
-    //     }
-    //     return Ok(result);
-    // }
-=======
     [HttpPost()]
     public async Task<ActionResult<PagedResult<List<GroupResponse>>>> GetGroupsByClusterIdPaging([FromBody] GroupListRequest request)
     {
@@ -55,7 +37,6 @@ public class GroupController : Controller
         }
         return Ok(result);
     }
->>>>>>> 255dffccd55df376729e3514ac75fe99918f0c84
     [HttpGet("{id}")]
     public async Task<IActionResult> GetGroupDetail(Guid id)
     {
