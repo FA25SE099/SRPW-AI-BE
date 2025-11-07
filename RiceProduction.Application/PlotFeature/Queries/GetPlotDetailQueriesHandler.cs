@@ -29,11 +29,23 @@ namespace RiceProduction.Application.PlotFeature.Queries
             {
                 _logger.LogInformation("Retrieving detail plot data with ID: {PlotId}", request.PlotId);
                 var query = _unitOfWork.Repository<Plot>().GetQueryable()
+                    .Include(p => p.Farmer)
                     .Include(p => p.Group)
                         .ThenInclude(g => g.ProductionPlans)
                             .ThenInclude(pp => pp.CurrentProductionStages)
                                 .ThenInclude(ps => ps.ProductionPlanTasks)
-                                .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                                    .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                     .Include(p => p.Group)
+                            .ThenInclude(g => g.RiceVariety)
+                    .Include(p => p.PlotCultivations)
+                        .ThenInclude(pc => pc.Season)
+                     .Include(p => p.PlotCultivations)
+                        .ThenInclude(pc => pc.RiceVariety)
+                      .Include(p => p.PlotCultivations)
+                        .ThenInclude(pc => pc.RiceVariety)
+                      .Include(p => p.PlotCultivations)
+                        .ThenInclude(c => c.CultivationTasks)
+                      .AsSplitQuery()
                     .Where(p => p.Id == request.PlotId);
                 var plot = await query.FirstOrDefaultAsync(cancellationToken);
 
