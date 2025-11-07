@@ -6,5 +6,6 @@ public enum GroupStatus
     Active,
     ReadyForOptimization,
     Locked,
-    Exception
+    Exception,
+    Completed
 }

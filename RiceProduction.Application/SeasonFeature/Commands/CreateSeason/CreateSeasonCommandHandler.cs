@@ -1,6 +1,8 @@
+using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.SeasonFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SeasonFeature.Commands.CreateSeason
@@ -8,11 +10,13 @@ namespace RiceProduction.Application.SeasonFeature.Commands.CreateSeason
     public class CreateSeasonCommandHandler : IRequestHandler<CreateSeasonCommand, Result<Guid>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
         private readonly ILogger<CreateSeasonCommandHandler> _logger;
 
-        public CreateSeasonCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateSeasonCommandHandler> logger)
+        public CreateSeasonCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<CreateSeasonCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
             _logger = logger;
         }
 
@@ -41,6 +45,8 @@ namespace RiceProduction.Application.SeasonFeature.Commands.CreateSeason
 
                 await seasonRepo.AddAsync(newSeason);
                 await _unitOfWork.CompleteAsync();
+
+                await _mediator.Publish(new SeasonChangedEvent(id, ChangeType.Created), cancellationToken);
 
                 _logger.LogInformation("Created season with ID: {SeasonId}", id);
                 return Result<Guid>.Success(id, "Season created successfully");

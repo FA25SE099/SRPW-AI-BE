@@ -1,4 +1,5 @@
-﻿using RiceProduction.Domain.Entities;
+﻿using Microsoft.EntityFrameworkCore.Query;
+using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -150,5 +151,30 @@ namespace RiceProduction.Infrastructure.Repository
         {
             return _supervisor.AsQueryable();
         }
+        public async Task<IReadOnlyList<Supervisor>> ListAsync(
+    Expression<Func<Supervisor, bool>>? filter = null,
+    Func<IQueryable<Supervisor>, IOrderedQueryable<Supervisor>>? orderBy = null,
+    Func<IQueryable<Supervisor>, IIncludableQueryable<Supervisor, object>>? includeProperties = null
+)
+        {
+            IQueryable<Supervisor> query = _context.Set<Supervisor>();
+
+            if (filter != null)
+            {
+                query = query.Where(filter);
+            }
+
+            if (includeProperties != null)
+            {
+                query = includeProperties(query);
+            }
+
+            if (orderBy != null)
+            {
+                query = orderBy(query);
+            }
+            return await query.ToListAsync();
+        }
+
     }
 }

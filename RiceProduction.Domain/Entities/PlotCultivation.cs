@@ -19,6 +19,9 @@ public class PlotCultivation : BaseAuditableEntity
     [Column(TypeName = "decimal(10,2)")]
     public decimal? ActualYield { get; set; }
 
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? ExpectedYield { get; set; }
+
     public CultivationStatus Status { get; set; } = CultivationStatus.Planned;
 
     [ForeignKey("PlotId")]

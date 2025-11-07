@@ -12,9 +12,12 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
     public class ImportFarmerCommand : IRequest<ImportFarmerResult>
     {
         public IFormFile File { get; set; }
-        public ImportFarmerCommand(IFormFile file)
+        public Guid? ClusterManagerId { get; set; }
+        
+        public ImportFarmerCommand(IFormFile file, Guid? clusterManagerId = null)
         {
             File = file;
+            ClusterManagerId = clusterManagerId;
         }
     }
 }

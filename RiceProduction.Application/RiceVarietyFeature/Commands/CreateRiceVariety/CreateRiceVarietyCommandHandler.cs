@@ -1,6 +1,8 @@
+using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.RiceVarietyFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVariety
@@ -8,11 +10,13 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVarie
     public class CreateRiceVarietyCommandHandler : IRequestHandler<CreateRiceVarietyCommand, Result<Guid>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
         private readonly ILogger<CreateRiceVarietyCommandHandler> _logger;
 
-        public CreateRiceVarietyCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateRiceVarietyCommandHandler> logger)
+        public CreateRiceVarietyCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<CreateRiceVarietyCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
             _logger = logger;
         }
 
@@ -50,6 +54,8 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVarie
 
                 await riceVarietyRepo.AddAsync(newVariety);
                 await _unitOfWork.CompleteAsync();
+
+                await _mediator.Publish(new RiceVarietyChangedEvent(id, ChangeType.Created), cancellationToken);
 
                 _logger.LogInformation("Created rice variety with ID: {RiceVarietyId}", id);
                 return Result<Guid>.Success(id, "Rice variety created successfully");

@@ -1,14 +1,15 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore.Query;
+using MiniExcelLibs;
+using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models;
+using RiceProduction.Infrastructure.Data;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using MiniExcelLibs;
-using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.Common.Models;
-using RiceProduction.Infrastructure.Data;
 
 namespace RiceProduction.Infrastructure.Repository
 {
@@ -115,7 +116,31 @@ namespace RiceProduction.Infrastructure.Repository
         {
             return _farmers.AsQueryable();
         }
+        public async Task<IReadOnlyList<Farmer>> ListAsync(
+    Expression<Func<Farmer , bool>>? filter = null,
+    Func<IQueryable<Farmer>, IOrderedQueryable<Farmer>>? orderBy = null,
+    Func<IQueryable<Farmer>, IIncludableQueryable<Farmer, object>>? includeProperties = null
+)
+        {
+            IQueryable<Farmer> query = _context.Set<Farmer>();
 
-        
+            if (filter != null)
+            {
+                query = query.Where(filter);
+            }
+
+            if (includeProperties != null)
+            {
+                query = includeProperties(query);
+            }
+
+            if (orderBy != null)
+            {
+                query = orderBy(query);
+            }
+            return await query.ToListAsync();
+        }
+
+
     }
 }
