@@ -75,6 +75,8 @@ namespace RiceProduction.Infrastructure.Data
             await SeedClusterDataAsync();
             await SeedProductionPlanAsync();
             await SeedCoreDataAsync();    
+            await SeedCoreDataAsync();
+            //await SeedPlotDataAsync();
             await SeedClusterAsync();
             await SeedGroupAsync();
             await SeedProductionTask();
@@ -572,6 +574,7 @@ namespace RiceProduction.Infrastructure.Data
                 }
             }
         }
+
         private async Task SeedVietnameseRiceDataAsync()
         {
 
@@ -2058,6 +2061,10 @@ namespace RiceProduction.Infrastructure.Data
         };
 
                 await _context.Set<Group>().AddRangeAsync(groups);
+                clusterManager1.ClusterId = cluster1Id;
+                clusterManager2.ClusterId = cluster2Id;
+                _context.Set<ClusterManager>().Update(clusterManager1);
+                _context.Set<ClusterManager>().Update(clusterManager2);
                 await _context.SaveChangesAsync();
                 _logger.LogInformation("Seeded {Count} Groups", groups.Count);
             }

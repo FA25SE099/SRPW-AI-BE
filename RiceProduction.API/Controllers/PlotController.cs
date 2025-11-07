@@ -87,6 +87,7 @@ namespace RiceProduction.API.Controllers
             }
             return Ok(result);
         }
+
         [HttpGet("detail/{id}")]
         [ProducesResponseType(typeof(Result<PlotDetailDTO>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]

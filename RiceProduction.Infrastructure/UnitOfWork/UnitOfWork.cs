@@ -25,11 +25,13 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
         private ConcurrentDictionary<string, object> _repos;
 
-        private ISupervisorGenericRepository? _supervisorRepository;
-        private IClusterManagerGenericRepository? _clusterManagerGenericRepository;
+        private ISupervisorRepository? _supervisorRepository;
+        private IClusterManagerRepository? _clusterManagerGenericRepository;
+        private IAgronomyExpertRepository? _agronomyExpertRepository;
         private readonly IMemoryCache _memoryCache;
         private IFarmerRepository? _farmerRepository;
         private IPlotRepository? _plotRepository;
+        private IClusterRepository? _clusterRepository;
 
         // ===================================
         // === Constructors
@@ -136,27 +138,39 @@ namespace RiceProduction.Infrastructure.UnitOfWork
             }
         }
 
-        public ISupervisorGenericRepository SupervisorRepository
+        public ISupervisorRepository SupervisorRepository
         {
             get
             {
                 if (_supervisorRepository == null)
                 {
-                    _supervisorRepository = new SupervisorGenericRepository(_dbContext);
+                    _supervisorRepository = new SupervisorRepository(_dbContext);
                 }
                 return _supervisorRepository;
             }
         }
 
-        public IClusterManagerGenericRepository ClusterManagerRepository
+        public IClusterManagerRepository ClusterManagerRepository
         {
             get
             {
                 if (_clusterManagerGenericRepository == null)
                 {
-                    _clusterManagerGenericRepository = new ClusterManagerGenericRepository(_dbContext);
+                    _clusterManagerGenericRepository = new ClusterManagerRepository(_dbContext);
                 }
                 return _clusterManagerGenericRepository;
+            }
+        }
+
+        public IAgronomyExpertRepository AgronomyExpertRepository
+        {
+            get
+            {
+                if (_agronomyExpertRepository == null)
+                {
+                    _agronomyExpertRepository = new AgronomyExpertRepository(_dbContext);
+                }
+                return _agronomyExpertRepository;
             }
         }
         
@@ -169,6 +183,18 @@ namespace RiceProduction.Infrastructure.UnitOfWork
                     _plotRepository = new PlotRepository(_dbContext);
                 }
                 return _plotRepository;
+            }
+        }
+        
+        public IClusterRepository ClusterRepository
+        {
+            get
+            {
+                if (_clusterRepository == null)
+                {
+                    _clusterRepository = new ClusterRepository(_dbContext);
+                }
+                return _clusterRepository;
             }
         }
     }

@@ -3,7 +3,7 @@ using System.Linq.Expressions;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public interface ISupervisorGenericRepository
+    public interface ISupervisorRepository
     {
         Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default);
         Task<IEnumerable<Supervisor>> FindAsync(Expression<Func<Supervisor, bool>> predicate, CancellationToken cancellationToken = default);

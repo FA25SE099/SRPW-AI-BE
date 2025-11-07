@@ -7,6 +7,7 @@ public class Cluster : BaseAuditableEntity
     public string ClusterName { get; set; } = string.Empty;
 
     public Guid? ClusterManagerId { get; set; }
+    public Guid? AgronomyExpertId { get; set; }
 
     [Column(TypeName = "geometry(Polygon,4326)")]
     public Polygon? Boundary { get; set; }
@@ -17,6 +18,8 @@ public class Cluster : BaseAuditableEntity
     // Navigation properties
     [ForeignKey("ClusterManagerId")]
     public ClusterManager? ClusterManager { get; set; }
+    [ForeignKey("AgronomyExpertId")]
+    public AgronomyExpert? AgronomyExpert { get; set; }
     
     public ICollection<Group> Groups { get; set; } = new List<Group>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();

@@ -12,7 +12,6 @@ namespace RiceProduction.Application.SupervisorFeature.Queries
 {
     public class GetAllSupervisorQuery : IRequest<PagedResult<List<SupervisorResponse>>>
     {
-        public Guid ClusterManagerUserId { get; set; }
         /// <summary>
         /// Filter by name or email
         /// </summary>

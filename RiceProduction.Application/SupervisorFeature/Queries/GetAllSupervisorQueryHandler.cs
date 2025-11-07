@@ -29,20 +29,18 @@ namespace RiceProduction.Application.SupervisorFeature.Queries
         {
             try 
             {
-                //var supervisorList = await _unitOfWork.SupervisorRepository
-                //    .GetAllSupervisorByNameOrEmailAndPhoneNumberPagingAsync(
-                //    request.CurrentPage, request.PageSize, request.SearchNameOrEmail, request.SearchPhoneNumber, cancellationToken);
-                //var currentUserId = _currentUser.Id;
-                //if(currentUserId == null || currentUserId == Guid.Empty)
-                //{
-                //    return PagedResult<List<SupervisorResponse>>.Failure(
-                //        "Current user ID not found");
-                //}
+                var userId = (Guid) _currentUser.Id;
+                if(userId == null || userId == Guid.Empty)
+                {
+                    return PagedResult<List<SupervisorResponse>>.Failure(
+                        "Current user ID not found");
+                }
+
                 var supervisorResponses = new List<SupervisorResponse>();
-                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(request.ClusterManagerUserId, cancellationToken);
+                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(userId, cancellationToken);
                 if (clusterManager == null)
                     return PagedResult<List<SupervisorResponse>>.Failure(
-                                        $"Cluster Manager with ID {request.ClusterManagerUserId} not found");
+                                        $"Cluster Manager with ID {userId} not found");
                 var groupListBelongToCluster = await _unitOfWork.Repository<Group>().ListAsync(g => g.ClusterId == clusterManager.ClusterId);
                 foreach (var group in groupListBelongToCluster)
                 {
@@ -69,7 +67,7 @@ namespace RiceProduction.Application.SupervisorFeature.Queries
                 if (!supervisorResponses.Any())
                 {
                     return PagedResult<List<SupervisorResponse>>.Failure(
-                        $"No supervisors found with cluster id = {clusterManager.ClusterId}");
+                        $"No supervisors found with {userId} cluster id = {clusterManager.ClusterId}");
                 }
                 if (!string.IsNullOrEmpty(request.SearchNameOrEmail) || !string.IsNullOrEmpty(request.SearchPhoneNumber))
                 {

@@ -13,9 +13,11 @@ namespace RiceProduction.Application.Common.Interfaces
         public IGenericRepository<T> Repository<T>() where T : BaseAuditableEntity;
         public IGenericRepository<T> CachedRepository<T>() where T : BaseAuditableEntity;
         Task<int> CompleteAsync();
-        ISupervisorGenericRepository SupervisorRepository { get; }
-        IClusterManagerGenericRepository ClusterManagerRepository { get; }
+        ISupervisorRepository SupervisorRepository { get; }
+        IClusterManagerRepository ClusterManagerRepository { get; }
+        IAgronomyExpertRepository AgronomyExpertRepository { get; }
         IFarmerRepository FarmerRepository { get; }
         IPlotRepository PlotRepository { get; }
+        IClusterRepository? ClusterRepository { get; }
     }
 }
