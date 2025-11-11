@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Repository
 {
-    public class UavVendorRepository
+    public class UavVendorRepository : IUavVendorRepository
     {
         private readonly ApplicationDbContext _context;
         private readonly DbSet<UavVendor> _uavVendor;
@@ -78,7 +78,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .ToListAsync(cancellationToken), totalCount);
         }
 
-        public async Task<(IEnumerable<UavVendor?>, int totalCount)> GetAllUavVendorByNameOrEmailAndPhoneAndByGroupIdOrGroupNameNumberPagingAsync(int pageNumber, int pageSize, string? search, string? groupSearch, string? phoneNumber, CancellationToken cancellationToken = default)
+        public async Task<(IEnumerable<UavVendor?>, int totalCount)> GetAllUavVendorByNameOrEmailAndPhoneNumberAndByGroupIdOrClusterIdOrNamePagingAsync(int pageNumber, int pageSize, string? search, string? groupSearch, string? phoneNumber, CancellationToken cancellationToken = default)
         {
             var query = _uavVendor
                 .Include(s => s.AssignedTasks)
@@ -98,7 +98,10 @@ namespace RiceProduction.Infrastructure.Repository
             }
             if (!string.IsNullOrEmpty(groupSearch))
             {
-                query = query.Where(f => f.Culti != null && f.PhoneNumber.Contains(phoneNumber));
+                query = query.Where(f => f.UavServiceOrders != null
+                && (f.UavServiceOrders.Any(sv => sv.GroupId.ToString().ToLower().Contains(groupSearch))
+                    || f.UavServiceOrders.Any(sv => sv.Group.Cluster.ClusterName.ToLower().Contains(groupSearch))
+                    || f.UavServiceOrders.Any(sv => sv.Group.Cluster.Id.ToString().ToLower().Contains(groupSearch))));
             }
             if (pageSize == 0)
             {
@@ -140,7 +143,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(s => s.UavInvoices)
                 .Include(s => s.UavServiceOrders)
                 .FirstOrDefaultAsync(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
-                                          (f.VendorName != null && f.VendorName.ToLower().Contains(search))||
+                                          (f.VendorName != null && f.VendorName.ToLower().Contains(search)) ||
                                           (f.Email != null && f.Email.ToLower().Contains(search)), cancellationToken);
         }
 
@@ -150,7 +153,8 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.UavInvoices)
                 .Include(s => s.UavServiceOrders)
-                .FirstOrDefaultAsync(s => s.ClusterId == ClusterId, cancellationToken);
+                .FirstOrDefaultAsync(f => f.UavServiceOrders != null
+                && f.UavServiceOrders.Any(sv => sv.Group.Cluster.Id.ToString().ToLower().Contains(ClusterId.ToString().ToLower())));
         }
 
         public async Task<(IEnumerable<UavVendor> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<UavVendor, bool>>? predicate = null, CancellationToken cancellationToken = default)
