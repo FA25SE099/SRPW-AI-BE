@@ -9,7 +9,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Application.PlotFeature.Queries
+namespace RiceProduction.Application.PlotFeature.Queries.GetDetail
 {
     public class GetPlotDetailQueriesHandler : IRequestHandler<GetPlotDetailQueries, Result<PlotDetailDTO>>
     {

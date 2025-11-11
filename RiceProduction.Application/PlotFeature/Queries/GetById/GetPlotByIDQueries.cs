@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.PlotFeature.Queries
+namespace RiceProduction.Application.PlotFeature.Queries.GetById
 {
     public class GetPlotByIDQueries : IRequest<PlotDTO>
     {

@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.PlotFeature.Queries
+namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
 {
     public class GetPlotOutSeasonQueries : IRequest<Result<IEnumerable<PlotDTO>>>
     {

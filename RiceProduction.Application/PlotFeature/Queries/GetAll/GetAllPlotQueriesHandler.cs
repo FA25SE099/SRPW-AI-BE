@@ -10,7 +10,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
-namespace RiceProduction.Application.PlotFeature.Queries
+namespace RiceProduction.Application.PlotFeature.Queries.GetAll
 {
     public class GetAllPlotQueriesHandler : IRequestHandler<GetAllPlotQueries ,PagedResult<IEnumerable<PlotDTO>>>
     {
@@ -36,9 +36,9 @@ namespace RiceProduction.Application.PlotFeature.Queries
                 if (!string.IsNullOrWhiteSpace(request.SearchTerm))
                 {
                     predicate = p => p.Status == PlotStatus.Active &&
-                    ((p.SoThua.HasValue && p.SoThua.ToString().Contains(request.SearchTerm)) ||
-                    (p.SoTo.HasValue && p.SoTo.ToString().Contains(request.SearchTerm)) ||
-                    (p.Farmer != null && p.Farmer.FullName.Contains(request.SearchTerm)));
+                    (p.SoThua.HasValue && p.SoThua.ToString().Contains(request.SearchTerm) ||
+                    p.SoTo.HasValue && p.SoTo.ToString().Contains(request.SearchTerm) ||
+                    p.Farmer != null && p.Farmer.FullName.Contains(request.SearchTerm));
                 }
                 else
                 {

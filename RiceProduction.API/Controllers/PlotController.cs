@@ -3,8 +3,16 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequests;
+using RiceProduction.Application.Common.Models.Response.PlotResponse;
 using RiceProduction.Application.PlotFeature.Commands.EditPlot;
+using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
+using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
 using RiceProduction.Application.PlotFeature.Queries;
+using RiceProduction.Application.PlotFeature.Queries.DownloadSample;
+using RiceProduction.Application.PlotFeature.Queries.GetAll;
+using RiceProduction.Application.PlotFeature.Queries.GetById;
+using RiceProduction.Application.PlotFeature.Queries.GetDetail;
+using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.API.Controllers
@@ -136,5 +144,144 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
         }
+        [HttpPost("import-excel")]
+        [ProducesResponseType(typeof(Result<IEnumerable<PlotResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ImportPlotsFromExcel(IFormFile excelFile, [FromQuery] DateTime? importDate)
+        {
+            try
+            {
+                if (excelFile == null || excelFile.Length == 0)
+                {
+                    return BadRequest(new { message = "Excel file is required" });
+                }
+                var allowedExtensions = new[] { ".xlsx", ".xls" };
+                var fileExtension = Path.GetExtension(excelFile.FileName).ToLowerInvariant();
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new { message = "Only Excel files (.xlsx, .xls) are allowed" });
+                }
+                const int maxFileSize = 10 * 1024 * 1024; 
+                if (excelFile.Length > maxFileSize)
+                {
+                    return BadRequest(new { message = "File size cannot exceed 10MB" });
+                }
+
+                var command = new ImportPlotByExcelCommand
+                {
+                    ExcelFile = excelFile,
+                    ImportDate = importDate ?? DateTime.UtcNow
+                };
+
+                _logger.LogInformation("Starting plot import from Excel file: {FileName}, Size: {FileSize} bytes",
+                    excelFile.FileName, excelFile.Length);
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Plot import failed: {Message}", result.Message);
+                    return BadRequest(result);
+                }
+
+                _logger.LogInformation("Plot import completed successfully. {Count} plots imported",
+                    result.Data?.Count ?? 0);
+
+                return Ok(result);
+                }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while importing plots from Excel file: {FileName}",
+                    excelFile?.FileName ?? "Unknown");
+                return StatusCode(500, new { message = "An error occurred while processing your request" });
+            }           
+        }
+        [HttpGet("download-sample-excel")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> DownloadPlotSampleExcel()
+        {
+            try
+            {
+                var query = new DownloadPlotSampleExcelQuery();
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to generate sample Excel: {Message}", result.Message);
+                    return BadRequest(result);
+                }
+
+                return result.Data ?? BadRequest(new { message = "Failed to generate Excel file" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while generating sample Excel");
+                return StatusCode(500, new { message = "An error occurred while processing your request" });
+            }
+        }
+        [HttpPut("boundaries/import")]
+        [ProducesResponseType(typeof(List<BoundaryResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> UpdatePlotBoundaries([FromForm] IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Please upload a valid Excel file"
+                });
+            }
+            var allowedExtensions = new[] { ".xlsx", ".xls" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(fileExtension))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid file format. Please upload an Excel file (.xlsx or .xls)"
+                });
+            }
+            const long maxFileSize = 10 * 1024 * 1024; 
+            if (file.Length > maxFileSize)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "File size exceeds the maximum allowed size of 10MB"
+                });
+            }
+
+            var command = new UpdatePlotBoundaryCommand
+            {
+                ExcelFile = file,
+                ImportDate = DateTime.UtcNow
+            };
+
+            var result = await _mediator.Send(command);
+
+            if (result.Succeeded)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    message = result.Message,
+                    data = result.Data,
+                    timestamp = DateTime.UtcNow
+                });
+            }
+
+            return BadRequest(new
+            {
+                success = false,
+                message = result.Message,
+                errors = result.Errors,
+                timestamp = DateTime.UtcNow
+            });
+        }
+        
+
     }
 }
