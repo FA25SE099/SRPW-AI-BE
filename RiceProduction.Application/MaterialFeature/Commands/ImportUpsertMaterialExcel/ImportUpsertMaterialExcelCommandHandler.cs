@@ -1,8 +1,10 @@
+using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
+using RiceProduction.Application.MaterialFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMaterialExcel
@@ -10,15 +12,18 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
     public class ImportUpsertMaterialExcelCommandHandler : IRequestHandler<ImportUpsertMaterialExcelCommand, Result<MaterialUpsertResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
         private readonly IGenericExcel _genericExcel;
         private readonly ILogger<ImportUpsertMaterialExcelCommandHandler> _logger;
 
         public ImportUpsertMaterialExcelCommandHandler(
-            IUnitOfWork unitOfWork, 
+            IUnitOfWork unitOfWork,
+            IMediator mediator,
             IGenericExcel genericExcel,
             ILogger<ImportUpsertMaterialExcelCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
             _genericExcel = genericExcel;
             _logger = logger;
         }
@@ -224,6 +229,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                     Manufacturer = m.Manufacturer,
                     IsActive = m.IsActive
                 }).ToList();
+
+                await _mediator.Publish(new MaterialChangedEvent(null, ChangeType.BulkImport), cancellationToken);
 
                 _logger.LogInformation(
                     "Material upsert completed: Created={Created}, Updated={Updated}", 

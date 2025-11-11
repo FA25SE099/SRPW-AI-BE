@@ -64,7 +64,7 @@ namespace RiceProduction.Infrastructure.Data
 
         public async Task TrySeedAsync()
         {
-            //await SeedProductionPlanAsync();
+            await SeedPlotDataAsync();
             await SeedRolesAsync();
             await SeedUsersAsync();
             await SeedRiceVarietyCategoriesAsync();
@@ -73,8 +73,10 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
             await SeedClusterDataAsync();
+            await SeedProductionPlanAsync();
+            await SeedCoreDataAsync();    
             await SeedCoreDataAsync();
-            await SeedPlotDataAsync();
+            //await SeedPlotDataAsync();
             await SeedClusterAsync();
             await SeedGroupAsync();
             await SeedProductionTask();
@@ -329,15 +331,6 @@ namespace RiceProduction.Infrastructure.Data
                     new Plot
                     {
                         FarmerId = farmerUser3.Id,
-                        Boundary = geometryFactory.CreatePolygon(new Coordinate[]
-                        {
-                            new Coordinate(11.215557861556,  106.4305890557),
-                            new Coordinate(11.211197392783,  106.43148705062),
-                            new Coordinate(11.211014284582,  106.43080189246),
-                            new Coordinate(11.210198687479,  106.42708240463),
-                            new Coordinate(11.214569243013,  106.42608561738),
-                            new Coordinate(11.215557861556,  106.4305890557),
-                        }),
                         SoThua = 17,
                         SoTo = 58,
                         Area =  25.0857m,
@@ -1898,19 +1891,19 @@ namespace RiceProduction.Infrastructure.Data
 
                 // Polygon mẫu cho Cluster 1 (Đồng Tháp): Hình chữ nhật đơn giản
                 // Lệnh: POLYGON((lon1 lat1, lon2 lat2, lon3 lat3, lon4 lat4, lon1 lat1))
-                var wktCluster1 = "POLYGON((105.78 10.45, 105.80 10.45, 105.80 10.47, 105.78 10.47, 105.78 10.45))";
+                var wktCluster1 = "POLYGON((1196936.46062617 608865.269417751, 1196936.91062585 608857.799417709, 1196937.4406257 608854.249417673,1196937.11062567 608853.609417687,1196960.63062598 608855.569416764,1196960.5706265 608867.849416807,1196936.46062617 608865.269417751))";
                 var polygonCluster1 = new NetTopologySuite.IO.WKTReader(factory).Read(wktCluster1) as NetTopologySuite.Geometries.Polygon;
 
                 // Polygon mẫu cho Group 1 (trong Cluster 1)
-                var wktGroup1 = "POLYGON((105.785 10.455, 105.795 10.455, 105.795 10.465, 105.785 10.465, 105.785 10.455))";
+                var wktGroup1 = "POLYGON((1196959.61062698 608879.409416884,1196935.46062667 608877.419417831,1196935.52062662 608876.119417827,1196936.1506264 608870.739417781,1196936.46062617 608865.269417751,1196960.5706265 608867.849416807,1196959.61062698 608879.409416884))";
                 var polygonGroup1 = new NetTopologySuite.IO.WKTReader(factory).Read(wktGroup1) as NetTopologySuite.Geometries.Polygon;
 
                 // Polygon mẫu cho Cluster 2 (An Giang)
-                var wktCluster2 = "POLYGON((105.15 10.50, 105.18 10.50, 105.18 10.53, 105.15 10.53, 105.15 10.50))";
+                var wktCluster2 = "POLYGON((1196959.19062734 608887.939416929,1196934.67062708 608887.029417897,1196935.46062667 608877.419417831,1196959.61062698 608879.409416884,1196959.19062734 608887.939416929))";
                 var polygonCluster2 = new NetTopologySuite.IO.WKTReader(factory).Read(wktCluster2) as NetTopologySuite.Geometries.Polygon;
 
                 // Polygon mẫu cho Group 3 (trong Cluster 2)
-                var wktGroup3 = "POLYGON((105.16 10.51, 105.17 10.51, 105.17 10.52, 105.16 10.52, 105.16 10.51))";
+                var wktGroup3 = "POLYGON((1196958.92062799 608903.069416992,1196933.68062771 608902.029417989,1196934.67062708 608887.029417897,1196959.19062734 608887.939416929,1196958.92062799 608903.069416992))";
                 var polygonGroup3 = new NetTopologySuite.IO.WKTReader(factory).Read(wktGroup3) as NetTopologySuite.Geometries.Polygon;
 
 
@@ -1992,7 +1985,9 @@ namespace RiceProduction.Infrastructure.Data
                         Id = new Guid("F9023C7B-B4EE-4D58-8B46-6AC9AB415FF7"),
                         FarmerId = farmer1Id,
                         Area =  3.00m,
-                        Boundary = polygonGroup1 // Có thể thêm Boundary nếu cần
+                        Boundary = polygonGroup1, // Có thể thêm Boundary nếu cần
+                        SoThua = 191,
+                        SoTo = 23
                     },
                     new Plot
                     {

@@ -4,14 +4,18 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Application.StandardPlanFeature.Queries.ReviewStandardPlan;
-public class ReviewStandardPlanQuery : IRequest<Result<StandardPlanReviewDto>>,ICacheable
+public class ReviewStandardPlanQuery : IRequest<Result<StandardPlanReviewDto>>, ICacheable
 {
     public Guid StandardPlanId { get; set; }
     
     public DateTime SowDate { get; set; }
     
     public decimal AreaInHectares { get; set; }
-    public string CacheKey => $"ReviewStandardPlan:{StandardPlanId}";
+    
+    public bool BypassCache { get; init; } = false;
+    public string CacheKey => $"ReviewStandardPlan:{StandardPlanId}:Date:{SowDate:yyyyMMdd}:Area:{AreaInHectares}";
+    public int SlidingExpirationInMinutes => 15;
+    public int AbsoluteExpirationInMinutes => 30;
 }
 
 public class ReviewStandardPlanQueryValidator : AbstractValidator<ReviewStandardPlanQuery>

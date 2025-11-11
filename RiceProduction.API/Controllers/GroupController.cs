@@ -1,8 +1,10 @@
 ﻿using MediatR;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.GroupRequests;
 using RiceProduction.Application.Common.Models.Response.GroupResponses;
+using RiceProduction.Application.GroupFeature.Queries.GetAllGroup;
 using RiceProduction.Application.GroupFeature.Queries.GetGroupDetail;
 using RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId;
 
@@ -18,6 +20,7 @@ public class GroupController : Controller
     {
         _mediator = mediator;
     }
+
     [HttpPost()]
     public async Task<ActionResult<PagedResult<List<GroupResponse>>>> GetGroupsByClusterIdPaging([FromBody] GroupListRequest request)
     {
@@ -37,8 +40,7 @@ public class GroupController : Controller
     [HttpGet("{id}")]
     public async Task<IActionResult> GetGroupDetail(Guid id)
     {
-        var query = new GetGroupDetailQuery { GroupId = id };
-        var result = await _mediator.Send(query);
+        var result = await _mediator.Send(new GetGroupDetailQuery { GroupId = id });
 
         if (!result.Succeeded)
         {
@@ -47,4 +49,17 @@ public class GroupController : Controller
 
         return Ok(result);
     }
+    [HttpGet]
+    public async Task<IActionResult> GetAllGroups()    
+    {
+        var query = new GetAllGroupQuery();
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+
+    }
+
 }

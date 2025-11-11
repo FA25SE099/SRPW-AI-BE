@@ -1,6 +1,8 @@
+using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.MaterialFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
@@ -8,11 +10,13 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
     public class UpdateMaterialCommandHandler : IRequestHandler<UpdateMaterialCommand, Result<Guid>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
         private readonly ILogger<UpdateMaterialCommandHandler> _logger;
 
-        public UpdateMaterialCommandHandler(IUnitOfWork unitOfWork, ILogger<UpdateMaterialCommandHandler> logger)
+        public UpdateMaterialCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<UpdateMaterialCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
             _logger = logger;
         }
 
@@ -77,6 +81,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
                 }
 
                 await _unitOfWork.CompleteAsync();
+
+                await _mediator.Publish(new MaterialChangedEvent(request.MaterialId, ChangeType.Updated), cancellationToken);
 
                 _logger.LogInformation("Updated material with ID: {MaterialId}", request.MaterialId);
                 return Result<Guid>.Success(request.MaterialId, "Material updated successfully");
