@@ -145,26 +145,43 @@ namespace RiceProduction.API.Controllers
             return Ok(result);
         }
         [HttpPost("import-excel")]
-        [ProducesResponseType(typeof(Result<IEnumerable<PlotResponse>>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [Consumes("multipart/form-data")]
         public async Task<IActionResult> ImportPlotsFromExcel(IFormFile excelFile, [FromQuery] DateTime? importDate)
         {
             try
             {
                 if (excelFile == null || excelFile.Length == 0)
                 {
-                    return BadRequest(new { message = "Excel file is required" });
+                    return BadRequest(new
+                    {
+                        success = false, // ✅ Đổi từ 'succeeded' thành 'success'
+                        message = "Excel file is required",
+                        errors = new[] { "Excel file is required" }
+                    });
                 }
+
                 var allowedExtensions = new[] { ".xlsx", ".xls" };
                 var fileExtension = Path.GetExtension(excelFile.FileName).ToLowerInvariant();
+
                 if (!allowedExtensions.Contains(fileExtension))
                 {
-                    return BadRequest(new { message = "Only Excel files (.xlsx, .xls) are allowed" });
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Only Excel files (.xlsx, .xls) are allowed",
+                        errors = new[] { $"Invalid file extension: {fileExtension}" }
+                    });
                 }
-                const int maxFileSize = 10 * 1024 * 1024; 
+
+                const int maxFileSize = 10 * 1024 * 1024;
                 if (excelFile.Length > maxFileSize)
                 {
-                    return BadRequest(new { message = "File size cannot exceed 10MB" });
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "File size cannot exceed 10MB",
+                        errors = new[] { $"File size: {excelFile.Length} bytes exceeds 10MB" }
+                    });
                 }
 
                 var command = new ImportPlotByExcelCommand
@@ -181,20 +198,37 @@ namespace RiceProduction.API.Controllers
                 if (!result.Succeeded)
                 {
                     _logger.LogWarning("Plot import failed: {Message}", result.Message);
-                    return BadRequest(result);
+
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = result.Message,
+                        errors = result.Errors ?? new List<string> { result.Message }
+                    });
                 }
 
                 _logger.LogInformation("Plot import completed successfully. {Count} plots imported",
                     result.Data?.Count ?? 0);
 
-                return Ok(result);
-                }
+                return Ok(new
+                {
+                    success = true, 
+                    message = result.Message,
+                    data = result.Data
+                });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while importing plots from Excel file: {FileName}",
                     excelFile?.FileName ?? "Unknown");
-                return StatusCode(500, new { message = "An error occurred while processing your request" });
-            }           
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while processing your request",
+                    errors = new[] { ex.Message }
+                });
+            }
         }
         [HttpGet("download-sample-excel")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -221,9 +255,8 @@ namespace RiceProduction.API.Controllers
             }
         }
         [HttpPut("boundaries/import")]
-        [ProducesResponseType(typeof(List<BoundaryResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> UpdatePlotBoundaries([FromForm] IFormFile file)
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> UpdatePlotBoundaries(IFormFile file)
         {
             if (file == null || file.Length == 0)
             {
