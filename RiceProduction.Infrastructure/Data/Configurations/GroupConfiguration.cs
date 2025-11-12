@@ -13,11 +13,20 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
         builder.Property(g => g.TotalArea)
             .HasColumnType("decimal(10,2)");
 
+        builder.Property(g => g.Year)
+            .IsRequired()
+            .HasComment("Year of the season cycle to distinguish recurring seasons");
+
         // Indexes
         builder.HasIndex(g => g.ClusterId);
         builder.HasIndex(g => g.SupervisorId);
         builder.HasIndex(g => g.RiceVarietyId);
         builder.HasIndex(g => g.SeasonId);
+        
+        // Composite index for unique group identification
+        builder.HasIndex(g => new { g.SupervisorId, g.SeasonId, g.Year })
+            .HasDatabaseName("IX_Group_Supervisor_Season_Year");
+        
         builder.HasIndex(g => g.Status);
         builder.HasIndex(g => g.Area)
             .HasMethod("GIST");

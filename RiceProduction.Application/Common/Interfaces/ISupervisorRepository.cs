@@ -1,4 +1,5 @@
-﻿using RiceProduction.Domain.Entities;
+﻿using Microsoft.EntityFrameworkCore.Query;
+using RiceProduction.Domain.Entities;
 using System.Linq.Expressions;
 
 namespace RiceProduction.Infrastructure.Repository
@@ -16,5 +17,10 @@ namespace RiceProduction.Infrastructure.Repository
         Task<Supervisor?> GetSupervisorByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default);
         Task<Supervisor?> GetSupervisorByPlotId(Guid plotId, CancellationToken cancellationToken = default);
         void UpdateRange(IEnumerable<Supervisor> entities);
+        Task<IReadOnlyList<Supervisor>> ListAsync(
+    Expression<Func<Supervisor, bool>>? filter = null,
+    Func<IQueryable<Supervisor>, IOrderedQueryable<Supervisor>>? orderBy = null,
+    Func<IQueryable<Supervisor>, IIncludableQueryable<Supervisor, object>>? includeProperties = null
+);
     }
 }

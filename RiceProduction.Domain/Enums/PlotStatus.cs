@@ -5,5 +5,6 @@ public enum PlotStatus
     Active,
     Inactive,
     Emergency,
-    Locked
+    Locked,
+    PendingPolygon  // Plot created but polygon boundary not yet assigned
 }

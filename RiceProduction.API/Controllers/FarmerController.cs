@@ -121,7 +121,16 @@ namespace RiceProduction.API.Controllers
                 };
                 return BadRequest(errorResult);
             }
-            var command = new ImportFarmerCommand(requestModel.File);
+            
+            // Get current cluster manager ID if authenticated
+            Guid? clusterManagerId = null;
+            var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
+            {
+                clusterManagerId = userId;
+            }
+            
+            var command = new ImportFarmerCommand(requestModel.File, clusterManagerId);
             var result = await _mediator.Send(command);
 
             if (result.FailureCount > 0)

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.SmsFeature.Event;
+using RiceProduction.Application.FarmerFeature.Events;
 
 namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
 {
@@ -47,12 +48,22 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
                 result.SuccessCount,
                 result.FailureCount
             );
-            //await _mediator.Publish(new UserCreatedEvent
-            //{
-            //    PhoneNumber = userId,
-            //    Name = request.Name,
-            //    Phone = request.Phone
-            //}, cancellationToken);
+            
+            // Publish event to auto-assign polygon tasks to supervisors
+            if (result.SuccessCount > 0 && result.CreatedPlotIds.Any())
+            {
+                await _mediator.Publish(new FarmerImportedEvent
+                {
+                    ImportResult = result,
+                    ClusterManagerId = request.ClusterManagerId,
+                    ImportedAt = DateTime.UtcNow
+                }, cancellationToken);
+                
+                _logger.LogInformation(
+                    "Published FarmerImportedEvent for {PlotCount} plots requiring polygon assignment",
+                    result.CreatedPlotIds.Count);
+            }
+            
             return result;
         }
     }

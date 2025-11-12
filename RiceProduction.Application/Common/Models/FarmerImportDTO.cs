@@ -13,6 +13,12 @@ namespace RiceProduction.Application.Common.Models
         public string PhoneNumber { get; set; }
         public string Address { get; set; }
         public string FarmCode { get; set; }
+        
+        // Plot basic data (without polygon - supervisor will add later)
+        public int? SoThua { get; set; }
+        public int? SoTo { get; set; }
+        public decimal? PlotArea { get; set; }
+        public string? SoilType { get; set; }
     }
 
     public class ImportFarmerResult
@@ -22,6 +28,7 @@ namespace RiceProduction.Application.Common.Models
         public int FailureCount { get; set; }
         public List<ImportError> Errors { get; set; } = new();
         public List<ImportedFarmerData> ImportedFarmers { get; set; } = new List<ImportedFarmerData>();
+        public List<Guid> CreatedPlotIds { get; set; } = new List<Guid>(); // Track plots needing polygon assignment
     }
 
     public class ImportError

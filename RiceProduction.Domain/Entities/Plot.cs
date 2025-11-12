@@ -8,9 +8,11 @@ public class Plot : BaseAuditableEntity
 
     public Guid? GroupId { get; set; }
 
-    [Required]
+    /// <summary>
+    /// Polygon boundary - can be null when plot is first created, supervisor will assign later
+    /// </summary>
     [Column(TypeName = "geometry(Polygon,4326)")]
-    public Polygon Boundary { get; set; } = null!;
+    public Polygon? Boundary { get; set; }
     public int? SoThua { get; set; }
     public int? SoTo { get; set; }
     [Required]
