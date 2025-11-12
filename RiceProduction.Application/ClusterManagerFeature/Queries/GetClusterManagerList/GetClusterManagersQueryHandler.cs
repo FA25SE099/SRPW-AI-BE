@@ -2,6 +2,7 @@
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
+using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Repository;
 using System;
 using System.Collections.Generic;
@@ -44,6 +45,7 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
                     ClusterManagerPhoneNumber = clusterManager.PhoneNumber,
                     Email = clusterManager.Email,
                     ClusterId = clusterManager.ClusterId,
+                    ClusterName = clusterManager.ManagedCluster?.ClusterName,
                     AssignedDate = clusterManager.AssignedDate,
                 }).ToList();
                 return PagedResult<List<ClusterManagerResponse>>.Success(

@@ -16,6 +16,7 @@ namespace RiceProduction.Infrastructure.Repository
         Task<UavVendor?> GetUavVendorByIdAsync(Guid id, CancellationToken cancellationToken = default);
         Task<UavVendor?> GetUavVendorByNameOrEmail(string search, CancellationToken cancellationToken = default);
         Task<UavVendor?> GetUavVendorByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default);
+        void Update(UavVendor entity);
         void UpdateRange(IEnumerable<UavVendor> entities);
     }
 }

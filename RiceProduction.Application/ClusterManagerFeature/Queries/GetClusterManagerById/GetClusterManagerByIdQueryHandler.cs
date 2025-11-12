@@ -42,6 +42,7 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
                     ClusterManagerPhoneNumber = cluster.PhoneNumber,
                     Email = cluster.Email,
                     ClusterId = cluster.ClusterId,
+                    ClusterName = cluster.ManagedCluster?.ClusterName,
                     AssignedDate = cluster.AssignedDate
                 };
 

@@ -45,6 +45,7 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyEx
                     ExpertPhoneNumber = expert.PhoneNumber,
                     Email = expert.Email,
                     ClusterId = expert.ClusterId,
+                    ClusterName = expert.ManagedCluster?.ClusterName,
                     AssignedDate = expert.AssignedDate
                 }).ToList();
 

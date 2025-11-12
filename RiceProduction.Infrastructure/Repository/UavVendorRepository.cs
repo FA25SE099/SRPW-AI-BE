@@ -22,6 +22,10 @@ namespace RiceProduction.Infrastructure.Repository
         {
             _context.Set<UavVendor>().UpdateRange(entities);
         }
+        public void Update(UavVendor entity)
+        {
+            _context.Set<UavVendor>().Update(entity);
+        }
 
         public async Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default)
         {

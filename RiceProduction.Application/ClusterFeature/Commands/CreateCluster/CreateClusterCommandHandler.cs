@@ -53,7 +53,8 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
                     ClusterManagerId = request.ClusterManagerId,
                     AgronomyExpertId = request.AgronomyExpertId
                 };
-
+                newCluster.ClusterManager.AssignedDate = DateTime.UtcNow;
+                newCluster.AgronomyExpert.AssignedDate = DateTime.UtcNow;
                 await clusterRepo.AddAsync(newCluster);
                 await _unitOfWork.CompleteAsync();
                 if (await clusterRepo.ExistsAsync(c => c.Id == id)) { 

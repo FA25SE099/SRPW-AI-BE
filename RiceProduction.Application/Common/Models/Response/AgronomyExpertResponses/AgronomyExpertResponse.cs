@@ -13,6 +13,7 @@ namespace RiceProduction.Application.Common.Models.Response.AgronomyExpertRespon
         public string? ExpertPhoneNumber { get; set; }
         public string? Email { get; set; }
         public Guid? ClusterId { get; set; }
+        public string? ClusterName { get; set; }
         public DateTime? AssignedDate { get; set; }
     }
 }
