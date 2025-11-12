@@ -35,7 +35,6 @@ public class UavVendorController : Controller
         return Ok(result);
     }
 
-
     [HttpPost("get-all")]
     public async Task<ActionResult<PagedResult<List<UavVendorResponse>>>> GetUavVendorsPagingAndSearch([FromBody] GetUavVendorQuery query)
     {
@@ -54,4 +53,5 @@ public class UavVendorController : Controller
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
+
 }

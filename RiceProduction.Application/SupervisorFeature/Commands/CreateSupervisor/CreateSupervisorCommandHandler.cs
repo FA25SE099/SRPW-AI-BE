@@ -1,7 +1,5 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
-using RiceProduction.Application.ClusterFeature.Commands.CreateCluster;
-using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
@@ -11,23 +9,24 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
+namespace RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor
 {
-    public class CreateUavVendorCommandHandler : IRequestHandler<CreateUavVendorCommand, Result<Guid>>
+    public class CreateSupervisorCommandHandler : IRequestHandler<CreateSupervisorCommand, Result<Guid>>
     {
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly ILogger<CreateUavVendorCommandHandler> _logger;
+        private readonly ILogger<CreateSupervisorCommandHandler> _logger;
         private readonly IPublisher _publisher;
         private readonly IUnitOfWork _unitOfWork;
 
-        public CreateUavVendorCommandHandler(UserManager<ApplicationUser> userManager, ILogger<CreateUavVendorCommandHandler> logger, IPublisher publisher, IUnitOfWork unitOfWork)
+        public CreateSupervisorCommandHandler(UserManager<ApplicationUser> userManager, ILogger<CreateSupervisorCommandHandler> logger, IPublisher publisher, IUnitOfWork unitOfWork)
         {
             _userManager = userManager;
             _logger = logger;
             _publisher = publisher;
             _unitOfWork = unitOfWork;
         }
-        public async Task<Result<Guid>> Handle(CreateUavVendorCommand request, CancellationToken cancellationToken)
+
+        public async Task<Result<Guid>> Handle(CreateSupervisorCommand request, CancellationToken cancellationToken)
         {
             try
             {
@@ -43,8 +42,8 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                 {
                     return Result<Guid>.Failure($"User with phone number '{request.PhoneNumber}' already exists");
                 }
-                // Create UAV Vendor user
-                var uavVendor = new UavVendor
+                // Create Supervisor user
+                var supervisor = new Supervisor
                 {
                     UserName = request.Email,
                     Email = request.Email,
@@ -52,29 +51,26 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                     PhoneNumber = request.PhoneNumber,
                     EmailConfirmed = true,
                     IsActive = true,
-                    VendorName = request.VendorName,
-                    BusinessRegistrationNumber = request.BusinessRegistrationNumber,
-                    ServiceRatePerHa = request.ServiceRatePerHa,
-                    FleetSize = request.FleetSize,
-                    ServiceRadius = request.ServiceRadius
+                    MaxFarmerCapacity = request.MaxFarmerCapacity
                 };
 
                 var psw = "123456";
-                var result = await _userManager.CreateAsync(uavVendor, psw);
+                var result = await _userManager.CreateAsync(supervisor, psw);
                 if (!result.Succeeded)
                 {
                     var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                    return Result<Guid>.Failure($"Failed to create UAV Vendor user: {errors}");
+                    return Result<Guid>.Failure($"Failed to create Supervisor user: {errors}");
                 }
-                await _userManager.AddToRoleAsync(uavVendor, "UavVendor");
-                _logger.LogInformation("Created UAV Vendor with ID: {UavVendorId}", uavVendor.Id);
-                return Result<Guid>.Success(uavVendor.Id);
+                await _userManager.AddToRoleAsync(supervisor, "Supervisor");
+                _logger.LogInformation("Created Supervisor with ID: {SupervisorId}", supervisor.Id);
+                return Result<Guid>.Success(supervisor.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while creating UAV Vendor");
-                return Result<Guid>.Failure("An error occurred while creating the UAV Vendor");
+                _logger.LogError(ex, "Error occurred while creating Supervisor");
+                return Result<Guid>.Failure("An error occurred while creating the Supervisor");
             }
         }
     }
 }
+

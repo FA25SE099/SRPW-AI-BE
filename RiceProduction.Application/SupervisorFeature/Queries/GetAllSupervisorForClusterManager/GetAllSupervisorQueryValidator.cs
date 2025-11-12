@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.SupervisorFeature.Queries
+namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForClusterManager
 {
     public class GetAllSupervisorQueryValidator : AbstractValidator<GetAllSupervisorQuery>
     {

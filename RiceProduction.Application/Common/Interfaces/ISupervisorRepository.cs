@@ -22,5 +22,6 @@ namespace RiceProduction.Infrastructure.Repository
     Func<IQueryable<Supervisor>, IOrderedQueryable<Supervisor>>? orderBy = null,
     Func<IQueryable<Supervisor>, IIncludableQueryable<Supervisor, object>>? includeProperties = null
 );
+        Task<(IEnumerable<Supervisor?>, int totalCount)> GetAllSupervisorByNameOrEmailAndPhoneNumberAndByGroupOrClusterOrFarmerOrPlotOrNamePagingAsync(int pageNumber, int pageSize, string? search, string? groupSearch, string? phoneNumber, CancellationToken cancellationToken = default);
     }
 }
