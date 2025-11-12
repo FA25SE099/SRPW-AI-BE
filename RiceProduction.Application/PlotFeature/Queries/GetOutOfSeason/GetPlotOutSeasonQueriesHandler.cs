@@ -11,7 +11,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Application.PlotFeature.Queries
+namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
 {
     public class GetPlotOutSeasonQueriesHandler : IRequestHandler<GetPlotOutSeasonQueries, Result<IEnumerable<PlotDTO>>>
     {
@@ -59,10 +59,10 @@ namespace RiceProduction.Application.PlotFeature.Queries
                 {
                     var searchTerm = request.SearchTerm.ToLower();
                     query = query.Where(p =>
-                        (p.SoThua.HasValue && p.SoThua.ToString().Contains(searchTerm)) ||
-                        (p.SoTo.HasValue && p.SoTo.ToString().Contains(searchTerm)) ||
-                        (p.Farmer != null && p.Farmer.FullName.ToLower().Contains(searchTerm)) ||
-                        (p.SoilType != null && p.SoilType.ToLower().Contains(searchTerm))
+                        p.SoThua.HasValue && p.SoThua.ToString().Contains(searchTerm) ||
+                        p.SoTo.HasValue && p.SoTo.ToString().Contains(searchTerm) ||
+                        p.Farmer != null && p.Farmer.FullName.ToLower().Contains(searchTerm) ||
+                        p.SoilType != null && p.SoilType.ToLower().Contains(searchTerm)
                     );
                 }
                 var items = await query

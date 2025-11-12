@@ -6,8 +6,7 @@ public class PlotConfiguration : IEntityTypeConfiguration<Plot>
     { 
 
         builder.Property(p => p.Boundary)
-            .IsRequired()
-            .HasColumnType("geometry(Polygon,4326)");
+            .HasColumnType("geometry(Polygon,4326)"); // Not required - can be null initially
 
         builder.Property(p => p.Area)
             .IsRequired()

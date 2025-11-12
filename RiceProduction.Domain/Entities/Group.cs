@@ -11,6 +11,13 @@ public class Group : BaseAuditableEntity
 
     public Guid? SeasonId { get; set; }
 
+    /// <summary>
+    /// Year of the season cycle (e.g., 2024, 2025)
+    /// Required to distinguish between recurring seasons across years
+    /// </summary>
+    [Required]
+    public int Year { get; set; } 
+
     public DateTime? PlantingDate { get; set; }
 
     public GroupStatus Status { get; set; } = GroupStatus.Draft;

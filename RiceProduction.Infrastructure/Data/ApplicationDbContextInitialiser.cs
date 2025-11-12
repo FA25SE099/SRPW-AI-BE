@@ -79,6 +79,7 @@ namespace RiceProduction.Infrastructure.Data
             //await SeedPlotDataAsync();
             await SeedClusterAsync();
             await SeedGroupAsync();
+            await SeedCompletedPlansForPastGroups();
             await SeedProductionTask();
             await SeedDataAsync();
         }
@@ -94,19 +95,20 @@ namespace RiceProduction.Infrastructure.Data
                 _logger.LogInformation("Group data already exists. Skipping seeding.");
                 return;
             }
+
             var supervisor1 = await _userManager.FindByEmailAsync("supervisor1@ricepro.com") as Supervisor;
             var supervisor2 = await _userManager.FindByEmailAsync("supervisor2@ricepro.com") as Supervisor;
 
             var st25Variety = await _context.RiceVarieties.FirstOrDefaultAsync(v => v.VarietyName == "ST25");
+            var om5451Variety = await _context.RiceVarieties.FirstOrDefaultAsync(v => v.VarietyName == "OM5451");
+            
+            var dongXuanSeason = await _context.Seasons.FirstOrDefaultAsync(v => v.SeasonName == "Đông Xuân");
             var heThuSeason = await _context.Seasons.FirstOrDefaultAsync(v => v.SeasonName == "Hè Thu");
-
 
             var plot1 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 15); //farmer1
             var plot2 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 18);//farmer2
-            var plot3 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 17);//farner3
-            var plot4 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 16);//farner3
-
-
+            var plot3 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 17);//farmer3
+            var plot4 = await _context.Plots.FirstOrDefaultAsync(p => p.SoThua == 16);//farmer3
 
             var cluster1 = await _context.Clusters.FirstOrDefaultAsync(c => c.ClusterName == "DongThap1");
             var cluster2 = await _context.Clusters.FirstOrDefaultAsync(c => c.ClusterName == "AnGiang2");
@@ -121,15 +123,19 @@ namespace RiceProduction.Infrastructure.Data
                 _logger.LogError("Cluster field is null. Skipping Group seeding");
                 return;
             }
-            if (st25Variety == null)
+            if (st25Variety == null || om5451Variety == null)
             {
                 _logger.LogError("Rice variety is null. Skipping Group seeding");
+                return;
             }
             if (plot1 == null || plot2 == null || plot3 == null || plot4 == null)
             {
                 _logger.LogError("Plot is null. Skipping Group seeding");
+                return;
             }
+            
             var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            
             Geometry CalculateGroupBoundary(List<Plot> plots)
             {
                 if (plots.Count == 1)
@@ -155,48 +161,551 @@ namespace RiceProduction.Infrastructure.Data
 
             var groupsToSeed = new List<Group>
             {
+                // Current season group 2025 (Hè Thu)
                 new Group
                 {
                     ClusterId = cluster1.Id,
                     SupervisorId = supervisor1.Id,
                     RiceVarietyId = st25Variety.Id,
                     SeasonId = heThuSeason.Id,
-                    PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
+                    Year = 2025,
+                    PlantingDate = new DateTime(2025, 5, 15, 0, 0, 0, DateTimeKind.Utc),
                     Status = GroupStatus.Active,
                     Plots = plotsForGroup1,
                     TotalArea = group1TotalArea,
                     Area = group1Boundary
                 },
 
+                // Current season group 2025 (Hè Thu) - supervisor2
                 new Group
-            {
-                ClusterId = cluster1.Id,
-                SupervisorId = supervisor1.Id,
-                RiceVarietyId = st25Variety.Id,
-                SeasonId = heThuSeason.Id,
-                PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
-                Status = GroupStatus.Active,
-                Plots = plotsForGroup2,
-                TotalArea = group2TotalArea,
-                Area = group2Boundary
-            },
+                {
+                    ClusterId = cluster2.Id,
+                    SupervisorId = supervisor2.Id,
+                    RiceVarietyId = st25Variety.Id,
+                    SeasonId = heThuSeason.Id,
+                    Year = 2025,
+                    PlantingDate = new DateTime(2025, 5, 20, 0, 0, 0, DateTimeKind.Utc),
+                    Status = GroupStatus.Active,
+                    Plots = plotsForGroup2,
+                    TotalArea = group2TotalArea,
+                    Area = group2Boundary
+                },
+                
+                // Past group 2024 Hè Thu - supervisor1 (COMPLETED)
                 new Group
-            {
-                ClusterId = cluster2.Id,
-                SupervisorId = supervisor2.Id,
-                RiceVarietyId = st25Variety.Id,
-                SeasonId = heThuSeason.Id,
-                PlantingDate = new DateTime(2025, 12, 30, 0, 0, 0, DateTimeKind.Utc),
-                Status = GroupStatus.Active,
-                Plots = plotsForGroup3,
-                TotalArea = group3TotalArea,
-                Area = group3Boundary
-            }
+                {
+                    ClusterId = cluster1.Id,
+                    SupervisorId = supervisor1.Id,
+                    RiceVarietyId = om5451Variety.Id,
+                    SeasonId = heThuSeason.Id,
+                    Year = 2024,
+                    PlantingDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
+                    Status = GroupStatus.Completed,
+                    Plots = plotsForGroup3,
+                    TotalArea = group3TotalArea,
+                    Area = group3Boundary
+                },
+                
+                // Past group 2023 Đông Xuân - supervisor2 (COMPLETED)
+                new Group
+                {
+                    Id = Guid.NewGuid(),
+                    ClusterId = cluster2.Id,
+                    SupervisorId = supervisor2.Id,
+                    RiceVarietyId = st25Variety.Id,
+                    SeasonId = dongXuanSeason.Id,
+                    Year = 2023,
+                    PlantingDate = new DateTime(2023, 12, 15, 0, 0, 0, DateTimeKind.Utc),
+                    Status = GroupStatus.Completed,
+                    TotalArea = 18m, // Will create new plots for this group
+                    Area = group2Boundary
+                }
             };
+            
             await _context.Groups.AddRangeAsync(groupsToSeed);
             await _context.SaveChangesAsync();
-            _logger.LogInformation("Successfully seeded {Count} Groups.", groupsToSeed.Count);
+            _logger.LogInformation("Successfully seeded {Count} Groups (including 2 past completed groups).", groupsToSeed.Count);
         }
+
+        private async Task SeedCompletedPlansForPastGroups()
+        {
+            // Check if production plans for past groups already exist
+            var existingPastPlans = await _context.ProductionPlans
+                .AnyAsync(pp => pp.Group != null && pp.Group.Year < 2025);
+
+            if (existingPastPlans)
+            {
+                _logger.LogInformation("Completed plans for past groups already exist. Skipping seeding.");
+                return;
+            }
+
+            _logger.LogInformation("Seeding completed production plans for past groups...");
+
+            // Get the past groups
+            var pastGroup2024 = await _context.Groups
+                .Include(g => g.Plots)
+                .FirstOrDefaultAsync(g => g.Year == 2024 && g.Status == GroupStatus.Completed);
+
+            var pastGroup2023 = await _context.Groups
+                .Include(g => g.Plots)
+                .FirstOrDefaultAsync(g => g.Year == 2023 && g.Status == GroupStatus.Completed);
+
+            if (pastGroup2024 == null || pastGroup2023 == null)
+            {
+                _logger.LogWarning("Past groups not found. Skipping completed plan seeding.");
+                return;
+            }
+
+            // Get materials for the tasks
+            var phanHuuCoMaterial = await _context.Materials
+                .FirstOrDefaultAsync(m => m.Name.Contains("Phân hữu cơ") || m.Name.Contains("hữu cơ"));
+            var dapMaterial = await _context.Materials
+                .FirstOrDefaultAsync(m => m.Name.Contains("DAP"));
+            var ureaMaterial = await _context.Materials
+                .FirstOrDefaultAsync(m => m.Name.Contains("Ure"));
+
+            if (phanHuuCoMaterial == null || dapMaterial == null || ureaMaterial == null)
+            {
+                _logger.LogWarning("Required materials not found. Skipping completed plan seeding.");
+                return;
+            }
+
+            // ========== COMPLETED PLAN FOR 2024 GROUP ==========
+            await SeedCompletedPlanFor2024Group(pastGroup2024, phanHuuCoMaterial, dapMaterial, ureaMaterial);
+
+            // ========== COMPLETED PLAN FOR 2023 GROUP ==========
+            await SeedCompletedPlanFor2023Group(pastGroup2023, phanHuuCoMaterial, dapMaterial, ureaMaterial);
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Successfully seeded completed production plans for past groups.");
+        }
+
+        private async Task SeedCompletedPlanFor2024Group(
+            Group group,
+            Material phanHuuCoMaterial,
+            Material dapMaterial,
+            Material ureaMaterial)
+        {
+            var plantingDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc);
+            var submittedDate = new DateTime(2024, 4, 15, 0, 0, 0, DateTimeKind.Utc);
+            var approvedDate = new DateTime(2024, 4, 20, 0, 0, 0, DateTimeKind.Utc);
+
+            var productionPlan = new ProductionPlan
+            {
+                Id = Guid.NewGuid(),
+                GroupId = group.Id,
+                PlanName = $"Kế hoạch Hè Thu 2024 - Group {group.Id.ToString().Substring(0, 8)}",
+                BasePlantingDate = plantingDate,
+                TotalArea = group.TotalArea ?? 0,
+                Status = Domain.Enums.TaskStatus.Completed,
+                SubmittedAt = submittedDate,
+                ApprovedAt = approvedDate,
+                CreatedAt = submittedDate,
+                LastModified = new DateTime(2024, 9, 30, 0, 0, 0, DateTimeKind.Utc) // Plan completed end of September
+            };
+
+            // Stage 1: Làm đất (Land Preparation) - Days 1-7
+            var stage1 = CreateCompletedStage(
+                productionPlan.Id,
+                "Làm đất",
+                1,
+                plantingDate.AddDays(-7),
+                plantingDate.AddDays(-1),
+                "Chuẩn bị đất trước khi sạ");
+
+            var stage1Task1 = CreateCompletedPlanTask(
+                stage1.Id,
+                "Cày bừa",
+                Domain.Enums.TaskType.LandPreparation,
+                plantingDate.AddDays(-7),
+                plantingDate.AddDays(-5),
+                group.TotalArea ?? 0,
+                500000); // Estimated cost
+
+            // Create cultivation tasks for each plot
+            foreach (var plot in group.Plots)
+            {
+                var cultivationTask = CreateCompletedCultivationTask(
+                    plot.Id,
+                    group.RiceVarietyId!.Value,
+                    group.SeasonId!.Value,
+                    plantingDate.AddDays(-7),
+                    plantingDate.AddDays(-5),
+                    450000,
+                    200000);
+
+                stage1Task1.CultivationTasks.Add(cultivationTask);
+            }
+
+            stage1.ProductionPlanTasks.Add(stage1Task1);
+
+            // Stage 2: Sạ giống (Seeding) - Days 0-3
+            var stage2 = CreateCompletedStage(
+                productionPlan.Id,
+                "Sạ giống",
+                2,
+                plantingDate,
+                plantingDate.AddDays(3),
+                "Gieo sạ lúa");
+
+            var stage2Task1 = CreateCompletedPlanTask(
+                stage2.Id,
+                "Sạ lúa",
+                Domain.Enums.TaskType.LandPreparation,
+                plantingDate,
+                plantingDate.AddDays(1),
+                group.TotalArea ?? 0,
+                300000);
+
+            foreach (var plot in group.Plots)
+            {
+                var cultivationTask = CreateCompletedCultivationTask(
+                    plot.Id,
+                    group.RiceVarietyId!.Value,
+                    group.SeasonId!.Value,
+                    plantingDate,
+                    plantingDate.AddDays(1),
+                    280000,
+                    100000);
+
+                stage2Task1.CultivationTasks.Add(cultivationTask);
+            }
+
+            stage2.ProductionPlanTasks.Add(stage2Task1);
+
+            // Stage 3: Bón phân đợt 1 (First Fertilization) - Days 15-18
+            var stage3 = CreateCompletedStage(
+                productionPlan.Id,
+                "Bón phân đợt 1",
+                3,
+                plantingDate.AddDays(15),
+                plantingDate.AddDays(18),
+                "Bón phân gốc");
+
+            var stage3Task1 = CreateCompletedPlanTask(
+                stage3.Id,
+                "Bón phân DAP",
+                Domain.Enums.TaskType.Fertilization,
+                plantingDate.AddDays(15),
+                plantingDate.AddDays(16),
+                group.TotalArea ?? 0,
+                800000);
+
+            // Add material to plan task
+            stage3Task1.ProductionPlanTaskMaterials.Add(new ProductionPlanTaskMaterial
+            {
+                MaterialId = dapMaterial.Id,
+                QuantityPerHa = 150,
+                EstimatedAmount = 800000
+            });
+
+            foreach (var plot in group.Plots)
+            {
+                var cultivationTask = CreateCompletedCultivationTask(
+                    plot.Id,
+                    group.RiceVarietyId!.Value,
+                    group.SeasonId!.Value,
+                    plantingDate.AddDays(15),
+                    plantingDate.AddDays(16),
+                    750000,
+                    50000);
+
+                cultivationTask.CultivationTaskMaterials.Add(new CultivationTaskMaterial
+                {
+                    MaterialId = dapMaterial.Id,
+                    ActualQuantity = 150 * plot.Area,
+                    ActualCost = 750000,
+                    Notes = "Phân DAP cho giai đoạn đầu"
+                });
+
+                stage3Task1.CultivationTasks.Add(cultivationTask);
+            }
+
+            stage3.ProductionPlanTasks.Add(stage3Task1);
+
+            // Stage 4: Bón phân đợt 2 (Second Fertilization) - Days 30-33
+            var stage4 = CreateCompletedStage(
+                productionPlan.Id,
+                "Bón phân đợt 2",
+                4,
+                plantingDate.AddDays(30),
+                plantingDate.AddDays(33),
+                "Bón phân thúc đẻ nhánh");
+
+            var stage4Task1 = CreateCompletedPlanTask(
+                stage4.Id,
+                "Bón phân Ure",
+                Domain.Enums.TaskType.Fertilization,
+                plantingDate.AddDays(30),
+                plantingDate.AddDays(31),
+                group.TotalArea ?? 0,
+                600000);
+
+            stage4Task1.ProductionPlanTaskMaterials.Add(new ProductionPlanTaskMaterial
+            {
+                MaterialId = ureaMaterial.Id,
+                QuantityPerHa = 100,
+                EstimatedAmount = 600000
+            });
+
+            foreach (var plot in group.Plots)
+            {
+                var cultivationTask = CreateCompletedCultivationTask(
+                    plot.Id,
+                    group.RiceVarietyId!.Value,
+                    group.SeasonId!.Value,
+                    plantingDate.AddDays(30),
+                    plantingDate.AddDays(31),
+                    580000,
+                    30000);
+
+                cultivationTask.CultivationTaskMaterials.Add(new CultivationTaskMaterial
+                {
+                    MaterialId = ureaMaterial.Id,
+                    ActualQuantity = 100 * plot.Area,
+                    ActualCost = 580000,
+                    Notes = "Phân Ure thúc đẻ nhánh"
+                });
+
+                stage4Task1.CultivationTasks.Add(cultivationTask);
+            }
+
+            stage4.ProductionPlanTasks.Add(stage4Task1);
+
+            // Stage 5: Thu hoạch (Harvest) - Days 110-115
+            var stage5 = CreateCompletedStage(
+                productionPlan.Id,
+                "Thu hoạch",
+                5,
+                plantingDate.AddDays(110),
+                plantingDate.AddDays(115),
+                "Thu hoạch lúa");
+
+            var stage5Task1 = CreateCompletedPlanTask(
+                stage5.Id,
+                "Gặt đập lúa",
+                Domain.Enums.TaskType.Harvesting,
+                plantingDate.AddDays(110),
+                plantingDate.AddDays(113),
+                group.TotalArea ?? 0,
+                1200000);
+
+            foreach (var plot in group.Plots)
+            {
+                var cultivationTask = CreateCompletedCultivationTask(
+                    plot.Id,
+                    group.RiceVarietyId!.Value,
+                    group.SeasonId!.Value,
+                    plantingDate.AddDays(110),
+                    plantingDate.AddDays(113),
+                    1150000,
+                    300000);
+
+                // Set actual yield for completed harvest
+                cultivationTask.PlotCultivation!.ActualYield = plot.Area * 7.2m; // 7.2 tons per hectare
+
+                stage5Task1.CultivationTasks.Add(cultivationTask);
+            }
+
+            stage5.ProductionPlanTasks.Add(stage5Task1);
+
+            // Add all stages to production plan
+            productionPlan.CurrentProductionStages.Add(stage1);
+            productionPlan.CurrentProductionStages.Add(stage2);
+            productionPlan.CurrentProductionStages.Add(stage3);
+            productionPlan.CurrentProductionStages.Add(stage4);
+            productionPlan.CurrentProductionStages.Add(stage5);
+
+            await _context.ProductionPlans.AddAsync(productionPlan);
+        }
+
+        private async Task SeedCompletedPlanFor2023Group(
+            Group group,
+            Material phanHuuCoMaterial,
+            Material dapMaterial,
+            Material ureaMaterial)
+        {
+            var plantingDate = new DateTime(2023, 12, 15, 0, 0, 0, DateTimeKind.Utc);
+            var submittedDate = new DateTime(2023, 11, 20, 0, 0, 0, DateTimeKind.Utc);
+            var approvedDate = new DateTime(2023, 11, 25, 0, 0, 0, DateTimeKind.Utc);
+
+            var productionPlan = new ProductionPlan
+            {
+                Id = Guid.NewGuid(),
+                GroupId = group.Id,
+                PlanName = $"Kế hoạch Đông Xuân 2023 - Group {group.Id.ToString().Substring(0, 8)}",
+                BasePlantingDate = plantingDate,
+                TotalArea = group.TotalArea ?? 0,
+                Status = Domain.Enums.TaskStatus.Completed,
+                SubmittedAt = submittedDate,
+                ApprovedAt = approvedDate,
+                CreatedAt = submittedDate,
+                LastModified = new DateTime(2024, 4, 15, 0, 0, 0, DateTimeKind.Utc) // Completed mid-April 2024
+            };
+
+            // Similar structure but for Đông Xuân season (Winter-Spring)
+            // Stage 1: Land Preparation
+            var stage1 = CreateCompletedStage(
+                productionPlan.Id,
+                "Làm đất",
+                1,
+                plantingDate.AddDays(-10),
+                plantingDate.AddDays(-1),
+                "Chuẩn bị đất mùa Đông Xuân");
+
+            var stage1Task1 = CreateCompletedPlanTask(
+                stage1.Id,
+                "Cày bừa và bón phân lót",
+                Domain.Enums.TaskType.LandPreparation,
+                plantingDate.AddDays(-10),
+                plantingDate.AddDays(-7),
+                group.TotalArea ?? 0,
+                700000);
+
+            stage1Task1.ProductionPlanTaskMaterials.Add(new ProductionPlanTaskMaterial
+            {
+                MaterialId = phanHuuCoMaterial.Id,
+                QuantityPerHa = 300,
+                EstimatedAmount = 1500000
+            });
+
+            // For 2023 group, we need to create plot cultivations since it might not have plots assigned
+            // We'll use the area to simulate cultivation tasks
+            var simulatedPlotCount = Math.Max(1, (int)(group.TotalArea ?? 18) / 10); // Assume ~10ha per plot
+            for (int i = 0; i < simulatedPlotCount; i++)
+            {
+                var plotArea = (group.TotalArea ?? 18) / simulatedPlotCount;
+                var plotId = Guid.NewGuid();
+
+                var cultivationTask = new CultivationTask
+                {
+                    Id = Guid.NewGuid(),
+                    IsContingency = false,
+                    ActualStartDate = plantingDate.AddDays(-10),
+                    ActualEndDate = plantingDate.AddDays(-7),
+                    ActualMaterialCost = 650000,
+                    ActualServiceCost = 150000,
+                    CompletedAt = plantingDate.AddDays(-7),
+                    Status = Domain.Enums.TaskStatus.Completed,
+                    PlotCultivation = new PlotCultivation
+                    {
+                        PlotId = plotId,
+                        Area = plotArea,
+                        RiceVarietyId = group.RiceVarietyId!.Value,
+                        SeasonId = group.SeasonId!.Value,
+                        PlantingDate = plantingDate,
+                        Status = CultivationStatus.Completed,
+                        ActualYield = plotArea * 7.5m // 7.5 tons/ha for winter-spring
+                    },
+                    CultivationTaskMaterials = new List<CultivationTaskMaterial>
+                    {
+                        new CultivationTaskMaterial
+                        {
+                            MaterialId = phanHuuCoMaterial.Id,
+                            ActualQuantity = 300 * plotArea,
+                            ActualCost = 1400000,
+                            Notes = "Phân hữu cơ vi sinh bón lót"
+                        }
+                    }
+                };
+
+                stage1Task1.CultivationTasks.Add(cultivationTask);
+            }
+
+            stage1.ProductionPlanTasks.Add(stage1Task1);
+
+            // Stage 2-5: Similar structure...
+            var stage2 = CreateCompletedStage(productionPlan.Id, "Sạ giống", 2, plantingDate, plantingDate.AddDays(2), "Gieo sạ");
+            var stage3 = CreateCompletedStage(productionPlan.Id, "Bón phân đợt 1", 3, plantingDate.AddDays(20), plantingDate.AddDays(22), "Bón phân gốc");
+            var stage4 = CreateCompletedStage(productionPlan.Id, "Bón phân đợt 2", 4, plantingDate.AddDays(40), plantingDate.AddDays(42), "Bón phân thúc");
+            var stage5 = CreateCompletedStage(productionPlan.Id, "Thu hoạch", 5, plantingDate.AddDays(120), plantingDate.AddDays(125), "Thu hoạch");
+
+            productionPlan.CurrentProductionStages.Add(stage1);
+            productionPlan.CurrentProductionStages.Add(stage2);
+            productionPlan.CurrentProductionStages.Add(stage3);
+            productionPlan.CurrentProductionStages.Add(stage4);
+            productionPlan.CurrentProductionStages.Add(stage5);
+
+            await _context.ProductionPlans.AddAsync(productionPlan);
+        }
+
+        // Helper methods for creating completed entities
+        private ProductionStage CreateCompletedStage(
+            Guid productionPlanId,
+            string stageName,
+            int stageOrder,
+            DateTime startDate,
+            DateTime endDate,
+            string description)
+        {
+            return new ProductionStage
+            {
+                Id = Guid.NewGuid(),
+                ProductionPlanId = productionPlanId,
+                StageName = stageName,
+                SequenceOrder = stageOrder,
+                Description = description,
+                //StartDate = startDate,
+                //EndDate = endDate,
+                ProductionPlanTasks = new List<ProductionPlanTask>()
+            };
+        }
+
+        private ProductionPlanTask CreateCompletedPlanTask(
+            Guid stageId,
+            string taskName,
+            Domain.Enums.TaskType taskType,
+            DateTime scheduledDate,
+            DateTime scheduledEndDate,
+            decimal totalArea,
+            decimal estimatedCost)
+        {
+            return new ProductionPlanTask
+            {
+                Id = Guid.NewGuid(),
+                ProductionStageId = stageId,
+                TaskName = taskName,
+                TaskType = taskType,
+                ScheduledDate = scheduledDate,
+                ScheduledEndDate = scheduledEndDate,
+                EstimatedMaterialCost = estimatedCost * totalArea,
+                Status = Domain.Enums.TaskStatus.Completed,
+                CultivationTasks = new List<CultivationTask>(),
+                ProductionPlanTaskMaterials = new List<ProductionPlanTaskMaterial>()
+            };
+        }
+
+        private CultivationTask CreateCompletedCultivationTask(
+            Guid plotId,
+            Guid riceVarietyId,
+            Guid seasonId,
+            DateTime startDate,
+            DateTime endDate,
+            decimal materialCost,
+            decimal serviceCost)
+        {
+            return new CultivationTask
+            {
+                Id = Guid.NewGuid(),
+                IsContingency = false,
+                ActualStartDate = startDate,
+                ActualEndDate = endDate,
+                ActualMaterialCost = materialCost,
+                ActualServiceCost = serviceCost,
+                CompletedAt = endDate,
+                Status = Domain.Enums.TaskStatus.Completed,
+                PlotCultivation = new PlotCultivation
+                {
+                    PlotId = plotId,
+                    RiceVarietyId = riceVarietyId,
+                    SeasonId = seasonId,
+                    PlantingDate = startDate,
+                    Status = CultivationStatus.InProgress
+                },
+                CultivationTaskMaterials = new List<CultivationTaskMaterial>()
+            };
+        }
+
         private async Task SeedClusterAsync()
         {
             if (await _context.Clusters.AnyAsync())
@@ -1970,6 +2479,7 @@ namespace RiceProduction.Infrastructure.Data
                 SupervisorId = supervisor1.Id,
                 RiceVarietyId = riceVarietyST25.Id,
                 SeasonId = seasonDongXuan.Id,
+                Year = 2025, // Current year
                 // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
                 PlantingDate = plantingDate1,
                 IsException = false,
@@ -2019,6 +2529,7 @@ namespace RiceProduction.Infrastructure.Data
                 SupervisorId = supervisor2?.Id,
                 RiceVarietyId = riceVarietyDT8?.Id,
                 SeasonId = seasonDongXuan.Id,
+                Year = 2025, // Current year
                 // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
                 PlantingDate = plantingDate2,
                 IsException = false,
@@ -2034,6 +2545,7 @@ namespace RiceProduction.Infrastructure.Data
                 SupervisorId = supervisor3?.Id,
                 RiceVarietyId = riceVarietyDT8?.Id,
                 SeasonId = seasonHeThu?.Id,
+                Year = 2025, // Current year
                 PlantingDate = null, // Có thể null
                 Status = GroupStatus.Draft,
                 IsException = true,
@@ -2050,6 +2562,7 @@ namespace RiceProduction.Infrastructure.Data
                 SupervisorId = supervisor1.Id,
                 RiceVarietyId = riceVarietyST25.Id,
                 SeasonId = seasonHeThu?.Id,
+                Year = 2025, // Current year
                 // CHỈNH SỬA: Sử dụng PlantingDate đã chuyển sang Kind=Utc
                 PlantingDate = plantingDate4,
                 IsException = false,

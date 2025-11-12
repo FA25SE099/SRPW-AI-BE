@@ -1,6 +1,8 @@
+using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.SeasonFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SeasonFeature.Commands.DeleteSeason
@@ -8,11 +10,13 @@ namespace RiceProduction.Application.SeasonFeature.Commands.DeleteSeason
     public class DeleteSeasonCommandHandler : IRequestHandler<DeleteSeasonCommand, Result<Guid>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
         private readonly ILogger<DeleteSeasonCommandHandler> _logger;
 
-        public DeleteSeasonCommandHandler(IUnitOfWork unitOfWork, ILogger<DeleteSeasonCommandHandler> logger)
+        public DeleteSeasonCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<DeleteSeasonCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
             _logger = logger;
         }
 
@@ -31,6 +35,8 @@ namespace RiceProduction.Application.SeasonFeature.Commands.DeleteSeason
                 season.IsActive = false;
                 seasonRepo.Update(season);
                 await _unitOfWork.CompleteAsync();
+
+                await _mediator.Publish(new SeasonChangedEvent(request.SeasonId, ChangeType.Deleted), cancellationToken);
 
                 _logger.LogInformation("Soft deleted season with ID: {SeasonId}", request.SeasonId);
                 return Result<Guid>.Success(request.SeasonId, "Season deleted successfully");

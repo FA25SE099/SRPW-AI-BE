@@ -1,12 +1,13 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore.Query;
+using RiceProduction.Application.Common.Models;
+using RiceProduction.Domain.Entities;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.Common.Interfaces
 {
@@ -34,7 +35,11 @@ namespace RiceProduction.Application.Common.Interfaces
        int pageSize,
        Expression<Func<Farmer, bool>>? predicate = null,
        CancellationToken cancellationToken = default);
-        
 
+        Task<IReadOnlyList<Farmer>> ListAsync(
+   Expression<Func<Farmer, bool>>? filter = null,
+   Func<IQueryable<Farmer>, IOrderedQueryable<Farmer>>? orderBy = null,
+   Func<IQueryable<Farmer>, IIncludableQueryable<Farmer, object>>? includeProperties = null
+);
     }
 }

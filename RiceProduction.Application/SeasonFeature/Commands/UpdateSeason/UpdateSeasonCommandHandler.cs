@@ -1,6 +1,8 @@
+using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.SeasonFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SeasonFeature.Commands.UpdateSeason
@@ -8,11 +10,13 @@ namespace RiceProduction.Application.SeasonFeature.Commands.UpdateSeason
     public class UpdateSeasonCommandHandler : IRequestHandler<UpdateSeasonCommand, Result<Guid>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMediator _mediator;
         private readonly ILogger<UpdateSeasonCommandHandler> _logger;
 
-        public UpdateSeasonCommandHandler(IUnitOfWork unitOfWork, ILogger<UpdateSeasonCommandHandler> logger)
+        public UpdateSeasonCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<UpdateSeasonCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
             _logger = logger;
         }
 
@@ -36,6 +40,8 @@ namespace RiceProduction.Application.SeasonFeature.Commands.UpdateSeason
 
                 seasonRepo.Update(season);
                 await _unitOfWork.CompleteAsync();
+
+                await _mediator.Publish(new SeasonChangedEvent(request.SeasonId, ChangeType.Updated), cancellationToken);
 
                 _logger.LogInformation("Updated season with ID: {SeasonId}", request.SeasonId);
                 return Result<Guid>.Success(request.SeasonId, "Season updated successfully");
