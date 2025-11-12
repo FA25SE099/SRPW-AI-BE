@@ -11,7 +11,7 @@ using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
-using RiceProduction.Application.PlotFeature.Queries;
+using RiceProduction.Application.PlotFeature.Queries.GetAll;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.PlotFeature.Queries
+namespace RiceProduction.Application.PlotFeature.Queries.GetById
 {
     public class GetPlotByIDQueriesHandler : IRequestHandler<GetPlotByIDQueries, PlotDTO>
     {

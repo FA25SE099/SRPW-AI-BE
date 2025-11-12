@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 
-namespace RiceProduction.Application.PlotFeature.Queries
+namespace RiceProduction.Application.PlotFeature.Queries.GetDetail
 {
     public class GetPlotDetailQueries : IRequest<Result<PlotDetailDTO>>
     {
