@@ -42,7 +42,46 @@ public class AuthController : ControllerBase
 
         return Ok(result);
     }
+    [HttpPost("login-fast")]
+    public async Task<ActionResult<Result<LoginResponse>>> LoginFast([FromBody] LoginRequestFast request)
+    {
+        switch (request.Role?.ToLowerInvariant())
+        {
+            case "admin":
+                request.Email = "admin@ricepro.com";
+                request.Password = "Admin123!";
+                break;
+            case "supervisor":
+                request.Email = "supervisor1@ricepro.com";
+                request.Password = "Super123!";
+                break;
+            case "expert":
+                request.Email = "expert1@ricepro.com";
+                request.Password = "Expert123!";
+                break;
+            case "uav":
+                request.Email = "user@ricepro.com";
+                request.Password = "User123!";
+                break;
 
+            default:
+                return BadRequest(new { Error = "Invalid role specified. Supported roles: admin, user." });
+        }
+        var command = new LoginCommand
+        {
+            Email = request.Email,
+            Password = request.Password,
+            RememberMe = request.RememberMe ?? true
+        };
+
+
+        var result = await _mediator.Send(command);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
     [HttpPost("logout")]
     [Authorize]
     public async Task<ActionResult<Result<LogoutResponse>>> Logout([FromBody] LogoutRequest? request = null)

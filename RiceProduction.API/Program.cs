@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models; // Add this for OpenApiSecurityScheme
 using RiceProduction.API.Services;
@@ -107,6 +108,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 var app = builder.Build();
 var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
+var isProduction = builder.Configuration.GetValue<bool>("IsProduction");
+
 if (seedDatabase)
 {
     using var scope = app.Services.CreateScope();
@@ -116,11 +119,18 @@ if (seedDatabase)
         var context = services.GetRequiredService<ApplicationDbContext>();
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
 
-        if (app.Environment.IsDevelopment())
+        if (app.Environment.IsDevelopment() && !isProduction)
         {
             await initializer.InitialiseAsync();
         }
-
+        //if (isProduction)
+        //{
+        //    await initializer.ResetDatabaseAsync();
+        //}
+        if (isProduction)
+        {
+            await context.Database.MigrateAsync();
+        }
         await initializer.SeedAsync();
     }
     catch (Exception ex)
