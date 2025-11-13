@@ -10,7 +10,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
 using RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Application.SupervisorFeature.Queries
+namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForClusterManager
 {
     public class GetAllSupervisorQueryHandler : IRequestHandler<GetAllSupervisorQuery, PagedResult<List<SupervisorResponse>>>
     {
@@ -79,8 +79,8 @@ namespace RiceProduction.Application.SupervisorFeature.Queries
                             if (!string.IsNullOrEmpty(request.SearchNameOrEmail))
                             {
                                 nameOrEmailMatch =
-                                    (s.FullName != null && s.FullName.Contains(request.SearchNameOrEmail, StringComparison.OrdinalIgnoreCase)) ||
-                                    (s.Email != null && s.Email.Contains(request.SearchNameOrEmail, StringComparison.OrdinalIgnoreCase));
+                                    s.FullName != null && s.FullName.Contains(request.SearchNameOrEmail, StringComparison.OrdinalIgnoreCase) ||
+                                    s.Email != null && s.Email.Contains(request.SearchNameOrEmail, StringComparison.OrdinalIgnoreCase);
                             }
 
                             // Phone number filter

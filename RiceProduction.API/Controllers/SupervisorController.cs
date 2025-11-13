@@ -1,22 +1,21 @@
-﻿using System.Security.Claims;
-using MediatR;
+﻿using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Request.SupervisorRequests;
-using RiceProduction.Application.Common.Models.Response;
-using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
-using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
-using RiceProduction.Application.SupervisorFeature.Queries;
-using RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 using RiceProduction.Application.SupervisorFeature.Commands.CompletePolygonAssignment;
-using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSeason;
+using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
+using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForAdmin;
+using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForClusterManager;
 using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupHistory;
-using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
+using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSeason;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPlanDetails;
+using RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorAvailableSeasons;
-using Microsoft.AspNetCore.Authorization;
+using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
+using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
+using System.Security.Claims;
 
 namespace RiceProduction.API.Controllers;
 
@@ -25,15 +24,16 @@ namespace RiceProduction.API.Controllers;
 public class SupervisorController : Controller
 {
     private readonly IMediator _mediator;
+    private readonly ILogger<SupervisorController> _logger;
 
-    public SupervisorController(IMediator mediator)
+    public SupervisorController(IMediator mediator, ILogger<SupervisorController> logger)
     {
         _mediator = mediator;
+        _logger = logger;
     }
 
-
-    [HttpPost("get-paging")]
-    public async Task<ActionResult<PagedResult<List<SupervisorResponse>>>> GetAllSupervisorPaging([FromForm] SupervisorListRequest request)
+    [HttpPost("get-supervisor-by-clustermanager-paging")]
+    public async Task<ActionResult<PagedResult<List<SupervisorResponse>>>> GetAllSupervisorOfAClusterPaging([FromForm] SupervisorListRequest request)
     {
         var query = new GetAllSupervisorQuery
         {
@@ -43,6 +43,37 @@ public class SupervisorController : Controller
             PageSize = request.PageSize
         };
         var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    [HttpPost("get-all-supervisor-admin")]
+    public async Task<ActionResult<PagedResult<List<SupervisorResponse>>>> GetSupervisorsPagingAndSearchForAdmin([FromBody] GetAllSupervisorForAdminQuery query)
+    {
+        try
+        {
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while getting free cluster managers");
+            return StatusCode(500, "An error occurred while processing your request");
+        }
+    }
+
+
+    [HttpPost]
+    public async Task<IActionResult> CreateSupervisorCommand([FromBody] CreateSupervisorCommand command)
+    {
+        var result = await _mediator.Send(command);
         if (!result.Succeeded)
         {
             return BadRequest(result);

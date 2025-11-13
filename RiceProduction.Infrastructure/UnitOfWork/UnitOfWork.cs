@@ -32,6 +32,7 @@ namespace RiceProduction.Infrastructure.UnitOfWork
         private IFarmerRepository? _farmerRepository;
         private IPlotRepository? _plotRepository;
         private IClusterRepository? _clusterRepository;
+        private IUavVendorRepository? _uavVendorRepository;
 
         // ===================================
         // === Constructors
@@ -195,6 +196,18 @@ namespace RiceProduction.Infrastructure.UnitOfWork
                     _clusterRepository = new ClusterRepository(_dbContext);
                 }
                 return _clusterRepository;
+            }
+        }
+        
+        public IUavVendorRepository UavVendorRepository
+        {
+            get
+            {
+                if (_uavVendorRepository == null)
+                {
+                    _uavVendorRepository = new UavVendorRepository(_dbContext);
+                }
+                return _uavVendorRepository;
             }
         }
     }

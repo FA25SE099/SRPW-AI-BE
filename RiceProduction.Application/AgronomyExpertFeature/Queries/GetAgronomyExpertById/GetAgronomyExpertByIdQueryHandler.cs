@@ -2,6 +2,7 @@
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.AgronomyExpertResponses;
+using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Repository;
 using System;
 using System.Collections.Generic;
@@ -39,6 +40,7 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyEx
                     ExpertPhoneNumber = expert.PhoneNumber,
                     Email = expert.Email,
                     ClusterId = expert.ClusterId,
+                    ClusterName = expert.ManagedCluster?.ClusterName,
                     AssignedDate = expert.AssignedDate
                 };
 

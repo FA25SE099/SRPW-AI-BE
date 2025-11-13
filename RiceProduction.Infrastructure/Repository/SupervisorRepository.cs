@@ -81,6 +81,56 @@ namespace RiceProduction.Infrastructure.Repository
                 .Take(pageSize)
                 .ToListAsync(cancellationToken);
         }
+        public async Task<(IEnumerable<Supervisor?>, int totalCount)> GetAllSupervisorByNameOrEmailAndPhoneNumberAndByGroupOrClusterOrFarmerOrPlotOrNamePagingAsync(int pageNumber, int pageSize, string? search, string? groupSearch, string? phoneNumber, CancellationToken cancellationToken = default)
+        {
+            var query = _supervisor
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
+                .Include(s => s.AssignedTasks)
+                .Include(s => s.SupervisorAssignments)
+                .AsQueryable();
+            var totalCount = await query.CountAsync(cancellationToken);
+            search = search?.ToLower();
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
+                                         (f.Email != null && f.Email.ToLower().Contains(search)));
+            }
+            if (!string.IsNullOrEmpty(phoneNumber))
+            {
+                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber));
+            }
+            if (!string.IsNullOrEmpty(groupSearch))
+            {
+                query = query.Where(f => 
+                    (f.SupervisedGroups != null
+                        && (f.SupervisedGroups.Any(sv => sv.Id.ToString().ToLower().Contains(groupSearch))
+                        || f.SupervisedGroups.Any(sv => sv.Cluster.ClusterName.ToLower().Contains(groupSearch))
+                        || f.SupervisedGroups.Any(sv => sv.Cluster.Id.ToString().ToLower().Contains(groupSearch)))) 
+                    || 
+                    (f.AssignedTasks != null
+                        && (f.AssignedTasks.Any(sv => sv.PlotCultivation != null && sv.PlotCultivation.Plot.Id.ToString().ToLower().Contains(groupSearch))
+                        || f.AssignedTasks.Any(sv => sv.PlotCultivation.Plot.Group != null && sv.PlotCultivation.Plot.Group.Id.ToString().ToLower().Contains(groupSearch))))
+                    || 
+                    (f.SupervisorAssignments != null
+                        && (f.SupervisorAssignments.Any(sv => sv.Farmer.Id.ToString().ToLower().Contains(groupSearch))
+                        || f.SupervisorAssignments.Any(sv => sv.Farmer.FullName != null && sv.Farmer.FullName.Contains(groupSearch))
+                        || f.SupervisorAssignments.Any(sv => sv.Farmer.Email != null && sv.Farmer.Email.Contains(groupSearch))
+                        || f.SupervisorAssignments.Any(sv => sv.Farmer.PhoneNumber != null && sv.Farmer.PhoneNumber.Contains(groupSearch))))
+                    );
+            }
+            if (pageSize == 0)
+            {
+                return (await query
+                .OrderBy(s => s.FullName)
+                .ToListAsync(cancellationToken), totalCount);
+            }
+            return (await query
+                .OrderBy(s => s.FullName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken), totalCount);
+        }
 
         public async Task<Supervisor?> GetSupervisorByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {

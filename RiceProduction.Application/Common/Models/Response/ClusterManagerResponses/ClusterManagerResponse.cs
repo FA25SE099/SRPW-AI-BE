@@ -15,6 +15,7 @@ namespace RiceProduction.Application.Common.Models.Response.ClusterManagerRespon
         public string? ClusterManagerPhoneNumber { get; set; }
         public string? Email { get; set; }
         public Guid? ClusterId { get; set; }
+        public string? ClusterName { get; set; }
 
         public DateTime? AssignedDate { get; set; }
     }

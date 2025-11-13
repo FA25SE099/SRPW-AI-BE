@@ -22,7 +22,6 @@
 	  <Folder Include="CultivationFeature\Commands\" />
 	  <Folder Include="CultivationFeature\Queries\" />
 	  <Folder Include="RiceVarietyFeature\Queries\GetAllRiceVarietyBySeason\" />
-	  <Folder Include="SupervisorFeature\Commands\" />
 	</ItemGroup>
 
 </Project>
