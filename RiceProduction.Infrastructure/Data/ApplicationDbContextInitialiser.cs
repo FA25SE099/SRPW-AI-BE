@@ -80,6 +80,18 @@ namespace RiceProduction.Infrastructure.Data
                 throw;
             }
         }
+        public async Task SeedAsyncAdminOnly()
+        {
+            try
+            {
+                await TrySeedAsyncOnlyAdmin();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while seeding the database.");
+                throw;
+            }
+        }
         public async Task ResetDatabaseAsync()
         {
             try
@@ -115,6 +127,17 @@ namespace RiceProduction.Infrastructure.Data
                 _logger.LogError(ex, "An error occurred while resetting the database.");
                 throw;
             }
+        }
+        public async Task TrySeedAsyncOnlyAdmin()
+        {
+            await SeedRolesAsync();
+            await SeedAdmin();
+
+            await SeedRiceVarietyCategoriesAsync();
+            await SeedVietnameseRiceDataAsync();
+            await SeedMaterialDataAsync();
+            await SeedMaterialPriceDataAsync();
+
         }
         public async Task TrySeedAsync()
         {
@@ -228,6 +251,56 @@ namespace RiceProduction.Infrastructure.Data
                 _logger.LogInformation("Seeded {UserType}: {UserName}", userData.UserType, userData.UserName);
             }
         }
+        private async Task SeedAdmin()
+        {
+            var usersToSeed = new List<(string UserType, string UserName, string Email, string Password, string FullName, string PhoneNumber, string? Specialization, int? ExperienceYears, string? EmployeeId, decimal? FarmSize, string? FarmLocation, string? CompanyName, string? ContactPerson, decimal? ServiceRadius)>
+            {
+                ("Admin", "admin@ricepro.com", "admin@ricepro.com", "Admin123!", "System Administrator", "+1234567890", null, null, null, null, null, null, null, null),
+                ("Admin", "admin2@ricepro.com", "admin2@ricepro.com", "Admin123!", "Secondary Admin", "+1234567891", null, null, null, null, null, null, null, null),
+                                ("Supervisor", "supervisor1@ricepro.com", "supervisor1@ricepro.com", "Super123!", "Robert Brown", "+1234567896", null, null, "SUP001", null, null, null, null, null),
+                ("Supervisor", "supervisor2@ricepro.com", "supervisor2@ricepro.com", "Super123!", "Maria Garcia", "+1234567897", null, null, "SUP002", null, null, null, null, null),
+                ("Supervisor", "supervisor3@ricepro.com", "supervisor3@ricepro.com", "Super123!", "David Lee", "+1234567898", null, null, "SUP003", null, null, null, null, null),
+
+            };
+
+            foreach (var userData in usersToSeed)
+            {
+                if (_userManager.Users.Any(u => u.UserName == userData.UserName || u.Email == userData.Email))
+                {
+                    _logger.LogInformation("User already exists: {UserName}", userData.UserName);
+                    continue;
+                }
+
+                ApplicationUser user = userData.UserType switch
+                {
+                    "Admin" => new Admin { UserName = userData.UserName, Email = userData.Email, FullName = userData.FullName, PhoneNumber = userData.PhoneNumber, EmailConfirmed = true },
+                    "AgronomyExpert" => new AgronomyExpert { UserName = userData.UserName, Email = userData.Email, FullName = userData.FullName, PhoneNumber = userData.PhoneNumber, EmailConfirmed = true },
+                    "ClusterManager" => new ClusterManager { UserName = userData.UserName, Email = userData.Email, FullName = userData.FullName, PhoneNumber = userData.PhoneNumber, EmailConfirmed = true },
+                    "Supervisor" => new Supervisor { UserName = userData.UserName, Email = userData.Email, FullName = userData.FullName, PhoneNumber = userData.PhoneNumber, EmailConfirmed = true },
+                    "Farmer" => new Farmer { UserName = userData.UserName, Email = userData.Email, FullName = userData.FullName, PhoneNumber = userData.PhoneNumber, EmailConfirmed = true },
+                    "UavVendor" => new UavVendor { UserName = userData.UserName, Email = userData.Email, FullName = userData.FullName, PhoneNumber = userData.PhoneNumber, ServiceRadius = userData.ServiceRadius ?? 0, EmailConfirmed = true },
+                    _ => new ApplicationUser { UserName = userData.UserName, Email = userData.Email, FullName = userData.FullName, PhoneNumber = userData.PhoneNumber, EmailConfirmed = true }
+                };
+
+                var result = await _userManager.CreateAsync(user, userData.Password);
+                if (!result.Succeeded)
+                {
+                    _logger.LogError("Failed to seed {UserType}: {UserName}", userData.UserType, userData.UserName);
+                    continue;
+                }
+
+                var roleName = Enum.Parse<UserRole>(userData.UserType).ToString();
+                await _userManager.AddToRoleAsync(user, roleName);
+
+                if (userData.UserType == "Admin")
+                {
+                    await _userManager.AddToRoleAsync(user, "Administrator");
+                }
+
+                _logger.LogInformation("Seeded {UserType}: {UserName}", userData.UserType, userData.UserName);
+            }
+        }
+
         #endregion
 
         #region Rice Variety Seeding
@@ -735,9 +808,10 @@ namespace RiceProduction.Infrastructure.Data
             await _context.SaveChangesAsync();
 
             // Create Plots
-            var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com");
-            var farmer2 = await _userManager.FindByEmailAsync("farmer2@ricepro.com");
-            var farmer3 = await _userManager.FindByEmailAsync("farmer3@ricepro.com");
+            var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
+            var farmer2 = await _userManager.FindByEmailAsync("farmer2@ricepro.com") as Farmer;
+            var farmer3 = await _userManager.FindByEmailAsync("farmer3@ricepro.com") as Farmer;
+            var farmer4 = await _userManager.FindByEmailAsync("farmer4@ricepro.com") as Farmer;
 
             var plots = new List<Plot>
             {
@@ -751,7 +825,11 @@ namespace RiceProduction.Infrastructure.Data
 
             await _context.Plots.AddRangeAsync(plots);
             await _context.SaveChangesAsync();
-
+            if (farmer1 != null) { farmer1.ClusterId = cluster1Id; _context.Update(farmer1); }
+            if (farmer2 != null) { farmer2.ClusterId = cluster2Id; _context.Update(farmer2); }
+            if (farmer3 != null) { farmer3.ClusterId = cluster1Id; _context.Update(farmer3); }
+            if (farmer4 != null) { farmer4.ClusterId = cluster2Id; _context.Update(farmer4); }
+            await _context.SaveChangesAsync();
             // Create Groups with plots
             var todayUtc = DateTime.UtcNow.Date;
             var groups = new List<Group>

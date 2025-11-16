@@ -127,6 +127,13 @@ namespace RiceProduction.Infrastructure.UnitOfWork
 
             return (IGenericRepository<T>)repoInstanceTypeT;
         }
+
+        public async Task<int> SaveChangesAsync(CancellationToken token)
+        {
+            int i = await CompleteAsync();
+            return i;
+        }
+
         public IFarmerRepository FarmerRepository
         {
             get

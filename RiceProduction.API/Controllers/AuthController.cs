@@ -42,38 +42,57 @@ public class AuthController : ControllerBase
 
         return Ok(result);
     }
-    [HttpPost("login-fast")]
-    public async Task<ActionResult<Result<LoginResponse>>> LoginFast([FromBody] LoginRequestFast request)
+    public enum TestRole
     {
-        switch (request.Role?.ToLowerInvariant())
+        Admin,
+        Supervisor,
+        Expert,
+        Uav,
+        ClusterManager
+    }
+    [HttpGet("login-fast")]
+    public async Task<ActionResult<Result<LoginResponse>>> LoginFast([FromQuery] TestRole role, [FromQuery] bool? rememberMe = true)
+    {
+        if (!Enum.IsDefined(typeof(TestRole), role))
         {
-            case "admin":
-                request.Email = "admin@ricepro.com";
-                request.Password = "Admin123!";
-                break;
-            case "supervisor":
-                request.Email = "supervisor1@ricepro.com";
-                request.Password = "Super123!";
-                break;
-            case "expert":
-                request.Email = "expert1@ricepro.com";
-                request.Password = "Expert123!";
-                break;
-            case "uav":
-                request.Email = "user@ricepro.com";
-                request.Password = "User123!";
-                break;
-
-            default:
-                return BadRequest(new { Error = "Invalid role specified. Supported roles: admin, user." });
+            return BadRequest(new { Error = "Invalid role specified. Supported roles: admin, supervisor, expert, uav, clustermanager." });
         }
+
+        string email = null;
+        string password = null;
+
+        switch (role)
+        {
+            case TestRole.Admin:
+                email = "admin@ricepro.com";
+                password = "Admin123!";
+                break;
+            case TestRole.Supervisor:
+                email = "supervisor1@ricepro.com";
+                password = "Super123!";
+                break;
+            case TestRole.Expert:
+                email = "expert1@ricepro.com";
+                password = "Expert123!";
+                break;
+            case TestRole.Uav:
+                email = "user@ricepro.com";
+                password = "User123!";
+                break;
+            case TestRole.ClusterManager:
+                email = "cluster1@ricepro.com";
+                password = "Manager123!";
+                break;
+            default:
+                return BadRequest(new { Error = "Invalid role specified." });
+        }
+
         var command = new LoginCommand
         {
-            Email = request.Email,
-            Password = request.Password,
-            RememberMe = request.RememberMe ?? true
+            Email = email,
+            Password = password,
+            RememberMe = rememberMe ?? true
         };
-
 
         var result = await _mediator.Send(command);
         if (!result.Succeeded)
