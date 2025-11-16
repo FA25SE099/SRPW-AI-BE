@@ -4,6 +4,7 @@ using RiceProduction.Application.SeasonFeature.Commands.CreateSeason;
 using RiceProduction.Application.SeasonFeature.Commands.UpdateSeason;
 using RiceProduction.Application.SeasonFeature.Commands.DeleteSeason;
 using RiceProduction.Application.SeasonFeature.Queries.GetAllSeasons;
+using RiceProduction.Application.SeasonFeature.Queries.GetCurrentSeason;
 
 namespace RiceProduction.API.Controllers
 {
@@ -60,6 +61,18 @@ namespace RiceProduction.API.Controllers
         {
             var command = new DeleteSeasonCommand { SeasonId = id };
             var result = await _mediator.Send(command);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
+        [HttpGet("current")]
+        public async Task<IActionResult> GetCurrentSeason()
+        {
+            var query = new GetCurrentSeasonQuery();
+            var result = await _mediator.Send(query);
             if (!result.Succeeded)
             {
                 return BadRequest(result);

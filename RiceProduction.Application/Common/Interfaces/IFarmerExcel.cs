@@ -10,6 +10,6 @@ namespace RiceProduction.Application.Common.Interfaces
 {
     public interface IFarmerExcel 
     {
-        Task<ImportFarmerResult> ImportFarmerFromExcelAsync(IFormFile file, CancellationToken cancellationToken = default);
+        Task<ImportFarmerResult> ImportFarmerFromExcelAsync(IFormFile file, Guid? clusterManagerId = null, CancellationToken cancellationToken = default);
     }
 }

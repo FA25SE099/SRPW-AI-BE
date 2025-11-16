@@ -40,6 +40,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
 
             var result = await _farmerExcel.ImportFarmerFromExcelAsync(
                 request.File,
+                request.ClusterManagerId,
                 cancellationToken
             );
 

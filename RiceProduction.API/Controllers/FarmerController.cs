@@ -5,6 +5,8 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
+using RiceProduction.Application.FarmerFeature.Command.CreateFarmer;
+using RiceProduction.Application.FarmerFeature.Command.UpdateFarmer;
 using RiceProduction.Application.FarmerFeature.Command.ImportFarmer;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel;
@@ -166,6 +168,85 @@ namespace RiceProduction.API.Controllers
                 return BadRequest(new { message = result.Message });
             }
             return result.Data;
+        }
+
+        [HttpPost]
+        [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmerRequest request)
+        {
+            try
+            {
+                // Get current cluster manager ID if authenticated
+                Guid? clusterManagerId = null;
+                var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
+                {
+                    clusterManagerId = userId;
+                }
+
+                var command = new CreateFarmerCommand
+                {
+                    FullName = request.FullName,
+                    PhoneNumber = request.PhoneNumber,
+                    Address = request.Address,
+                    FarmCode = request.FarmCode,
+                    Plots = request.Plots?.Select(p => new PlotCreationData
+                    {
+                        SoThua = p.SoThua,
+                        SoTo = p.SoTo,
+                        PlotArea = p.PlotArea,
+                        SoilType = p.SoilType
+                    }).ToList(),
+                    ClusterManagerId = clusterManagerId
+                };
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while creating farmer");
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+        [HttpPut]
+        [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateFarmer([FromBody] UpdateFarmerRequest request)
+        {
+            try
+            {
+                var command = new UpdateFarmerCommand
+                {
+                    FarmerId = request.FarmerId,
+                    FullName = request.FullName,
+                    Address = request.Address,
+                    FarmCode = request.FarmCode
+                };
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while updating farmer");
+                return StatusCode(500, "An error occurred while processing your request");
+            }
         }
 
     }

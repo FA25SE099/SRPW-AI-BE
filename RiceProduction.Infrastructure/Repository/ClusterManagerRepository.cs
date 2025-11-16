@@ -22,6 +22,11 @@ namespace RiceProduction.Infrastructure.Repository
         {
             _context.Set<ClusterManager>().UpdateRange(entities);
         }
+        public void Update(ClusterManager entity)
+        {
+            _context.Set<ClusterManager>().Update(entity);
+        }
+
 
         public async Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default)
         {

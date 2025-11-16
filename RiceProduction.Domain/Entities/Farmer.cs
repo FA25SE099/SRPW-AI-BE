@@ -3,10 +3,19 @@ namespace RiceProduction.Domain.Entities;
 public class Farmer : ApplicationUser
 {
     /// <summary>
+    /// ID of the cluster this farmer belongs to
+    /// </summary>
+    public Guid? ClusterId { get; set; }
+
+    /// <summary>
     /// Farm identification number or code
     /// </summary>
     [MaxLength(50)]
     public string? FarmCode { get; set; }
+
+    // Navigation properties
+    [ForeignKey("ClusterId")]
+    public Cluster? Cluster { get; set; }
 
     public ICollection<Plot> OwnedPlots { get; set; } = new List<Plot>();
     public ICollection<FarmLog> FarmLogs { get; set; } = new List<FarmLog>();

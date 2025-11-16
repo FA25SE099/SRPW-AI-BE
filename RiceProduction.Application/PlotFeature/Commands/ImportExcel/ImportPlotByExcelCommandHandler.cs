@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using MediatR;
+using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequest;
 using RiceProduction.Application.Common.Models.Request.PlotRequests;
 using RiceProduction.Application.Common.Models.Response.PlotResponse;
+using RiceProduction.Application.PlotFeature.Events;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
@@ -17,11 +20,15 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _genericExcel;
+        private readonly IMediator _mediator;
+        private readonly ILogger<ImportPlotByExcelCommandHandler> _logger;
 
-        public ImportPlotByExcelCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
+        public ImportPlotByExcelCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel, IMediator mediator, ILogger<ImportPlotByExcelCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
             _genericExcel = genericExcel;
+            _mediator = mediator;
+            _logger = logger;
         }
 
         public async Task<Result<List<PlotResponse>>> Handle(ImportPlotByExcelCommand request, CancellationToken cancellationToken)
@@ -124,7 +131,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         FarmerId = plot.FarmerId,
                         SoilType = plot.SoilType,
                         Status = Domain.Enums.PlotStatus.Active,
-                        GroupId = plot.GroupId,
+                        //GroupId = plot.GroupId,
                         Boundary = defaultBoundary 
                     };
 
@@ -162,6 +169,21 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         GroupId = plot.GroupId
                     };
                     plotCreateSuccessList.Add(plotResponse);
+                }
+
+                if (plotCreateSuccessList.Any())
+                {
+                    await _mediator.Publish(new PlotImportedEvent
+                    {
+                        ImportedPlots = plotCreateSuccessList,
+                        ClusterManagerId = request.ClusterManagerId,
+                        ImportedAt = DateTime.UtcNow,
+                        TotalPlotsImported = plotCreateSuccessList.Count
+                    }, cancellationToken);
+                    
+                    _logger.LogInformation(
+                        "Published PlotImportedEvent for {PlotCount} plots requiring polygon assignment",
+                        plotCreateSuccessList.Count);
                 }
 
                 return Result<List<PlotResponse>>.Success(
