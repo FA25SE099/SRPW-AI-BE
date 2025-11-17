@@ -194,7 +194,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         Area = row.Area.Value,
                         FarmerId = farmer.Id,
                         SoilType = row.SoilType,
-                        Status = PlotStatus.Active,
+                        Status = PlotStatus.PendingPolygon,
                         Boundary = defaultBoundary
                     };
 
