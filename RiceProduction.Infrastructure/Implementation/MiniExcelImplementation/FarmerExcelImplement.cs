@@ -138,6 +138,7 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                         FullName = dto.FullName,
                         Address = dto.Address,
                         FarmCode = dto.FarmCode,
+                        NumberOfPlots = dto.NumberOfPlots ?? 1,
                         ClusterId = clusterId,
                         EmailConfirmed = true,
                         IsActive = true,
@@ -154,26 +155,8 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                             FullName = dto.FullName,
                             Address = dto.Address,
                             FarmCode = dto.FarmCode,
+                            NumberOfPlots = dto.NumberOfPlots
                         });
-
-                        // Create plot if plot data is provided (without polygon - supervisor will add later)
-                        if (dto.PlotArea.HasValue && dto.PlotArea.Value > 0)
-                        {
-                            var plot = new Plot
-                            {
-                                FarmerId = farmer.Id,
-                                SoThua = dto.SoThua,
-                                SoTo = dto.SoTo,
-                                Area = dto.PlotArea.Value,
-                                SoilType = dto.SoilType,
-                                Status = PlotStatus.PendingPolygon,
-                                Boundary = null // Supervisor will assign polygon later
-                            };
-
-                            _context.Plots.Add(plot);
-                            await _context.SaveChangesAsync(cancellationToken);
-                            result.CreatedPlotIds.Add(plot.Id);
-                        }
                     }
                     else
                     {

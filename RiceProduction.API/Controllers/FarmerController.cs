@@ -15,6 +15,7 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
+using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerImportTemplate;
 
 namespace RiceProduction.API.Controllers
 {
@@ -168,6 +169,29 @@ namespace RiceProduction.API.Controllers
                 return BadRequest(new { message = result.Message });
             }
             return result.Data;
+        }
+
+        [HttpGet("download-import-template")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> DownloadFarmerImportTemplate()
+        {
+            try
+            {
+                var query = new DownloadFarmerImportTemplateQuery();
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded || result.Data == null)
+                {
+                    return BadRequest(new { message = result.Message });
+                }
+
+                return result.Data;
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while generating the template" });
+            }
         }
 
         [HttpPost]

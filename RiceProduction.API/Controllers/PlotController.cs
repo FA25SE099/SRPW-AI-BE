@@ -9,6 +9,7 @@ using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
 using RiceProduction.Application.PlotFeature.Queries;
+using RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 using RiceProduction.Application.PlotFeature.Queries.DownloadSample;
 using RiceProduction.Application.PlotFeature.Queries.GetAll;
 using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
@@ -257,6 +258,43 @@ namespace RiceProduction.API.Controllers
             {
                 _logger.LogError(ex, "Error occurred while generating sample Excel");
                 return StatusCode(500, new { message = "An error occurred while processing your request" });
+            }
+        }
+
+        [HttpGet("download-import-template")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> DownloadPlotImportTemplate()
+        {
+            try
+            {
+                // Get current cluster manager ID if authenticated
+                Guid? clusterManagerId = null;
+                var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
+                {
+                    clusterManagerId = userId;
+                }
+
+                var query = new DownloadPlotImportTemplateQuery 
+                { 
+                    ClusterManagerId = clusterManagerId 
+                };
+                
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to generate plot import template: {Message}", result.Message);
+                    return BadRequest(result);
+                }
+
+                return result.Data ?? BadRequest(new { message = "Failed to generate template" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating plot import template");
+                return StatusCode(500, new { message = "An error occurred" });
             }
         }
         [HttpGet("get-current-farmer-plots")]

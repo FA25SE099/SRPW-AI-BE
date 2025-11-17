@@ -50,20 +50,8 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
                 result.FailureCount
             );
             
-            // Publish event to auto-assign polygon tasks to supervisors
-            if (result.SuccessCount > 0 && result.CreatedPlotIds.Any())
-            {
-                await _mediator.Publish(new FarmerImportedEvent
-                {
-                    ImportResult = result,
-                    ClusterManagerId = request.ClusterManagerId,
-                    ImportedAt = DateTime.UtcNow
-                }, cancellationToken);
-                
-                _logger.LogInformation(
-                    "Published FarmerImportedEvent for {PlotCount} plots requiring polygon assignment",
-                    result.CreatedPlotIds.Count);
-            }
+            // Note: Plots are now imported separately using the plot import template
+            // No need to publish event for polygon assignment here
             
             return result;
         }

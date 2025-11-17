@@ -74,7 +74,33 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             }
         }
 
+        public async Task<IActionResult> DownloadMultiSheetExcelFile(Dictionary<string, object> sheets, string fileName)
+        {
+            if (sheets == null || !sheets.Any())
+            {
+                _logger.LogWarning("Sheet dictionary is null or empty");
+                return null;
+            }
 
+            try
+            {
+                var memoryStream = new MemoryStream();
+
+                // Use MiniExcel.SaveAs for multi-sheet support
+                MiniExcel.SaveAs(memoryStream, sheets);
+                memoryStream.Seek(0, SeekOrigin.Begin);
+
+                return new FileStreamResult(memoryStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                {
+                    FileDownloadName = fileName
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error generating multi-sheet Excel file: {ex.Message}");
+                return null;
+            }
+        }
 
         public async Task<List<T>> ExcelToListT<T>(IFormFile excel) where T : class, new()
         {
