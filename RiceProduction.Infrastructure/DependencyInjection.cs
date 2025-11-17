@@ -86,7 +86,6 @@ public static class DependencyInjection
             builder.Configuration.GetSection("SmsRetry"));
         
         builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
-        builder.Services.AddHostedService<SmsRetryBackgroundService>();
 
         builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddSingleton(TimeProvider.System);
