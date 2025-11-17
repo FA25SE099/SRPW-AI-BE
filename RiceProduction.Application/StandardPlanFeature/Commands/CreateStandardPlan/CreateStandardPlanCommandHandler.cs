@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -28,38 +29,50 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
 
     public async Task<Result<Guid>> Handle(CreateStandardPlanCommand request, CancellationToken cancellationToken)
     {
+        // 1. Get and validate current user
+        var expertId = _currentUser.Id;
+        if (!expertId.HasValue)
+        {
+            return Result<Guid>.Failure("User not authenticated.", "Unauthorized");
+        }
+
         try
         {
-            // 1. Validate Category exists
-            var category = await _unitOfWork.Repository<RiceVarietyCategory>()
-                .FindAsync(c => c.Id == request.CategoryId);
+            // 2. Validate expert exists
+            var expertExists = await _unitOfWork.AgronomyExpertRepository
+                .ExistAsync(expertId.Value, cancellationToken);
 
-            if (category == null)
-            {
-                return Result<Guid>.Failure(
-                    $"Rice Variety Category with ID {request.CategoryId} not found.",
-                    "CategoryNotFound");
-            }
-
-            // 2. Get current expert user
-            var expertId = _currentUser.Id;
-            if (expertId == null)
-            {
-                return Result<Guid>.Failure("User not authenticated.", "Unauthorized");
-            }
-
-            // Verify user is actually an AgronomyExpert
-            var expert = await _unitOfWork.AgronomyExpertRepository
-                .FindAsync(e => e.Id == expertId.Value);
-
-            if (expert == null)
+            if (!expertExists)
             {
                 return Result<Guid>.Failure(
                     "Only Agronomy Experts can create Standard Plans.",
                     "NotAnExpert");
             }
 
-            // 3. Validate all MaterialIds exist
+            // 3. Validate category exists
+            var categoryExists = await _unitOfWork.Repository<RiceVarietyCategory>()
+                .ExistsAsync(c => c.Id == request.CategoryId);
+
+            if (!categoryExists)
+            {
+                return Result<Guid>.Failure(
+                    $"Rice Variety Category with ID {request.CategoryId} not found.",
+                    "CategoryNotFound");
+            }
+
+            // 4. Check for duplicate plan name within the same category
+            var duplicateExists = await _unitOfWork.Repository<StandardPlan>()
+                .ExistsAsync(p => p.CategoryId == request.CategoryId && 
+                              p.PlanName.ToLower() == request.PlanName.ToLower());
+
+            if (duplicateExists)
+            {
+                return Result<Guid>.Failure(
+                    $"A Standard Plan with the name '{request.PlanName}' already exists for this category.",
+                    "DuplicatePlanName");
+            }
+
+            // 5. Validate all materials exist
             var allMaterialIds = request.Stages
                 .SelectMany(s => s.Tasks)
                 .SelectMany(t => t.Materials)
@@ -69,60 +82,52 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
 
             if (allMaterialIds.Any())
             {
-                var existingMaterials = await _unitOfWork.Repository<Material>()
-                    .ListAsync(m => allMaterialIds.Contains(m.Id));
+                var existingMaterialIds = await _unitOfWork.Repository<Material>()
+                    .GetQueryable()
+                    .Where(m => allMaterialIds.Contains(m.Id))
+                    .Select(m => m.Id)
+                    .ToListAsync(cancellationToken);
 
-                var existingMaterialIds = existingMaterials.Select(m => m.Id).ToList();
                 var missingMaterialIds = allMaterialIds.Except(existingMaterialIds).ToList();
 
                 if (missingMaterialIds.Any())
                 {
                     return Result<Guid>.Failure(
-                        $"Materials not found: {string.Join(", ", missingMaterialIds)}",
+                        $"The following materials were not found: {string.Join(", ", missingMaterialIds)}",
                         "MaterialsNotFound");
                 }
             }
 
-            // 4. Create the StandardPlan entity
+            // 6. Create the StandardPlan entity with all nested entities
             var standardPlan = new StandardPlan
             {
                 CategoryId = request.CategoryId,
                 ExpertId = expertId.Value,
-                PlanName = request.PlanName,
-                Description = request.Description,
+                PlanName = request.PlanName.Trim(),
+                Description = request.Description?.Trim(),
                 TotalDurationDays = request.TotalDurationDays,
                 CreatedBy = expertId.Value,
                 IsActive = request.IsActive
             };
 
-            // 5. Create nested entities (Stages -> Tasks -> Materials)
-            var stages = new List<StandardPlanStage>();
-            var allTasks = new List<StandardPlanTask>();
-            var allTaskMaterials = new List<StandardPlanTaskMaterial>();
-
+            // 7. Build nested entity hierarchy
             foreach (var stageDto in request.Stages.OrderBy(s => s.SequenceOrder))
             {
-                // A. Create Stage
                 var stage = new StandardPlanStage
                 {
-                    StandardPlan = standardPlan,
-                    StageName = stageDto.StageName,
+                    StageName = stageDto.StageName.Trim(),
                     SequenceOrder = stageDto.SequenceOrder,
                     ExpectedDurationDays = stageDto.ExpectedDurationDays,
                     IsMandatory = stageDto.IsMandatory,
-                    Notes = stageDto.Notes
+                    Notes = stageDto.Notes?.Trim()
                 };
 
-                stages.Add(stage);
-
-                // B. Create Tasks for this Stage
                 foreach (var taskDto in stageDto.Tasks.OrderBy(t => t.SequenceOrder))
                 {
                     var task = new StandardPlanTask
                     {
-                        StandardPlanStage = stage,
-                        TaskName = taskDto.TaskName,
-                        Description = taskDto.Description,
+                        TaskName = taskDto.TaskName.Trim(),
+                        Description = taskDto.Description?.Trim(),
                         DaysAfter = taskDto.DaysAfter,
                         DurationDays = taskDto.DurationDays,
                         TaskType = taskDto.TaskType,
@@ -130,50 +135,64 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
                         SequenceOrder = taskDto.SequenceOrder
                     };
 
-                    allTasks.Add(task);
-
-                    // C. Create Materials for this Task
                     foreach (var materialDto in taskDto.Materials)
                     {
                         var taskMaterial = new StandardPlanTaskMaterial
                         {
-                            StandardPlanTask = task,
                             MaterialId = materialDto.MaterialId,
                             QuantityPerHa = materialDto.QuantityPerHa
                         };
 
-                        allTaskMaterials.Add(taskMaterial);
+                        task.StandardPlanTaskMaterials.Add(taskMaterial);
                     }
+
+                    stage.StandardPlanTasks.Add(task);
                 }
+
+                standardPlan.StandardPlanStages.Add(stage);
             }
 
-            // 6. Add all entities to repositories
+            // 8. Add and save with transaction
             await _unitOfWork.Repository<StandardPlan>().AddAsync(standardPlan);
-            await _unitOfWork.Repository<StandardPlanStage>().AddRangeAsync(stages);
-            await _unitOfWork.Repository<StandardPlanTask>().AddRangeAsync(allTasks);
-            await _unitOfWork.Repository<StandardPlanTaskMaterial>().AddRangeAsync(allTaskMaterials);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 7. Save changes
-            await _unitOfWork.Repository<StandardPlan>().SaveChangesAsync();
-
-            // 8. Publish domain event
+            // 9. Publish domain event
             await _mediator.Publish(
                 new StandardPlanChangedEvent(standardPlan.Id, ChangeType.Created),
                 cancellationToken);
 
+            var totalTasks = standardPlan.StandardPlanStages.Sum(s => s.StandardPlanTasks.Count);
+            var totalMaterials = standardPlan.StandardPlanStages
+                .SelectMany(s => s.StandardPlanTasks)
+                .Sum(t => t.StandardPlanTaskMaterials.Count);
+
             _logger.LogInformation(
-                "Successfully created StandardPlan {PlanId} with {StageCount} stages, {TaskCount} tasks, and {MaterialCount} material entries by Expert {ExpertId}",
-                standardPlan.Id, stages.Count, allTasks.Count, allTaskMaterials.Count, expertId);
+                "Successfully created StandardPlan {PlanId} '{PlanName}' with {StageCount} stages, {TaskCount} tasks, and {MaterialCount} material entries by Expert {ExpertId}",
+                standardPlan.Id, standardPlan.PlanName, standardPlan.StandardPlanStages.Count, 
+                totalTasks, totalMaterials, expertId);
 
             return Result<Guid>.Success(
                 standardPlan.Id,
-                $"Standard Plan '{standardPlan.PlanName}' created successfully with {stages.Count} stages and {allTasks.Count} tasks.");
+                $"Standard Plan '{standardPlan.PlanName}' created successfully with {standardPlan.StandardPlanStages.Count} stages and {totalTasks} tasks.");
+        }
+        catch (DbUpdateException dbEx)
+        {
+            _logger.LogError(dbEx, 
+                "Database error while creating standard plan '{PlanName}' for Expert {ExpertId}", 
+                request.PlanName, expertId);
+            
+            return Result<Guid>.Failure(
+                "A database error occurred while saving the standard plan. Please check your data and try again.",
+                "DatabaseError");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating standard plan: {PlanName}", request.PlanName);
+            _logger.LogError(ex, 
+                "Unexpected error while creating standard plan '{PlanName}' for Expert {ExpertId}", 
+                request.PlanName, expertId);
+            
             return Result<Guid>.Failure(
-                "An error occurred while creating the standard plan.",
+                "An unexpected error occurred while creating the standard plan.",
                 "CreateStandardPlanFailed");
         }
     }
