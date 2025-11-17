@@ -18,4 +18,14 @@ public class GeneratePlanDraftResponse
     public decimal EstimatedTotalPlanCost { get; set; }
 
     public List<ProductionStageResponse> Stages { get; set; } = new();
+
+    /// <summary>
+    /// List of warnings about outdated or missing material prices
+    /// </summary>
+    public List<string> PriceWarnings { get; set; } = new();
+
+    /// <summary>
+    /// Whether any materials have price issues
+    /// </summary>
+    public bool HasPriceWarnings => PriceWarnings.Any();
 }

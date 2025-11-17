@@ -131,7 +131,9 @@ if (seedDatabase)
         {
             await context.Database.MigrateAsync();
         }
-        await initializer.SeedAsyncAdminOnly();
+        //await initializer.SeedAsyncAdminOnly();
+        await initializer.SeedAsync();
+
     }
     catch (Exception ex)
     {
