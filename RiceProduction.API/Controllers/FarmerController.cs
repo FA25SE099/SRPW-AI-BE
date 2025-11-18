@@ -5,6 +5,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
+using RiceProduction.Application.FarmerFeature.Command.CreateFarmer;
 using RiceProduction.Application.FarmerFeature.Command.ImportFarmer;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel;
@@ -13,6 +14,7 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
+using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
 
 namespace RiceProduction.API.Controllers
 {
@@ -130,7 +132,7 @@ namespace RiceProduction.API.Controllers
                 clusterManagerId = userId;
             }
             
-            var command = new ImportFarmerCommand(requestModel.File, clusterManagerId);
+            var command = new CreateFarmerCommand(requestModel.File, clusterManagerId);
             var result = await _mediator.Send(command);
 
             if (result.FailureCount > 0)
@@ -167,6 +169,18 @@ namespace RiceProduction.API.Controllers
             }
             return result.Data;
         }
+        [HttpPost]
+        [ProducesResponseType(typeof(FarmerDTO), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmersCommand command)
+        {
+            var result = await _mediator.Send(command);
 
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return CreatedAtAction(nameof(GetFarmerById), new { id = result.Data.FarmerId }, result.Data);
+        }
     }
     }

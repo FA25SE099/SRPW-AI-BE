@@ -87,7 +87,7 @@ public static class DependencyInjection
         
         builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
         builder.Services.AddHostedService<SmsRetryBackgroundService>();
-
+        builder.Services.AddScoped<IFarmerRepository, FarmerRepository>();
         builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();

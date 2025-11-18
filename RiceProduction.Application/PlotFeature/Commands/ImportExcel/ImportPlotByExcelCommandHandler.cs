@@ -124,7 +124,6 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         FarmerId = plot.FarmerId,
                         SoilType = plot.SoilType,
                         Status = Domain.Enums.PlotStatus.Active,
-                        GroupId = plot.GroupId,
                         Boundary = defaultBoundary 
                     };
 

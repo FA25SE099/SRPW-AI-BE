@@ -812,10 +812,169 @@ namespace RiceProduction.Infrastructure.Data
 
             await _context.Groups.AddRangeAsync(groups);
             await _context.SaveChangesAsync();
-
+            await SeedPlotPolygonTasksAsync(plots, clusterManager1, supervisor1, supervisor2);
             _logger.LogInformation("Seeded {ClusterCount} clusters and {GroupCount} groups", clusters.Count, groups.Count);
         }
         #endregion
+        private async Task SeedPlotPolygonTasksAsync(
+    List<Plot> plots,
+    ClusterManager clusterManager1,
+    Supervisor supervisor1,
+    Supervisor? supervisor2)
+        {
+            if (_context.Set<PlotPolygonTask>().Any())
+            {
+                _logger.LogInformation("PlotPolygonTasks already exist - skipping");
+                return;
+            }
+
+            var plotPolygonTasks = new List<PlotPolygonTask>();
+            var now = DateTime.UtcNow;
+
+            plotPolygonTasks.Add(new PlotPolygonTask
+            {
+                Id = Guid.NewGuid(),
+                PlotId = plots[2].Id, 
+                AssignedToSupervisorId = supervisor1.Id,
+                AssignedByClusterManagerId = clusterManager1.Id,
+                Status = "Completed",
+                AssignedAt = now.AddDays(-15),
+                CompletedAt = now.AddDays(-10),
+                Notes = "Completed polygon assignment for plot 16-58. Boundary coordinates verified with farmer.",
+                Priority = 2,
+                CreatedAt = now.AddDays(-15),
+                LastModified = now.AddDays(-10)
+            });
+
+            plotPolygonTasks.Add(new PlotPolygonTask
+            {
+                Id = Guid.NewGuid(),
+                PlotId = plots[3].Id, 
+                AssignedToSupervisorId = supervisor1.Id,
+                AssignedByClusterManagerId = clusterManager1.Id,
+                Status = "Completed",
+                AssignedAt = now.AddDays(-12),
+                CompletedAt = now.AddDays(-8),
+                Notes = "Completed polygon assignment for plot 17-58. Adjacent to plot 16-58, boundaries confirmed.",
+                Priority = 2,
+                CreatedAt = now.AddDays(-12),
+                LastModified = now.AddDays(-8)
+            });
+
+            var plotWithoutBoundary = new Plot
+            {
+                Id = Guid.NewGuid(),
+                FarmerId = plots[1].FarmerId, // farmer2
+                SoThua = 19,
+                SoTo = 12,
+                Area = 8.5m,
+                SoilType = "Đất phù sa",
+                Status = PlotStatus.PendingPolygon, // Special status for plots awaiting polygon
+                CreatedAt = now.AddDays(-5),
+                LastModified = now.AddDays(-5)
+            };
+
+            // Add the plot without boundary
+            await _context.Plots.AddAsync(plotWithoutBoundary);
+
+            plotPolygonTasks.Add(new PlotPolygonTask
+            {
+                Id = Guid.NewGuid(),
+                PlotId = plotWithoutBoundary.Id,
+                AssignedToSupervisorId = supervisor2?.Id ?? supervisor1.Id,
+                AssignedByClusterManagerId = clusterManager1.Id,
+                Status = "InProgress",
+                AssignedAt = now.AddDays(-3),
+                CompletedAt = null,
+                Notes = "Polygon assignment in progress. Waiting for field survey completion.",
+                Priority = 1,
+                CreatedAt = now.AddDays(-3),
+                LastModified = now.AddDays(-1)
+            });
+
+            // Task 4: Pending task for another plot
+            var anotherPlotWithoutBoundary = new Plot
+            {
+                Id = Guid.NewGuid(),
+                FarmerId = plots[0].FarmerId, // farmer1
+                SoThua = 16,
+                SoTo = 36,
+                Area = 6.2m,
+                SoilType = "Đất sét",
+                Status = PlotStatus.PendingPolygon,
+                CreatedAt = now.AddDays(-2),
+                LastModified = now.AddDays(-2)
+            };
+
+            await _context.Plots.AddAsync(anotherPlotWithoutBoundary);
+
+            plotPolygonTasks.Add(new PlotPolygonTask
+            {
+                Id = Guid.NewGuid(),
+                PlotId = anotherPlotWithoutBoundary.Id,
+                AssignedToSupervisorId = supervisor1.Id,
+                AssignedByClusterManagerId = clusterManager1.Id,
+                Status = "Pending",
+                AssignedAt = now.AddDays(-1),
+                CompletedAt = null,
+                Notes = "New plot registered. Awaiting polygon boundary assignment.",
+                Priority = 1,
+                CreatedAt = now.AddDays(-1),
+                LastModified = now.AddDays(-1)
+            });
+
+            // Task 5: High priority urgent task
+            var urgentPlot = new Plot
+            {
+                Id = Guid.NewGuid(),
+                FarmerId = plots[2].FarmerId, // farmer3
+                SoThua = 22,
+                SoTo = 58,
+                Area = 18.0m,
+                SoilType = "Đất phù sa",
+                Status = PlotStatus.PendingPolygon,
+                CreatedAt = now,
+                LastModified = now
+            };
+
+            await _context.Plots.AddAsync(urgentPlot);
+
+            plotPolygonTasks.Add(new PlotPolygonTask
+            {
+                Id = Guid.NewGuid(),
+                PlotId = urgentPlot.Id,
+                AssignedToSupervisorId = supervisor1.Id,
+                AssignedByClusterManagerId = clusterManager1.Id,
+                Status = "Pending",
+                AssignedAt = now,
+                CompletedAt = null,
+                Notes = "URGENT: Large plot requires immediate polygon assignment for upcoming planting season.",
+                Priority = 3, // High priority
+                CreatedAt = now,
+                LastModified = now
+            });
+
+            // Task 6: Cancelled task (example of workflow)
+            plotPolygonTasks.Add(new PlotPolygonTask
+            {
+                Id = Guid.NewGuid(),
+                PlotId = plots[0].Id, // Plot that already has boundary
+                AssignedToSupervisorId = supervisor1.Id,
+                AssignedByClusterManagerId = clusterManager1.Id,
+                Status = "Pending",
+                AssignedAt = now.AddDays(-20),
+                CompletedAt = null,
+                Notes = "Pending - Plot boundary was provided by farmer through mobile app upload.",
+                Priority = 1,
+                CreatedAt = now.AddDays(-20),
+                LastModified = now.AddDays(-18)
+            });
+
+            await _context.Set<PlotPolygonTask>().AddRangeAsync(plotPolygonTasks);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Seeded {Count} plot polygon tasks", plotPolygonTasks.Count);
+        }
 
         #region Completed Plans Seeding
         private async Task SeedCompletedPlansForPastGroups()
