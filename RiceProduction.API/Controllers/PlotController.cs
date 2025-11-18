@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequests;
 using RiceProduction.Application.Common.Models.Response.PlotResponse;
@@ -8,8 +9,10 @@ using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
 using RiceProduction.Application.PlotFeature.Queries;
+using RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 using RiceProduction.Application.PlotFeature.Queries.DownloadSample;
 using RiceProduction.Application.PlotFeature.Queries.GetAll;
+using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
 using RiceProduction.Application.PlotFeature.Queries.GetById;
 using RiceProduction.Application.PlotFeature.Queries.GetDetail;
 using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
@@ -24,10 +27,13 @@ namespace RiceProduction.API.Controllers
         private readonly IMediator _mediator;
         private readonly ILogger<PlotController> _logger;
 
-        public PlotController(IMediator mediator, ILogger<PlotController> logger)
+        private readonly IUser _currentUser;
+
+        public PlotController(IMediator mediator, ILogger<PlotController> logger, IUser currentUser)
         {
             _mediator = mediator;
             _logger = logger;
+            _currentUser = currentUser;
         }
 
         [HttpGet("{id}")]
@@ -254,6 +260,64 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, new { message = "An error occurred while processing your request" });
             }
         }
+
+        [HttpGet("download-import-template")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> DownloadPlotImportTemplate()
+        {
+            try
+            {
+                // Get current cluster manager ID if authenticated
+                Guid? clusterManagerId = null;
+                var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
+                {
+                    clusterManagerId = userId;
+                }
+
+                var query = new DownloadPlotImportTemplateQuery 
+                { 
+                    ClusterManagerId = clusterManagerId 
+                };
+                
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to generate plot import template: {Message}", result.Message);
+                    return BadRequest(result);
+                }
+
+                return result.Data ?? BadRequest(new { message = "Failed to generate template" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating plot import template");
+                return StatusCode(500, new { message = "An error occurred" });
+            }
+        }
+        [HttpGet("get-current-farmer-plots")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetCurrentFarmerPlots([FromQuery] GetByFarmerIdQuery query)
+        {
+            if (!_currentUser.Id.HasValue || _currentUser.Id == Guid.Empty)
+            {
+                return BadRequest(new { message = "Invalid Farmer ID" });
+            }
+            query.FarmerId = _currentUser.Id.Value;
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to retrieve plots for farmer {FarmerId}: {Message}", _currentUser.Id, result.Message);
+                return BadRequest(result);
+            }
+
+            return Ok(result.Data);
+        }
+
         [HttpPut("boundaries/import")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UpdatePlotBoundaries(IFormFile file)

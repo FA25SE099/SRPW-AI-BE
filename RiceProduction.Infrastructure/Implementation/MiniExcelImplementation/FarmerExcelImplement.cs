@@ -27,10 +27,19 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             _userManager = userManager;
         }
 
-        public async Task<ImportFarmerResult> ImportFarmerFromExcelAsync(IFormFile file, CancellationToken cancellationToken = default)
+        public async Task<ImportFarmerResult> ImportFarmerFromExcelAsync(IFormFile file, Guid? clusterManagerId = null, CancellationToken cancellationToken = default)
         {
             var result = new ImportFarmerResult();
             var rowNumber = 1;
+
+            // Get ClusterId from ClusterManager if provided
+            Guid? clusterId = null;
+            if (clusterManagerId.HasValue)
+            {
+                var clusterManager = await _context.Set<ClusterManager>()
+                    .FirstOrDefaultAsync(cm => cm.Id == clusterManagerId.Value, cancellationToken);
+                clusterId = clusterManager?.ClusterId;
+            }
 
             await using (var stream = file.OpenReadStream())
             {
@@ -129,6 +138,8 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                         FullName = dto.FullName,
                         Address = dto.Address,
                         FarmCode = dto.FarmCode,
+                        NumberOfPlots = dto.NumberOfPlots ?? 1,
+                        ClusterId = clusterId,
                         EmailConfirmed = true,
                         IsActive = true,
                     };
@@ -144,26 +155,8 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                             FullName = dto.FullName,
                             Address = dto.Address,
                             FarmCode = dto.FarmCode,
+                            NumberOfPlots = dto.NumberOfPlots
                         });
-
-                        // Create plot if plot data is provided (without polygon - supervisor will add later)
-                        if (dto.PlotArea.HasValue && dto.PlotArea.Value > 0)
-                        {
-                            var plot = new Plot
-                            {
-                                FarmerId = farmer.Id,
-                                SoThua = dto.SoThua,
-                                SoTo = dto.SoTo,
-                                Area = dto.PlotArea.Value,
-                                SoilType = dto.SoilType,
-                                Status = PlotStatus.PendingPolygon,
-                                Boundary = null // Supervisor will assign polygon later
-                            };
-
-                            _context.Plots.Add(plot);
-                            await _context.SaveChangesAsync(cancellationToken);
-                            result.CreatedPlotIds.Add(plot.Id);
-                        }
                     }
                     else
                     {

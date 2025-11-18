@@ -14,5 +14,6 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
     {
         public required IFormFile ExcelFile { get; set; }
         public DateTime ImportDate { get; set; }
+        public Guid? ClusterManagerId { get; set; }
     }
 }

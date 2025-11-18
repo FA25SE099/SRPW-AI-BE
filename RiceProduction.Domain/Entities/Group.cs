@@ -21,6 +21,7 @@ public class Group : BaseAuditableEntity
     public DateTime? PlantingDate { get; set; }
 
     public GroupStatus Status { get; set; } = GroupStatus.Draft;
+    public string? GroupName { get; set; }
 
     public bool IsException { get; set; } = false;
 
@@ -40,6 +41,9 @@ public class Group : BaseAuditableEntity
     // Navigation properties
     [ForeignKey("ClusterId")]
     public Cluster Cluster { get; set; } = null!;
+    [ForeignKey("SeasonId")]
+    public Season Season { get; set; } = null!;
+
 
     [ForeignKey("SupervisorId")]
     public Supervisor? Supervisor { get; set; }

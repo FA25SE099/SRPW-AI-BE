@@ -15,7 +15,6 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<CreateClusterCommandHandler> _logger;
-
         public CreateClusterCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateClusterCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
@@ -45,7 +44,6 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
                 {
                     return Result<Guid>.Failure($"Agronomy Expert ID = '{request.AgronomyExpertId}' already managing another cluster with ID = '{duplicate.Id}'");
                 }
-
                 var id = await clusterRepo.GenerateNewGuid(Guid.NewGuid());
                 var newCluster = new Cluster
                 {
@@ -53,7 +51,19 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
                     ClusterManagerId = request.ClusterManagerId,
                     AgronomyExpertId = request.AgronomyExpertId
                 };
+                var clusterManagers = await _unitOfWork.ClusterManagerRepository.FindAsync(c => c.Id == request.ClusterManagerId);
+                var clusterManager = clusterManagers.FirstOrDefault();
+                if (clusterManager == null)
+                {
+                    _logger.LogInformation("Cannot find manager with this id: {}", request.ClusterManagerId);
+                }
+                
+                //newCluster.ClusterManager.AssignedDate = DateTime.UtcNow;
+                //newCluster.AgronomyExpert.AssignedDate = DateTime.UtcNow;
                 await clusterRepo.AddAsync(newCluster);
+                clusterManager.ClusterId = newCluster.Id;
+                _unitOfWork.ClusterManagerRepository.Update(clusterManager);
+
                 await _unitOfWork.CompleteAsync();
                 if (await clusterRepo.ExistsAsync(c => c.Id == id)) { 
                     _logger.LogInformation("Created Cluster with ID: {ClusterId}", id);

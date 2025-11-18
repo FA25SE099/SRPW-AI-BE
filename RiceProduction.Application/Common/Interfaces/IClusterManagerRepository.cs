@@ -16,6 +16,7 @@ namespace RiceProduction.Infrastructure.Repository
         Task<ClusterManager?> GetClusterManagerByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default);
         Task<(IEnumerable<ClusterManager> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<ClusterManager, bool>>? predicate = null, CancellationToken cancellationToken = default);
         IQueryable<ClusterManager> GetQueryable();
+        void Update(ClusterManager entity);
         void UpdateRange(IEnumerable<ClusterManager> entities);
     }
 }

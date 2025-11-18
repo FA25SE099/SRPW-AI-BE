@@ -131,7 +131,9 @@ if (seedDatabase)
         {
             await context.Database.MigrateAsync();
         }
+        //await initializer.SeedAsyncAdminOnly();
         await initializer.SeedAsync();
+
     }
     catch (Exception ex)
     {
@@ -139,11 +141,9 @@ if (seedDatabase)
         logger.LogError(ex, "An error occurred creating the DB or seeding data.");
     }
 }
-if (app.Environment.IsDevelopment())
-{
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+
 app.UseCors("AllowFrontend");
 app.UseCors("AllowGemini");
 

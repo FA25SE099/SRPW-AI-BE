@@ -6,6 +6,7 @@ using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
 using RiceProduction.Application.FarmerFeature.Command.CreateFarmer;
+using RiceProduction.Application.FarmerFeature.Command.UpdateFarmer;
 using RiceProduction.Application.FarmerFeature.Command.ImportFarmer;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel;
@@ -15,6 +16,7 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
+using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerImportTemplate;
 
 namespace RiceProduction.API.Controllers
 {
