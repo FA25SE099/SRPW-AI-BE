@@ -51,8 +51,7 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
                     ClusterManagerId = request.ClusterManagerId,
                     AgronomyExpertId = request.AgronomyExpertId
                 };
-                var clusterManagers = await _unitOfWork.ClusterManagerRepository.FindAsync(c => c.Id == request.ClusterManagerId);
-                var clusterManager = clusterManagers.FirstOrDefault();
+                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetEntityByIdAsync(c => c.Id == request.ClusterManagerId);
                 if (clusterManager == null)
                 {
                     _logger.LogInformation("Cannot find manager with this id: {}", request.ClusterManagerId);

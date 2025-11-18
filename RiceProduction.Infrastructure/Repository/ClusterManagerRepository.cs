@@ -171,5 +171,10 @@ namespace RiceProduction.Infrastructure.Repository
         {
             return _clusterManager.AsQueryable();
         }
+
+        public async Task<ClusterManager> GetEntityByIdAsync(Expression<Func<ClusterManager, bool>> match)
+        {
+            return await _context.Set<ClusterManager>().SingleOrDefaultAsync(match);
+        }
     }
 }
