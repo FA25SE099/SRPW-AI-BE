@@ -132,7 +132,7 @@ namespace RiceProduction.API.Controllers
                 clusterManagerId = userId;
             }
             
-            var command = new CreateFarmerCommand(requestModel.File, clusterManagerId);
+            var command = new ImportFarmerCommand(requestModel.File, clusterManagerId);
             var result = await _mediator.Send(command);
 
             if (result.FailureCount > 0)
