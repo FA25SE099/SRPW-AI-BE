@@ -612,10 +612,10 @@ namespace RiceProduction.Infrastructure.Data
                 new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Làm đất bón lót", StandardPlanId = planId, ExpectedDurationDays = 1, SequenceOrder = 1, IsMandatory = true, Notes = "Chuẩn bị hạt giống bón phân cho đất trước khi sạ." },
                 new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Sạ hàng", StandardPlanId = planId, ExpectedDurationDays = 1, SequenceOrder = 2, IsMandatory = true, Notes = "Gieo để hạt giống đều và giữ độ ẩm phù hợp để cây mọc mầm." },
                 new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Chăm sóc sau sạ", StandardPlanId = planId, ExpectedDurationDays = 15, SequenceOrder = 3, IsMandatory = true, Notes = "Chăm sóc ngay sau sạ, bao gồm trừ sâu bệnh và bón phân đầu." },
-                new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Chăm sóc đẻ nhánh", StandardPlanId = planId, ExpectedDurationDays = 20, SequenceOrder = 4, IsMandatory = true, Notes = "Giai đoạn đẻ nhánh, kiểm soát nước và dinh dưỡng." },
-                new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Chăm sóc vươn lóng đến trỗ", StandardPlanId = planId, ExpectedDurationDays = 30, SequenceOrder = 5, IsMandatory = true, Notes = "Từ vươn lóng đến trỗ bông, bón thúc và phòng trừ." },
-                new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Chăm sóc trỗ đến chín", StandardPlanId = planId, ExpectedDurationDays = 25, SequenceOrder = 6, IsMandatory = true, Notes = "Từ trỗ đến chín hạt, tập trung phòng sâu bệnh." },
-                new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Thu hoạch lúa và bảo quản", StandardPlanId = planId, ExpectedDurationDays = 7, SequenceOrder = 7, IsMandatory = true, Notes = "Thu hoạch và bảo quản sau khi chín." }
+                //new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Chăm sóc đẻ nhánh", StandardPlanId = planId, ExpectedDurationDays = 20, SequenceOrder = 4, IsMandatory = true, Notes = "Giai đoạn đẻ nhánh, kiểm soát nước và dinh dưỡng." },
+                //new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Chăm sóc vươn lóng đến trỗ", StandardPlanId = planId, ExpectedDurationDays = 30, SequenceOrder = 5, IsMandatory = true, Notes = "Từ vươn lóng đến trỗ bông, bón thúc và phòng trừ." },
+                //new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Chăm sóc trỗ đến chín", StandardPlanId = planId, ExpectedDurationDays = 25, SequenceOrder = 6, IsMandatory = true, Notes = "Từ trỗ đến chín hạt, tập trung phòng sâu bệnh." },
+                //new StandardPlanStage { Id = Guid.NewGuid(), StageName = "Thu hoạch lúa và bảo quản", StandardPlanId = planId, ExpectedDurationDays = 7, SequenceOrder = 7, IsMandatory = true, Notes = "Thu hoạch và bảo quản sau khi chín." }
             };
 
             await _context.Set<StandardPlanStage>().AddRangeAsync(stages);
