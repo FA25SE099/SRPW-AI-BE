@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SmsFeature.Commands.TestSendSms;
