@@ -90,9 +90,9 @@ namespace RiceProduction.Infrastructure.Repository
             if (freeOrAssigned.HasValue)
             {
                 if (freeOrAssigned.Value)
-                    query = query.Where(s => s.ClusterId.HasValue);
-                else
                     query = query.Where(s => !s.ClusterId.HasValue);
+                else
+                    query = query.Where(s => s.ClusterId.HasValue);
             }
             if (!string.IsNullOrEmpty(search))
             {
