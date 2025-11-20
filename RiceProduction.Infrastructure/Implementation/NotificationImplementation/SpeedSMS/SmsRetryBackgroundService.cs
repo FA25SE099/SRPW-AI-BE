@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 
 namespace RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;
 

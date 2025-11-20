@@ -1,4 +1,4 @@
-﻿using RiceProduction.Application.Common.Interfaces;
+﻿using RiceProduction.Application.Common.Interfaces.External;
 using System;
 using System.Collections.Generic;
 using System.Linq;
