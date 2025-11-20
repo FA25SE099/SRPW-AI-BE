@@ -1,6 +1,6 @@
 using RiceProduction.Application.Common.Models.Zalo;
 
-namespace RiceProduction.Application.Common.Interfaces;
+namespace RiceProduction.Application.Common.Interfaces.External;
 
 public interface IZaloOAuthService
 {

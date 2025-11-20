@@ -77,11 +77,32 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
         var plots = await _unitOfWork.Repository<Plot>()
             .ListAsync(p => plotIds.Contains(p.Id));
 
+        // Check for existing pending or in-progress tasks for these plots
+        var existingTasks = await _unitOfWork.Repository<PlotPolygonTask>()
+            .ListAsync(t => plotIds.Contains(t.PlotId) && 
+                           (t.Status == "Pending" || t.Status == "InProgress"));
+        var plotsWithExistingTasks = existingTasks.Select(t => t.PlotId).ToHashSet();
+
+        _logger.LogInformation(
+            "Found {ExistingTaskCount} plots with existing polygon tasks, will skip assignment",
+            plotsWithExistingTasks.Count);
+
         int supervisorIndex = 0;
         int tasksCreated = 0;
+        int skipped = 0;
 
         foreach (var plot in plots)
         {
+            // Skip if plot already has a pending or in-progress task
+            if (plotsWithExistingTasks.Contains(plot.Id))
+            {
+                _logger.LogDebug(
+                    "Skipping plot {PlotId} (SoThua: {SoThua}, SoTo: {SoTo}) - already has a pending/in-progress polygon task",
+                    plot.Id, plot.SoThua, plot.SoTo);
+                skipped++;
+                continue;
+            }
+
             var supervisor = supervisorList[supervisorIndex % supervisorList.Count];
             
             var polygonTask = new PlotPolygonTask
@@ -117,9 +138,10 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
         await _unitOfWork.CompleteAsync();
 
         _logger.LogInformation(
-            "Created {TaskCount} polygon assignment tasks distributed across {SupervisorCount} supervisors",
+            "Created {TaskCount} polygon assignment tasks distributed across {SupervisorCount} supervisors ({SkippedCount} plots skipped - already assigned)",
             tasksCreated,
-            supervisorList.Count);
+            supervisorList.Count,
+            skipped);
     }
 }
 

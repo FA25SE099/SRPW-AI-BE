@@ -6,6 +6,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.StandardPlanFeature.Queries.GetAllStandardPlans;
 using RiceProduction.Application.StandardPlanFeature.Queries.GetStandardPlanDetail;
 using RiceProduction.Application.StandardPlanFeature.Queries.ReviewStandardPlan;
+using RiceProduction.Application.StandardPlanFeature.Commands.CreateStandardPlan;
 using RiceProduction.Application.StandardPlanFeature.Commands.UpdateStandardPlan;
 using RiceProduction.Application.StandardPlanFeature.Queries.DownloadAllStandardPlansExcel;
 using RiceProduction.Application.StandardPlanFeature.Queries.DownloadStandardPlanSampleExcel;
@@ -26,6 +27,39 @@ public class StandardPlanController : ControllerBase
         _logger = logger;
     }
 
+    /// <summary>
+    /// Creates a new Standard Plan template with stages, tasks, and materials.
+    /// Only AgronomyExperts can create standard plans.
+    /// </summary>
+    [HttpPost]
+    [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<Result<Guid>>> Create([FromBody] CreateStandardPlanCommand command)
+    {
+        try
+        {
+            _logger.LogInformation("Create StandardPlan request received: {PlanName}", command.PlanName);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to create standard plan: {Errors}", 
+                    string.Join(", ", result.Errors ?? new string[0]));
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation("Successfully created standard plan with ID: {StandardPlanId}", result.Data);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error occurred while creating standard plan");
+            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
+        }
+    }
   
     [HttpGet]
     public async Task<ActionResult<Result<List<StandardPlanDto>>>> GetAll(

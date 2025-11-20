@@ -4,13 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.Common.Interfaces
+namespace RiceProduction.Application.Common.Interfaces.External
 {
     public interface ISmSService
     {
-        String getUserInfo();
-        String sendSMS(String[] phones, String content, int type, String sender);
-        String sendMMS(String[] phones, String content, String link, String sender);
+        string getUserInfo();
+        string sendSMS(string[] phones, string content, int type, string sender);
+        string sendMMS(string[] phones, string content, string link, string sender);
         Task<string> SendSMSAsync(string[] phones, string content, int type = 3, string sender = "");
     }
 }

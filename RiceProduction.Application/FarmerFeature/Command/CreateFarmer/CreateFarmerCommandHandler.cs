@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response.PlotResponse;
 using RiceProduction.Application.FarmerFeature.Events;
+using RiceProduction.Application.PlotFeature.Events;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
@@ -131,35 +133,35 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                     }
                 }
 
-                // Publish event to auto-assign polygon tasks to supervisors if plots were created
+                // Publish PlotImportedEvent if plots were created
                 if (createdPlotIds.Any() && request.ClusterManagerId.HasValue)
                 {
-                    var importResult = new ImportFarmerResult
+                    // Get the created plots for the event
+                    var createdPlots = await _unitOfWork.Repository<Plot>()
+                        .ListAsync(p => createdPlotIds.Contains(p.Id));
+                    
+                    var plotResponses = createdPlots.Select(p => new PlotResponse
                     {
-                        TotalRows = 1,
-                        SuccessCount = 1,
-                        FailureCount = 0,
-                        CreatedPlotIds = createdPlotIds,
-                        ImportedFarmers = new List<ImportedFarmerData>
-                        {
-                            new ImportedFarmerData
-                            {
-                                PhoneNumber = farmer.PhoneNumber,
-                                FullName = farmer.FullName,
-                                Address = farmer.Address,
-                                FarmCode = farmer.FarmCode
-                            }
-                        }
-                    };
+                        PlotId = p.Id,
+                        SoThua = p.SoThua,
+                        SoTo = p.SoTo,
+                        Area = p.Area,
+                        FarmerId = p.FarmerId,
+                        FarmerName = farmer.FullName,
+                        SoilType = p.SoilType,
+                        Status = p.Status,
+                        GroupId = p.GroupId
+                    }).ToList();
 
-                    await _mediator.Publish(new FarmerImportedEvent
+                    await _mediator.Publish(new PlotImportedEvent
                     {
-                        ImportResult = importResult,
+                        ImportedPlots = plotResponses,
                         ClusterManagerId = request.ClusterManagerId,
-                        ImportedAt = DateTime.UtcNow
+                        ImportedAt = DateTime.UtcNow,
+                        TotalPlotsImported = plotResponses.Count
                     }, cancellationToken);
 
-                    _logger.LogInformation("Published FarmerImportedEvent for plot requiring polygon assignment");
+                    _logger.LogInformation("Published PlotImportedEvent for {PlotCount} plot(s) requiring polygon assignment", plotResponses.Count);
                 }
 
                 return Result<Guid>.Success(farmer.Id);

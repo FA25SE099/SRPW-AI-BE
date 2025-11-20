@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;

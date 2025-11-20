@@ -82,7 +82,7 @@ public class GeneratePlanDraftQueryHandler :
             var materialPriceMap = potentialPrices
                 .GroupBy(p => p.MaterialId)
                 .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
-                .ToDictionary(p => p.MaterialId, p => p.PricePerMaterial);
+                .ToDictionary(p => p.MaterialId, p => new { p.PricePerMaterial, p.ValidFrom });
 
             // Fetch Material Details (AmmountPerMaterial) separately to map them correctly in the loop
             // FIX: Dùng Distinct() trên Material object trước khi tạo Dictionary để tránh trùng khóa.
@@ -96,6 +96,8 @@ public class GeneratePlanDraftQueryHandler :
             // --- 4. Build the Draft Response Structure and Calculate Costs ---
             
             decimal totalPlanCost = 0M; 
+            var priceWarnings = new List<string>();
+            var now = DateTime.UtcNow;
 
             var response = new GeneratePlanDraftResponse
             {
@@ -144,7 +146,9 @@ public class GeneratePlanDraftQueryHandler :
                     // Loop through Standard Task Materials and Calculate Cost
                     foreach (var standardMaterial in standardTask.StandardPlanTaskMaterials)
                     {
-                        decimal unitPrice = materialPriceMap.GetValueOrDefault(standardMaterial.MaterialId, 0M);
+                        var priceInfo = materialPriceMap.GetValueOrDefault(standardMaterial.MaterialId);
+                        decimal unitPrice = priceInfo?.PricePerMaterial ?? 0M;
+                        DateTime? priceValidFrom = priceInfo?.ValidFrom;
                         
                         // FIX: Lấy Material Detail từ Map mới tạo
                         if (!materialDetailsMap.TryGetValue(standardMaterial.MaterialId, out var materialDetail))
@@ -153,9 +157,31 @@ public class GeneratePlanDraftQueryHandler :
                             continue; // Bỏ qua vật tư này nếu không tìm thấy chi tiết
                         }
                         
-                        if (unitPrice == 0M)
+                        string? materialPriceWarning = null;
+                        
+                        // Check for price issues
+                        if (unitPrice == 0M || priceValidFrom == null)
                         {
+                            materialPriceWarning = $"No price available for '{materialDetail.Name}'";
+                            priceWarnings.Add($"⚠️ {materialDetail.Name}: No price data available for planting date {request.BasePlantingDate:yyyy-MM-dd}");
                             _logger.LogWarning("Price not found for Material ID {MId} on date {Date}.", standardMaterial.MaterialId, priceReferenceDate.ToShortDateString());
+                        }
+                        else
+                        {
+                            // Check if price is outdated (more than 90 days old)
+                            var priceAge = (now - priceValidFrom.Value).Days;
+                            if (priceAge > 90)
+                            {
+                                materialPriceWarning = $"Price is {priceAge} days old (from {priceValidFrom.Value:yyyy-MM-dd})";
+                                priceWarnings.Add($"⚠️ {materialDetail.Name}: Price is outdated ({priceAge} days old, last updated {priceValidFrom.Value:yyyy-MM-dd})");
+                                _logger.LogWarning("Price for Material '{Material}' is {Days} days old", materialDetail.Name, priceAge);
+                            }
+                            // Check if price is for a future date (shouldn't happen, but good to check)
+                            else if (priceValidFrom.Value > priceReferenceDate)
+                            {
+                                materialPriceWarning = $"Price date is in the future ({priceValidFrom.Value:yyyy-MM-dd})";
+                                priceWarnings.Add($"⚠️ {materialDetail.Name}: Price valid from date is in the future");
+                            }
                         }
 
                         // Tính toán chi phí:
@@ -175,7 +201,10 @@ public class GeneratePlanDraftQueryHandler :
                             MaterialName = materialDetail.Name,
                             MaterialUnit = materialDetail.Unit,
                             QuantityPerHa = standardMaterial.QuantityPerHa,
-                            EstimatedAmount = estimatedAmount
+                            EstimatedAmount = estimatedAmount,
+                            UnitPrice = unitPrice > 0 ? unitPrice : null,
+                            PriceValidFrom = priceValidFrom,
+                            PriceWarning = materialPriceWarning
                         });
                     }
 
@@ -189,11 +218,17 @@ public class GeneratePlanDraftQueryHandler :
             }
             
             response.Stages = stagesResponse;
-            response.EstimatedTotalPlanCost = totalPlanCost; 
+            response.EstimatedTotalPlanCost = totalPlanCost;
+            response.PriceWarnings = priceWarnings;
 
-            _logger.LogInformation("Successfully generated draft ProductionPlan from StandardPlan ID {SPId} for Group ID {GId}. Total Cost: {Cost}", request.StandardPlanId, request.GroupId, totalPlanCost);
+            var warningMessage = priceWarnings.Any() 
+                ? $"Successfully generated production plan draft with {priceWarnings.Count} price warning(s)." 
+                : "Successfully generated production plan draft.";
 
-            return Result<GeneratePlanDraftResponse>.Success(response, "Successfully generated production plan draft.");
+            _logger.LogInformation("Successfully generated draft ProductionPlan from StandardPlan ID {SPId} for Group ID {GId}. Total Cost: {Cost}, Warnings: {WarningCount}", 
+                request.StandardPlanId, request.GroupId, totalPlanCost, priceWarnings.Count);
+
+            return Result<GeneratePlanDraftResponse>.Success(response, warningMessage);
         }
         catch (Exception ex)
         {

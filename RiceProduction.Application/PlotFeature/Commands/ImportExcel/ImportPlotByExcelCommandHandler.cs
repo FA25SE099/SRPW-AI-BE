@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -9,10 +9,10 @@ using NetTopologySuite.Geometries;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequest;
-using RiceProduction.Application.Common.Models.Request.PlotRequests;
 using RiceProduction.Application.Common.Models.Response.PlotResponse;
 using RiceProduction.Application.PlotFeature.Events;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
 {
@@ -23,7 +23,11 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
         private readonly IMediator _mediator;
         private readonly ILogger<ImportPlotByExcelCommandHandler> _logger;
 
-        public ImportPlotByExcelCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel, IMediator mediator, ILogger<ImportPlotByExcelCommandHandler> logger)
+        public ImportPlotByExcelCommandHandler(
+            IUnitOfWork unitOfWork, 
+            IGenericExcel genericExcel, 
+            IMediator mediator, 
+            ILogger<ImportPlotByExcelCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
             _genericExcel = genericExcel;
@@ -31,132 +35,216 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
             _logger = logger;
         }
 
-        public async Task<Result<List<PlotResponse>>> Handle(ImportPlotByExcelCommand request, CancellationToken cancellationToken)
+        public async Task<Result<List<PlotResponse>>> Handle(
+            ImportPlotByExcelCommand request, 
+            CancellationToken cancellationToken)
         {
             try
             {
-                // Change excel file back to list
-                var plotListCreateInput = await _genericExcel.ExcelToListT<PlotRequest>(request.ExcelFile);
-                if (plotListCreateInput == null || !plotListCreateInput.Any())
+                // Read using the new PlotImportRow format
+                var plotImportRows = await _genericExcel.ExcelToListT<PlotImportRow>(request.ExcelFile);
+                if (plotImportRows == null || !plotImportRows.Any())
                 {
-                    return Result<List<PlotResponse>>.Failure("The uploaded Excel file is empty or invalid.");
+                    return Result<List<PlotResponse>>.Failure(
+                        "The uploaded Excel file is empty or invalid.");
                 }
 
                 var plotRepo = _unitOfWork.Repository<Plot>();
-                var farmerRepo = _unitOfWork.FarmerRepository; // Use the FarmerRepository from UnitOfWork
+                var farmerRepo = _unitOfWork.FarmerRepository;
+                var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
 
-                // Validate all plots before processing
-                var validationErrors = new List<string>();
-                for (int i = 0; i < plotListCreateInput.Count; i++)
-                {
-                    var plot = plotListCreateInput[i];
-                    var rowNumber = i + 2; // Excel row number (accounting for header)
-
-                    if (!plot.SoThua.HasValue || plot.SoThua.Value <= 0)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: SoThua is required and must be greater than 0");
-                    }
-
-                    if (!plot.SoTo.HasValue || plot.SoTo.Value <= 0)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: SoTo is required and must be greater than 0");
-                    }
-
-                    if (plot.Area <= 0)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Area must be greater than 0");
-                    }
-
-                    if (plot.FarmerId == Guid.Empty)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: FarmerId is required");
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(plot.SoilType) && plot.SoilType.Length > 100)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: SoilType must not exceed 100 characters");
-                    }
+                // Get current season
+                var (currentSeason, currentYear) = await GetCurrentSeasonAndYear(cancellationToken);
+                
+                // Cache farmers by FarmCode
+                var uniqueFarmCodes = plotImportRows
+                    .Where(p => !string.IsNullOrWhiteSpace(p.FarmCode))
+                    .Select(p => p.FarmCode)
+                    .Distinct()
+                    .ToList();
                     
+                var farmers = await farmerRepo.ListAsync(f => uniqueFarmCodes.Contains(f.FarmCode));
+                var farmerLookup = farmers.ToDictionary(f => f.FarmCode, f => f);
+                
+                // Cache rice varieties by name
+                var uniqueVarietyNames = plotImportRows
+                    .Where(p => !string.IsNullOrWhiteSpace(p.RiceVarietyName))
+                    .Select(p => p.RiceVarietyName)
+                    .Distinct()
+                    .ToList();
+                    
+                var riceVarieties = await riceVarietyRepo.ListAsync(
+                    rv => uniqueVarietyNames.Contains(rv.VarietyName));
+                var varietyLookup = riceVarieties.ToDictionary(rv => rv.VarietyName, rv => rv);
+
+                // Validate
+                var validationErrors = new List<string>();
+                for (int i = 0; i < plotImportRows.Count; i++)
+                {
+                    var row = plotImportRows[i];
+                    var rowNumber = i + 2;
+
+                    // Skip rows with no plot data (empty rows from template)
+                    if (!row.SoThua.HasValue && !row.SoTo.HasValue && !row.Area.HasValue)
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(row.FarmCode))
+                    {
+                        validationErrors.Add($"Row {rowNumber}: FarmCode is required");
+                        continue;
+                    }
+
+                    if (!farmerLookup.ContainsKey(row.FarmCode))
+                    {
+                        validationErrors.Add(
+                            $"Row {rowNumber}: Farmer '{row.FarmCode}' not found. Please import farmers first.");
+                        continue;
+                    }
+
+                    if (!row.SoThua.HasValue || row.SoThua.Value <= 0)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: SoThua is required and must be > 0");
+                    }
+
+                    if (!row.SoTo.HasValue || row.SoTo.Value <= 0)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: SoTo is required and must be > 0");
+                    }
+
+                    if (!row.Area.HasValue || row.Area.Value <= 0)
+                    {
+                        validationErrors.Add($"Row {rowNumber}: Area is required and must be > 0");
+                    }
+
+                    // Validate rice variety if provided
+                    if (!string.IsNullOrWhiteSpace(row.RiceVarietyName))
+                    {
+                        if (!varietyLookup.ContainsKey(row.RiceVarietyName))
+                        {
+                            validationErrors.Add(
+                                $"Row {rowNumber}: Rice variety '{row.RiceVarietyName}' not found. Check 'Rice_Varieties' sheet.");
+                        }
+
+                        if (currentSeason == null)
+                        {
+                            validationErrors.Add(
+                                $"Row {rowNumber}: Cannot create cultivation - no current season found");
+                        }
+                    }
                 }
 
                 if (validationErrors.Any())
                 {
                     return Result<List<PlotResponse>>.Failure(
-                        $"Excel validation failed:\n{string.Join("\n", validationErrors)}");
+                        $"Validation failed:\n{string.Join("\n", validationErrors)}");
                 }
 
-                for (int i = 0; i < plotListCreateInput.Count; i++)
-                {
-                    var plot = plotListCreateInput[i];
-                    var rowNumber = i + 2; 
-
-                    var farmerExists = await farmerRepo.ExistAsync(plot.FarmerId, cancellationToken);
-                    if (!farmerExists)
-                    {
-                        return Result<List<PlotResponse>>.Failure(
-                            $"Row {rowNumber}: Farmer with ID {plot.FarmerId} does not exist. Please verify the FarmerId in your Excel file.");
-                    }
-
-                    var duplicateCount = await plotRepo.FindAsync(p => p.SoThua == plot.SoThua
-                                                                      && p.SoTo == plot.SoTo
-                                                                      && p.FarmerId == plot.FarmerId);
-                    if (duplicateCount != null)
-                    {
-                        return Result<List<PlotResponse>>.Failure(
-                            $"Row {rowNumber}: The uploaded Excel file contains duplicate plot in the system, SoThua: {plot.SoThua}, SoTo: {plot.SoTo}. Please check again!");
-                    }
-                }
+                // Process plots
                 var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
                 var plotList = new List<Plot>();
-                var plotCreateSuccessList = new List<PlotResponse>();
+                var plotCultivationsToCreate = new List<PlotCultivation>();
+                var skippedRows = 0;
 
-                foreach (var plot in plotListCreateInput)
+                foreach (var row in plotImportRows)
                 {
-                    var id = await plotRepo.GenerateNewGuid(Guid.NewGuid());
+                    // Skip empty rows
+                    if (!row.SoThua.HasValue && !row.SoTo.HasValue && !row.Area.HasValue)
+                    {
+                        skippedRows++;
+                        continue;
+                    }
+
+                    if (!farmerLookup.TryGetValue(row.FarmCode, out var farmer))
+                    {
+                        continue;
+                    }
+
+                    // Check for duplicates
+                    var existingPlot = await plotRepo.FindAsync(p => 
+                        p.SoThua == row.SoThua && 
+                        p.SoTo == row.SoTo && 
+                        p.FarmerId == farmer.Id);
+                        
+                    if (existingPlot != null)
+                    {
+                        _logger.LogWarning(
+                            "Skipping duplicate plot: {FarmCode} Plot#{PlotNumber} (SoThua:{SoThua}, SoTo:{SoTo})",
+                            row.FarmCode, row.PlotNumber, row.SoThua, row.SoTo);
+                        continue;
+                    }
+
+                    var plotId = await plotRepo.GenerateNewGuid(Guid.NewGuid());
                     var coordinates = new[]
                     {
                         new Coordinate(0, 0),
                         new Coordinate(0, 0.001),
                         new Coordinate(0.001, 0.001),
                         new Coordinate(0.001, 0),
-                        new Coordinate(0, 0) 
+                        new Coordinate(0, 0)
                     };
                     var defaultBoundary = geometryFactory.CreatePolygon(coordinates);
+                    
                     var newPlot = new Plot
                     {
-                        Id = id,
-                        SoThua = plot.SoThua,
-                        SoTo = plot.SoTo,
-                        Area = plot.Area,
-                        FarmerId = plot.FarmerId,
-                        SoilType = plot.SoilType,
-                        Status = Domain.Enums.PlotStatus.Active,
-                        //GroupId = plot.GroupId,
-                        Boundary = defaultBoundary 
+                        Id = plotId,
+                        SoThua = row.SoThua,
+                        SoTo = row.SoTo,
+                        Area = row.Area.Value,
+                        FarmerId = farmer.Id,
+                        SoilType = row.SoilType,
+                        Status = PlotStatus.PendingPolygon,
+                        Boundary = defaultBoundary
                     };
 
                     plotList.Add(newPlot);
+
+                    // Create PlotCultivation if rice variety specified
+                    if (!string.IsNullOrWhiteSpace(row.RiceVarietyName) && 
+                        varietyLookup.TryGetValue(row.RiceVarietyName, out var riceVariety) &&
+                        currentSeason != null)
+                    {
+                        var plotCultivation = new PlotCultivation
+                        {
+                            PlotId = plotId,
+                            SeasonId = currentSeason.Id,
+                            RiceVarietyId = riceVariety.Id,
+                            PlantingDate = DateTime.UtcNow,
+                            Area = row.Area.Value,
+                            Status = CultivationStatus.Planned
+                        };
+
+                        plotCultivationsToCreate.Add(plotCultivation);
+                    }
                 }
 
-                // Add new plot records
+                // Save everything
                 if (plotList.Any())
                 {
                     await plotRepo.AddRangeAsync(plotList);
                 }
 
-                // Save all changes
-                var result = await _unitOfWork.CompleteAsync();
-                if (result <= 0)
+                if (plotCultivationsToCreate.Any())
                 {
-                    return Result<List<PlotResponse>>.Failure("Failed to import plots.");
+                    var plotCultivationRepo = _unitOfWork.Repository<PlotCultivation>();
+                    await plotCultivationRepo.AddRangeAsync(plotCultivationsToCreate);
+                    
+                    _logger.LogInformation(
+                        "Creating {Count} PlotCultivation records for season {SeasonName} {Year}",
+                        plotCultivationsToCreate.Count,
+                        currentSeason?.SeasonName,
+                        currentYear);
                 }
 
-                // Create response objects
+                await _unitOfWork.CompleteAsync();
+
+                // Create response
+                var plotCreateSuccessList = new List<PlotResponse>();
                 foreach (var plot in plotList)
                 {
                     var farmer = await farmerRepo.GetFarmerByIdAsync(plot.FarmerId, cancellationToken);
-
-                    var plotResponse = new PlotResponse
+                    plotCreateSuccessList.Add(new PlotResponse
                     {
                         PlotId = plot.Id,
                         SoThua = plot.SoThua,
@@ -167,10 +255,10 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         SoilType = plot.SoilType,
                         Status = plot.Status,
                         GroupId = plot.GroupId
-                    };
-                    plotCreateSuccessList.Add(plotResponse);
+                    });
                 }
 
+                // Publish event for polygon assignment
                 if (plotCreateSuccessList.Any())
                 {
                     await _mediator.Publish(new PlotImportedEvent
@@ -182,18 +270,88 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                     }, cancellationToken);
                     
                     _logger.LogInformation(
-                        "Published PlotImportedEvent for {PlotCount} plots requiring polygon assignment",
+                        "Published PlotImportedEvent for {PlotCount} plots",
                         plotCreateSuccessList.Count);
                 }
 
-                return Result<List<PlotResponse>>.Success(
-                    plotCreateSuccessList,
-                    $"Successfully created {plotCreateSuccessList.Count} plots!");
+                var message = $"Successfully imported {plotCreateSuccessList.Count} plots";
+                if (plotCultivationsToCreate.Any())
+                {
+                    message += $" with {plotCultivationsToCreate.Count} cultivation records for {currentSeason?.SeasonName} {currentYear}";
+                }
+                if (skippedRows > 0)
+                {
+                    message += $" ({skippedRows} empty rows skipped)";
+                }
+
+                return Result<List<PlotResponse>>.Success(plotCreateSuccessList, message);
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error importing plots");
                 return Result<List<PlotResponse>>.Failure(
-                    $"An error occurred while importing plots: {ex.Message}");
+                    $"Import failed: {ex.Message}");
+            }
+        }
+
+        private async Task<(Season? season, int year)> GetCurrentSeasonAndYear(
+            CancellationToken cancellationToken)
+        {
+            var today = DateTime.Now;
+            var currentMonth = today.Month;
+            var currentDay = today.Day;
+
+            var allSeasons = await _unitOfWork.Repository<Season>()
+                .ListAsync(_ => true);
+
+            foreach (var season in allSeasons)
+            {
+                if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
+                {
+                    var startParts = season.StartDate.Split('/');
+                    int startMonth = int.Parse(startParts[0]);
+
+                    int year = today.Year;
+                    if (currentMonth < startMonth && startMonth > 6)
+                    {
+                        year--;
+                    }
+
+                    return (season, year);
+                }
+            }
+
+            return (null, today.Year);
+        }
+
+        private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
+        {
+            try
+            {
+                var startParts = startDateStr.Split('/');
+                var endParts = endDateStr.Split('/');
+
+                int startMonth = int.Parse(startParts[0]);
+                int startDay = int.Parse(startParts[1]);
+                int endMonth = int.Parse(endParts[0]);
+                int endDay = int.Parse(endParts[1]);
+
+                int currentDate = month * 100 + day;
+                int seasonStart = startMonth * 100 + startDay;
+                int seasonEnd = endMonth * 100 + endDay;
+
+                if (seasonStart > seasonEnd)
+                {
+                    return currentDate >= seasonStart || currentDate <= seasonEnd;
+                }
+                else
+                {
+                    return currentDate >= seasonStart && currentDate <= seasonEnd;
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
     }

@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Configuration;
-using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models.Zalo;
 
 namespace RiceProduction.Application.ZaloFeature.Commands.GenerateAuthUrl;

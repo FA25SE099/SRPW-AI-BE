@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Queries;
@@ -18,6 +20,7 @@ using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;
+using RiceProduction.Infrastructure.Implementation.StorageImplementation.Azure;
 using RiceProduction.Infrastructure.Implementation.Zalo;
 using RiceProduction.Infrastructure.Repository;
 using RiceProduction.Infrastructure.Services;
@@ -86,7 +89,6 @@ public static class DependencyInjection
             builder.Configuration.GetSection("SmsRetry"));
         
         builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
-        builder.Services.AddHostedService<SmsRetryBackgroundService>();
 
         builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddSingleton(TimeProvider.System);
@@ -99,6 +101,8 @@ public static class DependencyInjection
         builder.Services.AddScoped<IMemoryCache, MemoryCache>();
         builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
         builder.Services.AddScoped<ICacheInvalidator, CacheInvalidator>();
-
+        builder.Services.AddSingleton<BlobServiceClient>(
+    new BlobServiceClient(builder.Configuration["AzureStorage:ConnectionString"]));
+        builder.Services.AddScoped<IStorageService, AzureStorageService>();
     }
 }

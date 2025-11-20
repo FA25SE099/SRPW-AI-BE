@@ -12,7 +12,7 @@ public class Farmer : ApplicationUser
     /// </summary>
     [MaxLength(50)]
     public string? FarmCode { get; set; }
-
+    public int? NumberOfPlots { get; set; } = 2;
     // Navigation properties
     [ForeignKey("ClusterId")]
     public Cluster? Cluster { get; set; }

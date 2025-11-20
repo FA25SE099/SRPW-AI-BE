@@ -18,6 +18,7 @@
 	  <ProjectReference Include="..\RiceProduction.Domain\RiceProduction.Domain.csproj" />
 	</ItemGroup>
 	<ItemGroup>
+	  <Folder Include="AdminFeature\Commands\" />
 	  <Folder Include="GroupFeature\Commands\" />
 	  <Folder Include="CultivationFeature\Commands\" />
 	  <Folder Include="CultivationFeature\Queries\" />
