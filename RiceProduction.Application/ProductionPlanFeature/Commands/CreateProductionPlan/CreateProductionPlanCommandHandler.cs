@@ -72,7 +72,8 @@ public class CreateProductionPlanCommandHandler :
                 StandardPlanId = request.StandardPlanId,
                 PlanName = request.PlanName,
                 BasePlantingDate = basePlantingDateUtc, // FIXED
-                Status = RiceProduction.Domain.Enums.TaskStatus.Draft,
+                //Status = RiceProduction.Domain.Enums.TaskStatus.Draft,
+                Status = RiceProduction.Domain.Enums.TaskStatus.PendingApproval,
                 TotalArea = effectiveTotalArea,
                 // Các trường Auditable sẽ được tự động xử lý nếu BaseAuditableEntity đúng
                 // Nếu không, cần gán: CreatedAt = currentUtc, LastModified = currentUtc

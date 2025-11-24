@@ -4,8 +4,6 @@ namespace RiceProduction.Domain.Entities;
 
 public class ProductionPlanTask : BaseAuditableEntity
 {
-    
-    
     [Required]
     [MaxLength(255)]
     public string TaskName { get; set; } = string.Empty;
