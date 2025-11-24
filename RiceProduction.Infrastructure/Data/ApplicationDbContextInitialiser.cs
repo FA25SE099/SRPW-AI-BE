@@ -137,6 +137,8 @@ namespace RiceProduction.Infrastructure.Data
             await SeedVietnameseRiceDataAsync();
             await SeedMaterialDataAsync();
             await SeedMaterialPriceDataAsync();
+            await SeedStandardPlanDataAsync();
+            await SeedDemoClusterAndFarmersAsync();
 
         }
         public async Task TrySeedAsync()
@@ -258,9 +260,16 @@ namespace RiceProduction.Infrastructure.Data
             {
                 ("Admin", "admin@ricepro.com", "admin@ricepro.com", "Admin123!", "System Administrator", "+1234567890", null, null, null, null, null, null, null, null),
                 ("Admin", "admin2@ricepro.com", "admin2@ricepro.com", "Admin123!", "Secondary Admin", "+1234567891", null, null, null, null, null, null, null, null),
-                                ("Supervisor", "supervisor1@ricepro.com", "supervisor1@ricepro.com", "Super123!", "Robert Brown", "+1234567896", null, null, "SUP001", null, null, null, null, null),
+                ("Supervisor", "supervisor1@ricepro.com", "supervisor1@ricepro.com", "Super123!", "Robert Brown", "+1234567896", null, null, "SUP001", null, null, null, null, null),
                 ("Supervisor", "supervisor2@ricepro.com", "supervisor2@ricepro.com", "Super123!", "Maria Garcia", "+1234567897", null, null, "SUP002", null, null, null, null, null),
                 ("Supervisor", "supervisor3@ricepro.com", "supervisor3@ricepro.com", "Super123!", "David Lee", "+1234567898", null, null, "SUP003", null, null, null, null, null),
+                ("AgronomyExpert", "expert1@ricepro.com", "expert1@ricepro.com", "Expert123!", "Dr. John Smith", "+1234567892", "Rice Varieties", 15, null, null, null, null, null, null),
+                ("ClusterManager", "clustermgr@ricepro.com", "clustermgr@ricepro.com", "Manager123!", "Mike Wilson", "+1234567894", null, null, "CM001", null, null, null, null, null),
+                ("Farmer", "demo.farmer1@ricepro.com", "demo.farmer1@ricepro.com", "Farmer123!", "Nguyen Van A", "+1234567810", null, null, null, 4.5m, "Demo Area A", null, null, null),
+                ("Farmer", "demo.farmer2@ricepro.com", "demo.farmer2@ricepro.com", "Farmer123!", "Tran Van B", "+1234567811", null, null, null, 5.2m, "Demo Area B", null, null, null),
+                ("Farmer", "demo.farmer3@ricepro.com", "demo.farmer3@ricepro.com", "Farmer123!", "Le Thi C", "+1234567812", null, null, null, 6.0m, "Demo Area C", null, null, null),
+                ("Farmer", "demo.farmer4@ricepro.com", "demo.farmer4@ricepro.com", "Farmer123!", "Pham Van D", "+1234567813", null, null, null, 3.8m, "Demo Area D", null, null, null),
+                ("Farmer", "demo.farmer5@ricepro.com", "demo.farmer5@ricepro.com", "Farmer123!", "Hoang Thi E", "+1234567814", null, null, null, 5.5m, "Demo Area E", null, null, null),
 
             };
 
@@ -302,6 +311,343 @@ namespace RiceProduction.Infrastructure.Data
             }
         }
 
+        #endregion
+
+        #region Demo Cluster and Farmers Seeding
+        private async Task SeedDemoClusterAndFarmersAsync()
+        {
+            if (_context.Set<Cluster>().Any(c => c.ClusterName == "Demo Cluster"))
+            {
+                _logger.LogInformation("Demo cluster already exists - skipping");
+                return;
+            }
+
+            var clusterManager = await _userManager.FindByEmailAsync("clustermgr@ricepro.com") as ClusterManager;
+            if (clusterManager == null)
+            {
+                _logger.LogError("Cluster manager not found");
+                return;
+            }
+
+            var thuDong = await _context.Seasons.FirstOrDefaultAsync(s => s.SeasonName == "Thu Đông");
+            var st25 = await _context.RiceVarieties.FirstOrDefaultAsync(v => v.VarietyName == "ST25");
+
+            if (thuDong == null || st25 == null)
+            {
+                _logger.LogError("Required season or rice variety not found");
+                return;
+            }
+
+            // Create Demo Cluster
+            var demoClusterId = Guid.NewGuid();
+            var polygonDemoCluster = CreatePolygonFromWkt("POLYGON((106.710 10.880, 106.710 10.890, 106.720 10.890, 106.720 10.880, 106.710 10.880))");
+
+            var demoCluster = new Cluster
+            {
+                Id = demoClusterId,
+                ClusterName = "Demo Cluster",
+                ClusterManagerId = clusterManager.Id,
+                Area = 250.0m,
+                Boundary = polygonDemoCluster,
+                LastModified = DateTime.UtcNow
+            };
+
+            await _context.Clusters.AddAsync(demoCluster);
+            await _context.SaveChangesAsync();
+
+            // Update cluster manager
+            clusterManager.ClusterId = demoClusterId;
+            _context.Update(clusterManager);
+            await _context.SaveChangesAsync();
+
+            // Get farmers
+            var farmer1 = await _userManager.FindByEmailAsync("demo.farmer1@ricepro.com") as Farmer;
+            var farmer2 = await _userManager.FindByEmailAsync("demo.farmer2@ricepro.com") as Farmer;
+            var farmer3 = await _userManager.FindByEmailAsync("demo.farmer3@ricepro.com") as Farmer;
+            var farmer4 = await _userManager.FindByEmailAsync("demo.farmer4@ricepro.com") as Farmer;
+            var farmer5 = await _userManager.FindByEmailAsync("demo.farmer5@ricepro.com") as Farmer;
+
+            if (farmer1 == null || farmer2 == null || farmer3 == null || farmer4 == null || farmer5 == null)
+            {
+                _logger.LogError("Some farmers not found");
+                return;
+            }
+
+            // Create plots for farmers
+            var plantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc);
+            var demoPlots = new List<Plot>
+            {
+                // Farmer 1 - 2 plots
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer1.Id,
+                    SoThua = 100,
+                    SoTo = 1,
+                    Area = 2.5m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.881)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 2.5m,
+                            ExpectedYield = 15.0m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7105 10.8805, 106.7105 10.8815, 106.7115 10.8815, 106.7115 10.8805, 106.7105 10.8805))")
+                },
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer1.Id,
+                    SoThua = 101,
+                    SoTo = 1,
+                    Area = 2.0m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.881)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 2.0m,
+                            ExpectedYield = 12.0m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7115 10.8805, 106.7115 10.8815, 106.7125 10.8815, 106.7125 10.8805, 106.7115 10.8805))")
+                },
+                
+                // Farmer 2 - 2 plots
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer2.Id,
+                    SoThua = 102,
+                    SoTo = 2,
+                    Area = 2.6m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.713, 10.882)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 2.6m,
+                            ExpectedYield = 15.6m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7125 10.8815, 106.7125 10.8825, 106.7135 10.8825, 106.7135 10.8815, 106.7125 10.8815))")
+                },
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer2.Id,
+                    SoThua = 103,
+                    SoTo = 2,
+                    Area = 2.6m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.714, 10.882)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 2.6m,
+                            ExpectedYield = 15.6m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7135 10.8815, 106.7135 10.8825, 106.7145 10.8825, 106.7145 10.8815, 106.7135 10.8815))")
+                },
+                
+                // Farmer 3 - 2 plots
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer3.Id,
+                    SoThua = 104,
+                    SoTo = 3,
+                    Area = 3.0m,
+                    SoilType = "Đất nông nghiệp",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.715, 10.883)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 3.0m,
+                            ExpectedYield = 18.0m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7145 10.8825, 106.7145 10.8835, 106.7155 10.8835, 106.7155 10.8825, 106.7145 10.8825))")
+                },
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer3.Id,
+                    SoThua = 105,
+                    SoTo = 3,
+                    Area = 3.0m,
+                    SoilType = "Đất nông nghiệp",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.716, 10.883)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 3.0m,
+                            ExpectedYield = 18.0m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7155 10.8825, 106.7155 10.8835, 106.7165 10.8835, 106.7165 10.8825, 106.7155 10.8825))")
+                },
+                
+                // Farmer 4 - 2 plots
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer4.Id,
+                    SoThua = 106,
+                    SoTo = 4,
+                    Area = 1.9m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.717, 10.884)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 1.9m,
+                            ExpectedYield = 11.4m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7165 10.8835, 106.7165 10.8845, 106.7175 10.8845, 106.7175 10.8835, 106.7165 10.8835))")
+                },
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer4.Id,
+                    SoThua = 107,
+                    SoTo = 4,
+                    Area = 1.9m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.718, 10.884)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 1.9m,
+                            ExpectedYield = 11.4m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7175 10.8835, 106.7175 10.8845, 106.7185 10.8845, 106.7185 10.8835, 106.7175 10.8835))")
+                },
+                
+                // Farmer 5 - 2 plots
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer5.Id,
+                    SoThua = 108,
+                    SoTo = 5,
+                    Area = 2.75m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.885)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 2.75m,
+                            ExpectedYield = 16.5m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7105 10.8845, 106.7105 10.8855, 106.7115 10.8855, 106.7115 10.8845, 106.7105 10.8845))")
+                },
+                new Plot
+                {
+                    Id = Guid.NewGuid(),
+                    FarmerId = farmer5.Id,
+                    SoThua = 109,
+                    SoTo = 5,
+                    Area = 2.75m,
+                    SoilType = "Đất phù sa",
+                    Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.885)),
+                    Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>
+                    {
+                        new PlotCultivation
+                        {
+                            RiceVarietyId = st25.Id,
+                            SeasonId = thuDong.Id,
+                            PlantingDate = plantingDate,
+                            Area = 2.75m,
+                            ExpectedYield = 16.5m,
+                            Status = CultivationStatus.Planned
+                        }
+                    },
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7115 10.8845, 106.7115 10.8855, 106.7125 10.8855, 106.7125 10.8845, 106.7115 10.8845))")
+                }
+            };
+
+            await _context.Plots.AddRangeAsync(demoPlots);
+            await _context.SaveChangesAsync();
+
+            // Update farmers with cluster
+            farmer1.ClusterId = demoClusterId;
+            farmer2.ClusterId = demoClusterId;
+            farmer3.ClusterId = demoClusterId;
+            farmer4.ClusterId = demoClusterId;
+            farmer5.ClusterId = demoClusterId;
+
+            _context.Update(farmer1);
+            _context.Update(farmer2);
+            _context.Update(farmer3);
+            _context.Update(farmer4);
+            _context.Update(farmer5);
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Seeded demo cluster with 5 farmers and 10 plots");
+        }
         #endregion
 
         #region Rice Variety Seeding
@@ -838,6 +1184,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất phù sa",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71512114698693, 10.884419749617606)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.71498059235353 10.884914175930405, 106.71500634870534 10.88494494631992, 106.71505143418733 10.884921977418259, 106.71555851534043 10.88404830600929, 106.71551607799915 10.884048085817966, 106.7148021440646 10.884227751931704, 106.71480011622322 10.884263559457352, 106.71498059235353 10.884914175930405))")
                 },
                 new Plot
@@ -900,6 +1258,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất phù sa",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71279322122713, 10.884907475019988)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.71246520193125 10.884549962144803, 106.7124773433348 10.884470684363805, 106.71283314047417 10.884372696581664, 106.71286735397456 10.884412393761849, 106.71314217194521 10.885425479558137, 106.71311518277992 10.885474251051647, 106.7126604114211 10.885281875234625, 106.71246520193125 10.884549962144803))")
                 },
                 new Plot
@@ -912,6 +1282,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất phù sa",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71520161759133, 10.883916295465895)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.71475993094629 10.884185857813065, 106.7147898575455 10.88420899070907, 106.71553304049667 10.884007850338875, 106.7155673615681 10.883981671719155, 106.71576933706774 10.883620934353317, 106.7157510766865 10.88360394426607, 106.71475220093299 10.883874493323304, 106.71469404169272 10.883939745415574, 106.71475993094629 10.884185857813065))")
                 },
                 new Plot
@@ -924,6 +1306,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất phù sa",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71357974501365, 10.88434613552687)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.71291179093043 10.884394856084313, 106.71294090122916 10.884345214055259, 106.71412842547488 10.88403926673567, 106.71418326435332 10.884056329391782, 106.71425742751671 10.884306040529339, 106.7142414508669 10.884338972609328, 106.7130036923827 10.88465981337437, 106.71296966024477 10.884634018643936, 106.71291179093043 10.884394856084313))")
                 },
 
@@ -962,6 +1356,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất nông nghiệp",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.7153737069554, 10.883000824161098)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.7145518044752 10.883408825499856, 106.71460057814164 10.883434939117606, 106.71613453708704 10.88302139060329, 106.71632233452652 10.882705425364477, 106.71630426939402 10.882656355947788, 106.7161268171239 10.882584475771338, 106.71607069260227 10.882588139470599, 106.71447202698675 10.883032314320317, 106.71445363139475 10.883083423087626, 106.7145518044752 10.883408825499856))")
                 },
                 new Plot
@@ -974,6 +1380,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất nông nghiệp",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71530575922577, 10.883463309816328)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.71465576665639 10.883801812868853, 106.71467954706998 10.883825129275792, 106.71584935841179 10.88349513933052, 106.71590053930089 10.883456879875283, 106.71606663309001 10.883153403591834, 106.71605716856175 10.883100706802935, 106.71601578265847 10.883091484992235, 106.7146030776417 10.883487238839052, 106.71458712618221 10.883520643578692, 106.71458756737309 10.883560472932956, 106.71465576665639 10.883801812868853))")
                 },
 
@@ -988,6 +1406,7 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất phù sa",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71155635255158, 10.884483418022723)),
                     Status = PlotStatus.Active,
+
                     PlotCultivations = new List<PlotCultivation>()
                         {
                             new PlotCultivation
@@ -1014,6 +1433,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất phù sa",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71382097089725, 10.885206496978089)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.71312240549457 10.88520396005326, 106.713169312366 10.885162750618278, 106.7143599985688 10.884837031366303, 106.71439900917852 10.884860568169174, 106.71444646852979 10.884924503573998, 106.71446776191158 10.885019598721058, 106.71451069172849 10.885197986262185, 106.7144863806538 10.885248097633848, 106.71326547563848 10.885578875554287, 106.71321403325368 10.885527822141142, 106.71312240549457 10.88520396005326))")
                 },
                 new Plot
@@ -1026,6 +1457,18 @@ namespace RiceProduction.Infrastructure.Data
                     SoilType = "Đất phù sa",
                     Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.71368350916002, 10.884758009248868)),
                     Status = PlotStatus.Active,
+                    PlotCultivations = new List<PlotCultivation>()
+                        {
+                            new PlotCultivation
+                            {
+                                RiceVarietyId = st25.Id,
+                                SeasonId = thuDong.Id,
+                                PlantingDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc),
+                                Area = 4.00m,
+                                ExpectedYield = 24.0m, // 9.00m * 6.00m (area * expected yield per hectare for ST25 in Dong Xuan)
+                                Status = CultivationStatus.Planned
+                            }
+                        },
                     Boundary = CreatePolygonFromWkt("POLYGON((106.71300179153047 10.884759980974295, 106.71304286047365 10.884712701694312, 106.71423574462682 10.884394130944344, 106.71428347722645 10.884407281176607, 106.71437586090417 10.884746521304194, 106.71435189288508 10.884784830072348, 106.71311354389002 10.88513638166961, 106.71308833727983 10.88509315092557, 106.71300179153047 10.884759980974295))")
                 }
             };

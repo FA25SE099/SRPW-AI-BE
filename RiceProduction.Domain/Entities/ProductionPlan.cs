@@ -45,5 +45,4 @@ public class ProductionPlan : BaseAuditableEntity
     public Supervisor? Submitter { get; set; }
 
     public ICollection<ProductionStage> CurrentProductionStages { get; set; } = new List<ProductionStage>();
-    public ICollection<CultivationVersion> CultivationVersions { get; set; } = new List<CultivationVersion>();
 }

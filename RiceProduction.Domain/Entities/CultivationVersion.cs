@@ -9,7 +9,7 @@ namespace RiceProduction.Domain.Entities;
 public class CultivationVersion : BaseAuditableEntity
 {
     [Required]
-    public Guid ProductionPlanId { get; set; }
+    public Guid PlotCultivationId { get; set; }
 
     [Required]
     [MaxLength(100)]
@@ -28,8 +28,8 @@ public class CultivationVersion : BaseAuditableEntity
 
     public DateTime? ActivatedAt { get; set; }
 
-    [ForeignKey("ProductionPlanId")]
-    public ProductionPlan ProductionPlan { get; set; } = null!;
+    [ForeignKey("PlotCultivationId")]
+    public PlotCultivation PlotCultivation { get; set; } = null!;
 
     public ICollection<CultivationTask> CultivationTasks { get; set; } = new List<CultivationTask>();
 }

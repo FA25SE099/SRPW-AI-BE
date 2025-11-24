@@ -41,7 +41,6 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             // 1. Get the production plan with stages
             var plan = await _unitOfWork.Repository<ProductionPlan>()
                 .GetQueryable()
-                .Include(p => p.CultivationVersions)
                 .Include(p => p.CurrentProductionStages)
                     .ThenInclude(s => s.ProductionPlanTasks)
                         .ThenInclude(t => t.ProductionPlanTaskMaterials)
@@ -251,14 +250,18 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 "Validated and mapped {PlotCount} plots for Plan {PlanId} in Group {GroupId}",
                 plots.Count, plan.Id, planWithGroup.Group.Id);
 
-            // 8. Check for duplicate version name (validation only, don't create yet)
-            var duplicateVersionExists = plan.CultivationVersions
+            // 8. Check for duplicate version name in any PlotCultivation
+            var plotCultivationIds = plotCultivationMap.Values.Select(pc => pc.Id).ToList();
+            var existingVersions = await _unitOfWork.Repository<CultivationVersion>()
+                .ListAsync(v => plotCultivationIds.Contains(v.PlotCultivationId));
+            
+            var duplicateVersionExists = existingVersions
                 .Any(v => v.VersionName.ToLower() == request.NewVersionName.ToLower());
 
             if (duplicateVersionExists)
             {
                 return Result<Guid>.Failure(
-                    $"A version with the name '{request.NewVersionName}' already exists for this plan.",
+                    $"A version with the name '{request.NewVersionName}' already exists for one or more plot cultivations.",
                     "DuplicateVersionName");
             }
 
@@ -396,49 +399,69 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 "Successfully created {TotalTaskCount} cultivation tasks ({TaskTypeCount} types × {PlotCount} plots). Total area: {TotalArea} ha",
                 cultivationTasks.Count, request.BaseCultivationTasks.Count, plots.Count, totalArea);
 
-            // ✅ 12. NOW create cultivation version (after all tasks are successfully created)
+            // ✅ 12. NOW create cultivation versions (after all tasks are successfully created)
+            // Create a new version for each PlotCultivation
+            var newVersions = new List<CultivationVersion>();
+            var plotCultivationVersionMap = new Dictionary<Guid, Guid>();
 
-            // Deactivate all previous versions
-            foreach (var existingVersion in plan.CultivationVersions)
+            foreach (var plotCultivation in plotCultivationMap.Values)
             {
-                existingVersion.IsActive = false;
+                // Deactivate all previous versions for this PlotCultivation
+                var existingVersionsForPlot = await _unitOfWork.Repository<CultivationVersion>()
+                    .ListAsync(v => v.PlotCultivationId == plotCultivation.Id);
+                
+                foreach (var existingVersion in existingVersionsForPlot)
+                {
+                    existingVersion.IsActive = false;
+                }
+
+                if (existingVersionsForPlot.Any())
+                {
+                    _unitOfWork.Repository<CultivationVersion>().UpdateRange(existingVersionsForPlot);
+                }
+
+                // Calculate next version order for this PlotCultivation
+                var maxVersionOrder = existingVersionsForPlot.Any()
+                    ? existingVersionsForPlot.Max(v => v.VersionOrder)
+                    : 0;
+
+                // Create new cultivation version for this PlotCultivation
+                var newVersion = new CultivationVersion
+                {
+                    PlotCultivationId = plotCultivation.Id,
+                    VersionName = request.NewVersionName.Trim(),
+                    VersionOrder = maxVersionOrder + 1,
+                    IsActive = true,
+                    Reason = request.ResolutionReason?.Trim() ?? "Emergency resolution",
+                    ActivatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
+                newVersions.Add(newVersion);
+                plotCultivationVersionMap[plotCultivation.Id] = newVersion.Id;
             }
 
-            // Calculate next version order
-            var maxVersionOrder = plan.CultivationVersions.Any()
-                ? plan.CultivationVersions.Max(v => v.VersionOrder)
-                : 0;
-
-            // Create new cultivation version
-            var newVersion = new CultivationVersion
-            {
-                ProductionPlanId = plan.Id,
-                VersionName = request.NewVersionName.Trim(),
-                VersionOrder = maxVersionOrder + 1,
-                IsActive = true,
-                Reason = request.ResolutionReason?.Trim() ?? "Emergency resolution",
-                ActivatedAt = DateTime.UtcNow
-            };
-
-            await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Created new CultivationVersion '{VersionName}' (Order: {Order}) with ID {VersionId} for Plan {PlanId}",
-                newVersion.VersionName, newVersion.VersionOrder, newVersion.Id, plan.Id);
+                "Created {VersionCount} new CultivationVersions '{VersionName}' for PlotCultivations in Plan {PlanId}",
+                newVersions.Count, request.NewVersionName, plan.Id);
 
             // ✅ 13. Assign version ID to all created cultivation tasks
             foreach (var task in cultivationTasks)
             {
-                task.VersionId = newVersion.Id;
+                if (plotCultivationVersionMap.TryGetValue(task.PlotCultivationId, out var versionId))
+                {
+                    task.VersionId = versionId;
+                }
             }
 
             _unitOfWork.Repository<CultivationTask>().UpdateRange(cultivationTasks);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Assigned VersionId {VersionId} to {TaskCount} cultivation tasks",
-                newVersion.Id, cultivationTasks.Count);
+                "Assigned VersionIds to {TaskCount} cultivation tasks across {VersionCount} versions",
+                cultivationTasks.Count, newVersions.Count);
 
             // 14. Change plan status back to Approved
             plan.Status = RiceProduction.Domain.Enums.TaskStatus.Approved;
@@ -449,12 +472,12 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Successfully resolved emergency for Plan {PlanId}. Status changed to Approved. Created version '{VersionName}' with {TaskCount} cultivation tasks across {PlotCount} plots by Expert {ExpertId}",
-                plan.Id, newVersion.VersionName, cultivationTasks.Count, plots.Count, expertId);
+                "Successfully resolved emergency for Plan {PlanId}. Status changed to Approved. Created {VersionCount} versions '{VersionName}' with {TaskCount} cultivation tasks across {PlotCount} plots by Expert {ExpertId}",
+                plan.Id, newVersions.Count, request.NewVersionName, cultivationTasks.Count, plots.Count, expertId);
 
             return Result<Guid>.Success(
-                newVersion.Id,
-                $"Emergency plan resolved successfully. Created version '{newVersion.VersionName}' with {cultivationTasks.Count} cultivation tasks ({request.BaseCultivationTasks.Count} task types × {plots.Count} plots). Total area: {totalArea:F2} ha. Plan status changed to Approved.");
+                plan.Id,
+                $"Emergency plan resolved successfully. Created {newVersions.Count} versions '{request.NewVersionName}' with {cultivationTasks.Count} cultivation tasks ({request.BaseCultivationTasks.Count} task types × {plots.Count} plots). Total area: {totalArea:F2} ha. Plan status changed to Approved.");
         }
         catch (DbUpdateException dbEx)
         {

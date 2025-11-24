@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationFeature.Event;
-using RiceProduction.Application.SmsFeature.Event;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 namespace RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
@@ -54,57 +53,8 @@ public class ApproveRejectPlanCommandHandler :
                 plan.ApprovedAt = DateTime.UtcNow;
                 plan.ApprovedBy = expertId; // <-- Gán ID chuyên gia
 
-                // Create default cultivation version "0"
-                var cultivationVersionRepo = _unitOfWork.Repository<CultivationVersion>();
-                var newCultivationVersionId = await cultivationVersionRepo.GenerateNewGuid(Guid.NewGuid());
-                var cultivationVersion = new CultivationVersion
-                {
-                    Id = newCultivationVersionId,
-                    ProductionPlanId = plan.Id,
-                    VersionName = "0",
-                    VersionOrder = 1,
-                    IsActive = true,
-                    Reason = "Initial version created upon plan approval",
-                    ActivatedAt = DateTime.UtcNow
-                };
-
-                await _unitOfWork.Repository<CultivationVersion>().AddAsync(cultivationVersion);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogInformation(
-                    "Created default CultivationVersion '{VersionName}' with ID {VersionId} for Plan {PlanId}",
-                    cultivationVersion.VersionName, cultivationVersion.Id, plan.Id);
-
-                // Attach version ID to all cultivation tasks
-                var cultivationTasks = await _unitOfWork.Repository<CultivationTask>()
-                    .GetQueryable()
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionStage)
-                    .Where(ct => ct.ProductionPlanTask.ProductionStage.ProductionPlanId == plan.Id)
-                    .ToListAsync(cancellationToken);
-
-                if (cultivationTasks.Any())
-                {
-                    foreach (var cultivationTask in cultivationTasks)
-                    {
-                        cultivationTask.VersionId = cultivationVersion.Id;
-                    }
-
-                    _unitOfWork.Repository<CultivationTask>().UpdateRange(cultivationTasks);
-                    await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                    _logger.LogInformation(
-                        "Attached VersionId {VersionId} to {TaskCount} cultivation tasks for Plan {PlanId}",
-                        cultivationVersion.Id, cultivationTasks.Count, plan.Id);
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "No cultivation tasks found for Plan {PlanId} to attach version",
-                        plan.Id);
-                }
-
                 _logger.LogInformation("Plan {PlanId} approved by Expert {ExpertId}.", plan.Id, expertId);
+                // Note: CultivationVersions are now created per PlotCultivation by ProductionPlanApprovalEventHandler
             }
             else
             {

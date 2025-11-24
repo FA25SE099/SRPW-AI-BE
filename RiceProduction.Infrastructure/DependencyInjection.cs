@@ -82,7 +82,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
-        builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
+        //builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
 
         // Configure SMS Retry Strategy
         //builder.Services.Configure<SmsRetryConfiguration>(

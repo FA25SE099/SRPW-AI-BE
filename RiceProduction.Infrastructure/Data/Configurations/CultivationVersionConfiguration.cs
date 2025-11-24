@@ -18,7 +18,7 @@ public class CultivationVersionConfiguration : IEntityTypeConfiguration<Cultivat
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.Property(e => e.ProductionPlanId)
+        builder.Property(e => e.PlotCultivationId)
             .IsRequired();
 
         builder.Property(e => e.VersionOrder)
@@ -31,20 +31,6 @@ public class CultivationVersionConfiguration : IEntityTypeConfiguration<Cultivat
         builder.Property(e => e.Reason)
             .HasMaxLength(500);
 
-        builder.HasIndex(e => e.ProductionPlanId)
-            .HasDatabaseName("IX_CultivationVersions_ProductionPlanId");
-
-        builder.HasIndex(e => new { e.ProductionPlanId, e.VersionOrder })
-            .IsUnique()
-            .HasDatabaseName("IX_CultivationVersions_ProductionPlanId_VersionOrder");
-
-        builder.HasIndex(e => e.IsActive)
-            .HasDatabaseName("IX_CultivationVersions_IsActive");
-
-        builder.HasOne(e => e.ProductionPlan)
-            .WithMany(pp => pp.CultivationVersions)
-            .HasForeignKey(e => e.ProductionPlanId)
-            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(e => e.CultivationTasks)
             .WithOne(ct => ct.Version)
