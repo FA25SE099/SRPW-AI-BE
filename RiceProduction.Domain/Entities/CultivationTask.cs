@@ -10,6 +10,8 @@ public class CultivationTask : BaseAuditableEntity
     [Required]
     public Guid PlotCultivationId { get; set; }
 
+    public Guid? VersionId { get; set; }
+
     public Guid? AssignedToUserId { get; set; }
 
     public Guid? AssignedToVendorId { get; set; }
@@ -54,6 +56,9 @@ public class CultivationTask : BaseAuditableEntity
 
     [ForeignKey("PlotCultivationId")]
     public PlotCultivation PlotCultivation { get; set; } = null!;
+
+    [ForeignKey("VersionId")]
+    public CultivationVersion? Version { get; set; }
 
     [ForeignKey("AssignedToUserId")]
     public Supervisor? AssignedSupervisor { get; set; }

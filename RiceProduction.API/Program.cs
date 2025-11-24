@@ -207,9 +207,9 @@ if (seedDatabase)
         {
             await context.Database.MigrateAsync();
         }
-        await initializer.SeedAsyncAdminOnly();
-        //await initializer.SeedAsync();
-    }
+        //await initializer.SeedAsyncAdminOnly();
+            await initializer.SeedAsync();
+        }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
