@@ -26,18 +26,16 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithThreadId()
     .CreateLogger();
 
-try
-{
     Log.Information("Starting Rice Production API");
 
     var builder = WebApplication.CreateBuilder(args);
 
     builder.Host.UseSerilog();
-var otel = builder.Configuration.GetSection("OpenTelemetry");
-var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
-var serviceVersion = otel["ServiceVersion"] ?? "1.0.0";
-var otlpEndpoint = otel.GetSection("Otlp")["Endpoint"];
-var otlpHeaders = otel.GetSection("Otlp")["Headers"];
+//var otel = builder.Configuration.GetSection("OpenTelemetry");
+//var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
+//var serviceVersion = otel["ServiceVersion"] ?? "1.0.0";
+//var otlpEndpoint = otel.GetSection("Otlp")["Endpoint"];
+//var otlpHeaders = otel.GetSection("Otlp")["Headers"];
 var isProduction = builder.Configuration.GetValue<bool>("IsProduction"); // or builder.Environment.IsProduction()
 
 //if (!string.IsNullOrEmpty(otlpEndpoint))
@@ -233,12 +231,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-}
-catch (Exception ex)
-{
-    Log.Fatal(ex, "Application terminated unexpectedly");
-}
-finally
-{
-    Log.CloseAndFlush();
-}
