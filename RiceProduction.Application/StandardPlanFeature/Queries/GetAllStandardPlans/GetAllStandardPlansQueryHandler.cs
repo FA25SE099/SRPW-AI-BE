@@ -32,6 +32,7 @@ public class GetAllStandardPlansQueryHandler : IRequestHandler<GetAllStandardPla
 
             var query = _unitOfWork.Repository<StandardPlan>()
                 .GetQueryable()
+                .Where(sp => sp.GetType() == typeof(StandardPlan))
                 .Include(sp => sp.Category)
                 .Include(sp => sp.StandardPlanStages)
                 .ThenInclude(sps => sps.StandardPlanTasks)

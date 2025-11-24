@@ -28,7 +28,7 @@ public class GetPendingApprovalsQueryHandler :
 
             // 1. Tải toàn bộ Plans phù hợp với filter
             var allPlans = await planRepo.ListAsync(
-                filter: p => p.Status == RiceProduction.Domain.Enums.TaskStatus.Draft,
+                filter: p => p.Status == RiceProduction.Domain.Enums.TaskStatus.PendingApproval,
                 orderBy: q => q.OrderBy(p => p.SubmittedAt),
                 includeProperties: q => q
                     .Include(p => p.Group)
