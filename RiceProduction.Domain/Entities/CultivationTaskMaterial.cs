@@ -8,7 +8,7 @@ public class CultivationTaskMaterial : BaseAuditableEntity
     // Actual quantities used during execution
     public decimal ActualQuantity { get; set; }
     public decimal ActualCost { get; set; }
-    
+    public decimal? BoughtPrice { get; set; }
     public string? Notes { get; set; }
 
     // Navigation properties
@@ -17,4 +17,4 @@ public class CultivationTaskMaterial : BaseAuditableEntity
 
     [ForeignKey("MaterialId")]
     public Material Material { get; set; } = null!;
-}
+}  
