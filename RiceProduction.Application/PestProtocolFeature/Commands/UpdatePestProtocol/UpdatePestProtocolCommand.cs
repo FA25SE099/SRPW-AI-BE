@@ -6,10 +6,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RiceProduction.Application.PestProtocolFeature.Commands.CreatePestProtocol;
+namespace RiceProduction.Application.PestProtocolFeature.Commands.UpdatePestProtocol;
 
-public class CreatePestProtocolCommand : IRequest<Result<Guid>>
+public class UpdatePestProtocolCommand : IRequest<Result<Guid>>
 {
+    [Required]
+    public Guid Id { get; set; }
+
     [Required]
     [MaxLength(255)]
     public string Name { get; set; } = string.Empty;

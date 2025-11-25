@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.WeatherProtocolRequests;
 using RiceProduction.Application.Common.Models.Response.WeatherProtocolResponses;
 using RiceProduction.Application.WeatherProtocolFeature.Commands.CreateWeatherProtocol;
+using RiceProduction.Application.WeatherProtocolFeature.Commands.UpdateWeatherProtocol;
 using RiceProduction.Application.WeatherProtocolFeature.Queries.GetAllWeatherProtocols;
 
 namespace RiceProduction.API.Controllers;
@@ -67,6 +68,34 @@ public class WeatherProtocolController : Controller
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error occurred while creating weather protocol");
+            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
+        }
+    }
+    [HttpPut]
+    public async Task<ActionResult<Result<Guid>>> Update([FromBody] UpdateWeatherProtocolCommand command)
+    {
+        try
+        {
+
+            _logger.LogInformation("Update WeatherProtocol request received for ID: {ProtocolId}", command.Id);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Failed to update weather protocol ID {ProtocolId}: {Errors}",
+                    command.Id, string.Join(", ", result.Errors ?? new string[0]));
+
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation("Successfully updated weather protocol with ID: {ProtocolId}", result.Data);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error occurred while updating weather protocol ID: {ProtocolId}", command.Id);
             return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
         }
     }

@@ -76,7 +76,7 @@ public class GetAllWeatherProtocolsQueryHandler : IRequestHandler<GetAllWeatherP
                     Description = w.Description,
                     Source = w.Source,
                     SourceLink = w.SourceLink,
-                    ImageLink = w.ImageLink,
+                    ImageLinks = w.ImageLinks, // ✅ Now returns list
                     IsActive = w.IsActive,
                     Notes = w.Notes,
                     CreatedAt = w.CreatedAt,
@@ -86,7 +86,11 @@ public class GetAllWeatherProtocolsQueryHandler : IRequestHandler<GetAllWeatherP
 
             if (!weatherProtocolResponses.Any())
             {
-                return PagedResult<List<WeatherProtocolResponse>>.Failure(
+                return PagedResult<List<WeatherProtocolResponse>>.Success(
+                    new List<WeatherProtocolResponse>(),
+                    request.CurrentPage,
+                    request.PageSize,
+                    0,
                     "No weather protocols found matching the criteria.");
             }
 

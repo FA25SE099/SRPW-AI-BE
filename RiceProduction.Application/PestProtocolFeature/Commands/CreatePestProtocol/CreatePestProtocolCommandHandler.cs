@@ -51,7 +51,9 @@ public class CreatePestProtocolCommandHandler : IRequestHandler<CreatePestProtoc
                 Name = request.Name.Trim(),
                 Description = request.Description?.Trim(),
                 Type = request.Type?.Trim(),
-                ImageLink = request.ImageLink?.Trim(),
+                ImageLinks = request.ImageLinks?.Where(link => !string.IsNullOrWhiteSpace(link))
+                                               .Select(link => link.Trim())
+                                               .ToList(),
                 IsActive = request.IsActive,
                 Notes = request.Notes?.Trim()
             };
@@ -62,8 +64,8 @@ public class CreatePestProtocolCommandHandler : IRequestHandler<CreatePestProtoc
 
 
             _logger.LogInformation(
-                "Successfully created PestProtocol {ProtocolId} '{ProtocolName}'",
-                pestProtocol.Id, pestProtocol.Name);
+                "Successfully created PestProtocol {ProtocolId} '{ProtocolName}' with {ImageCount} images",
+                pestProtocol.Id, pestProtocol.Name, pestProtocol.ImageLinks?.Count ?? 0);
 
             return Result<Guid>.Success(
                 pestProtocol.Id,

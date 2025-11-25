@@ -13,7 +13,7 @@ public class WeatherProtocolResponse
     public string? Description { get; set; }
     public string? Source { get; set; }
     public string? SourceLink { get; set; }
-    public string? ImageLink { get; set; }
+    public List<string>? ImageLinks { get; set; }
     public bool IsActive { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
