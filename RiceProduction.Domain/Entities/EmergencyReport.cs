@@ -49,6 +49,7 @@ public class EmergencyReport : BaseAuditableEntity
         public DateTime? NotificationAcknowledgeAt { get; set; }
 
         public Guid? ResolvedBy { get; set; }
+        public Guid? ReportedBy { get; set; }
 
         public DateTime? ResolvedAt { get; set; }
 
@@ -66,6 +67,9 @@ public class EmergencyReport : BaseAuditableEntity
 
         [ForeignKey("ResolvedBy")]
         public AgronomyExpert? Resolver { get; set; }
+
+        [ForeignKey("ReportedBy")]
+        public ApplicationUser? Reporter { get; set; }
 
         public List<CultivationTask>? CreatedEmergencyTasks { get; set; }
     
