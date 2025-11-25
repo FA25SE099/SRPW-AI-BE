@@ -108,7 +108,7 @@ builder.Services.AddSwaggerGen(c =>
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. " +
-                      "Enter **only the token** (without 'Bearer ' prefix) in the text input below. " +
+                      "Enter *only the token* (without 'Bearer ' prefix) in the text input below. " +
                       "Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
         Name = "Authorization",
         In = ParameterLocation.Header,
@@ -209,11 +209,9 @@ if (seedDatabase)
         {
             await context.Database.MigrateAsync();
         }
-        await initializer.SeedAsyncAdminOnly();
-        //await initializer.SeedAsync();
         //await initializer.SeedAsyncAdminOnly();
-        await initializer.SeedAsync();
-    }
+            await initializer.SeedAsync();
+        }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();

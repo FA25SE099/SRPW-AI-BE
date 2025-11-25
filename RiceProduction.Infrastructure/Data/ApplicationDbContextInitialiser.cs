@@ -982,14 +982,14 @@ namespace RiceProduction.Infrastructure.Data
                     ActualMaterialCost = 450000,
                     ActualServiceCost = 200000,
                     CompletedAt = plantingDate.AddDays(-5),
-                    Status = Domain.Enums.TaskStatus.Completed,
+                    Status = Domain.Enums.TaskStatus.InProgress,
                     PlotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
                         RiceVarietyId = group.RiceVarietyId!.Value,
                         SeasonId = group.SeasonId!.Value,
                         PlantingDate = plantingDate,
-                        Status = CultivationStatus.Completed,
+                        Status = CultivationStatus.Planned,
                         ActualYield = plot.Area * 7.2m
                     }
                 });
