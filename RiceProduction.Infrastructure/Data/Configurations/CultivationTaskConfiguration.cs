@@ -11,7 +11,7 @@ public class CultivationTaskConfiguration : IEntityTypeConfiguration<Cultivation
         builder.HasKey(ct => ct.Id);
 
         // Configure properties
-       
+    
 
         builder.Property(ct => ct.ActualServiceCost)
                .HasPrecision(12, 2)
@@ -33,6 +33,11 @@ public class CultivationTaskConfiguration : IEntityTypeConfiguration<Cultivation
                .WithMany(pc => pc.CultivationTasks)
                .HasForeignKey(ct => ct.PlotCultivationId)
                .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(ct => ct.Version)
+               .WithMany(v => v.CultivationTasks)
+               .HasForeignKey(ct => ct.VersionId)
+               .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne(ct => ct.AssignedSupervisor)
                .WithMany()
@@ -56,6 +61,8 @@ public class CultivationTaskConfiguration : IEntityTypeConfiguration<Cultivation
         builder.HasIndex(ct => ct.PlotCultivationId)
                .HasDatabaseName("IX_CultivationTask_PlotCultivationId");
 
+        builder.HasIndex(ct => ct.VersionId)
+               .HasDatabaseName("IX_CultivationTasks_VersionId");
 
         builder.HasIndex(ct => ct.AssignedToUserId)
                .HasDatabaseName("IX_CultivationTask_AssignedUser");

@@ -29,40 +29,24 @@ public class Alert : BaseAuditableEntity
     [Required]
     public string Description { get; set; } = string.Empty;
 
-    // AI data
-    [Column(TypeName = "decimal(5,2)")]
-    public decimal? AiConfidence { get; set; }
+    //[Column(TypeName = "jsonb")]
+    //public string? AiRawData { get; set; }
 
-    public bool AiThresholdExceeded { get; set; } = false;
-
-    [Column(TypeName = "jsonb")]
-    public string? AiRawData { get; set; }
-
-    // Recommendations
-    public string? RecommendedAction { get; set; }
-
-    [Column(TypeName = "jsonb")]
-    public string? RecommendedMaterials { get; set; }
+    //[Column(TypeName = "jsonb")]
+    //public string? RecommendedMaterials { get; set; }
 
     public int? RecommendedUrgencyHours { get; set; }
 
-    // Notifications sent
-    public Guid[]? NotifiedUsers { get; set; }
-
+    public List<string>? ImageUrls { get; set; }
     public DateTime? NotificationSentAt { get; set; }
 
-    // Resolution
-    public Guid? AcknowledgedBy { get; set; }
-
-    public DateTime? AcknowledgedAt { get; set; }
+    public DateTime? NotificationAcknowledgeAt { get; set; }
 
     public Guid? ResolvedBy { get; set; }
 
     public DateTime? ResolvedAt { get; set; }
 
     public string? ResolutionNotes { get; set; }
-
-    public Guid? CreatedEmergencyTaskId { get; set; }
 
     // Navigation properties
     [ForeignKey("PlotId")]
@@ -74,12 +58,8 @@ public class Alert : BaseAuditableEntity
     [ForeignKey("ClusterId")]
     public Cluster? Cluster { get; set; }
 
-    [ForeignKey("AcknowledgedBy")]
-    public Supervisor? Acknowledger { get; set; }
-
     [ForeignKey("ResolvedBy")]
-    public Supervisor? Resolver { get; set; }
+    public AgronomyExpert? Resolver { get; set; }
 
-    [ForeignKey("CreatedEmergencyTaskId")]
-    public CultivationTask? CreatedEmergencyTask { get; set; }
+    public List<CultivationTask>? CreatedEmergencyTasks { get; set; }
 }

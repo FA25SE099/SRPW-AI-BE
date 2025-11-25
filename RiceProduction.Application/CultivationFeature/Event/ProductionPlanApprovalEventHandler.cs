@@ -13,6 +13,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
         private readonly IGenericRepository<Material> _materialRepo;
         private readonly IGenericRepository<CultivationTask> _taskRepo;
         private readonly IGenericRepository<CultivationTaskMaterial> _materialTaskRepo;
+        private readonly IGenericRepository<CultivationVersion> _versionRepo;
         private readonly ILogger<ProductionPlanApprovalEventHandler> _logger;
 
         public ProductionPlanApprovalEventHandler(
@@ -21,6 +22,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             IGenericRepository<Material> materialRepo,
             IGenericRepository<CultivationTask> taskRepo,
             IGenericRepository<CultivationTaskMaterial> materialTaskRepo,
+            IGenericRepository<CultivationVersion> versionRepo,
             ILogger<ProductionPlanApprovalEventHandler> logger)
         {
             _planRepo = planRepo;
@@ -28,6 +30,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             _materialRepo = materialRepo;
             _taskRepo = taskRepo;
             _materialTaskRepo = materialTaskRepo;
+            _versionRepo = versionRepo;
             _logger = logger;
         }
 
@@ -54,6 +57,14 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 _logger.LogWarning("No plot cultivations found for plan {PlanId}", notification.PlanId);
                 return;
             }
+            
+            //Populate active version lookup for each PlotCultivation
+            var plotCultivationIds = plotCultivations.Select(pc => pc.Id).ToList();
+            var activeVersions = await _versionRepo.ListAsync(
+                filter: v => plotCultivationIds.Contains(v.PlotCultivationId) && v.IsActive
+            );
+            var versionLookup = activeVersions.ToDictionary(v => v.PlotCultivationId, v => v.Id);
+            
             //Begin build
             var cultivationTasks = new List<CultivationTask>();
             var cultivationTaskMaterials = new List<CultivationTaskMaterial>();
@@ -70,7 +81,15 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                             continue;
                         }
 
-                        var (task, taskMaterials) = CreateTaskForPlot(planTask, plotCultivation, priceDict, materialDict);
+                        // Get the active version for this PlotCultivation
+                        versionLookup.TryGetValue(plotCultivation.Id, out var versionId);
+                        
+                        if (versionId == Guid.Empty)
+                        {
+                            _logger.LogWarning("No active version found for PlotCultivation {PlotCultivationId}", plotCultivation.Id);
+                        }
+
+                        var (task, taskMaterials) = CreateTaskForPlot(planTask, plotCultivation, versionId, priceDict, materialDict);
                         cultivationTasks.Add(task);
                         cultivationTaskMaterials.AddRange(taskMaterials);
                     }
@@ -141,7 +160,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
         }
 
     private (CultivationTask Task, List<CultivationTaskMaterial> TaskMaterials) CreateTaskForPlot(
-    ProductionPlanTask planTask, PlotCultivation plotCultivation,
+    ProductionPlanTask planTask, PlotCultivation plotCultivation, Guid versionId,
     Dictionary<Guid, MaterialPrice> priceDict, Dictionary<Guid, Material> materialDict)
     {
         var task = new CultivationTask
@@ -149,6 +168,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             Id = Guid.NewGuid(),
             ProductionPlanTaskId = planTask.Id,
             PlotCultivationId = plotCultivation.Id,
+            VersionId = versionId != Guid.Empty ? versionId : null,
             CultivationTaskName = planTask.TaskName,
             Description = planTask.Description,
             TaskType = planTask.TaskType,
@@ -157,9 +177,9 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             ExecutionOrder = planTask.SequenceOrder,
             IsContingency = false,
             ActualMaterialCost = 0,
-            ActualServiceCost = 0
+            ActualServiceCost = 0,
         };
-
+        
         var taskMaterials = new List<CultivationTaskMaterial>();
         decimal totalMaterialCost = 0;
 

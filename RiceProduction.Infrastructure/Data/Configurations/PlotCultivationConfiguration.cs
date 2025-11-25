@@ -38,6 +38,11 @@ public class PlotCultivationConfiguration : IEntityTypeConfiguration<PlotCultiva
                .HasForeignKey(pc => pc.RiceVarietyId)
                .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasMany(pc => pc.CultivationVersions)
+               .WithOne(cv => cv.PlotCultivation)
+               .HasForeignKey(cv => cv.PlotCultivationId)
+               .OnDelete(DeleteBehavior.Cascade);
+
         // Unique constraint to prevent multiple cultivations of same plot in same season
         builder.HasIndex(pc => new { pc.PlotId, pc.SeasonId })
                .IsUnique()

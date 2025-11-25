@@ -82,13 +82,13 @@ public static class DependencyInjection
         builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
-        builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
+        //builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
 
         // Configure SMS Retry Strategy
-        builder.Services.Configure<SmsRetryConfiguration>(
-            builder.Configuration.GetSection("SmsRetry"));
+        //builder.Services.Configure<SmsRetryConfiguration>(
+        //    builder.Configuration.GetSection("SmsRetry"));
         
-        builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
+        //builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
 
         builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddSingleton(TimeProvider.System);

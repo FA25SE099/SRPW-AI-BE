@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationFeature.Event;
-using RiceProduction.Application.SmsFeature.Event;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 namespace RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
@@ -45,7 +44,7 @@ public class ApproveRejectPlanCommandHandler :
 
             if (plan.Status != RiceProduction.Domain.Enums.TaskStatus.PendingApproval)
             {
-                return Result<Guid>.Failure($"Plan is currently in status '{plan.Status}'. Only Submitted plans can be approved or rejected.", "InvalidStatus");
+                return Result<Guid>.Failure($"Plan is currently in status '{plan.Status}'. Only PendingApproval plans can be approved or rejected.", "InvalidStatus");
             }
 
             if (request.Approved)
@@ -53,7 +52,9 @@ public class ApproveRejectPlanCommandHandler :
                 plan.Status = RiceProduction.Domain.Enums.TaskStatus.Approved;
                 plan.ApprovedAt = DateTime.UtcNow;
                 plan.ApprovedBy = expertId; // <-- Gán ID chuyên gia
+
                 _logger.LogInformation("Plan {PlanId} approved by Expert {ExpertId}.", plan.Id, expertId);
+                // Note: CultivationVersions are now created per PlotCultivation by ProductionPlanApprovalEventHandler
             }
             else
             {
