@@ -254,7 +254,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             var plotCultivationIds = plotCultivationMap.Values.Select(pc => pc.Id).ToList();
             var existingVersions = await _unitOfWork.Repository<CultivationVersion>()
                 .ListAsync(v => plotCultivationIds.Contains(v.PlotCultivationId));
-            
+
             var duplicateVersionExists = existingVersions
                 .Any(v => v.VersionName.ToLower() == request.NewVersionName.ToLower());
 
@@ -409,7 +409,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 // Deactivate all previous versions for this PlotCultivation
                 var existingVersionsForPlot = await _unitOfWork.Repository<CultivationVersion>()
                     .ListAsync(v => v.PlotCultivationId == plotCultivation.Id);
-                
+
                 foreach (var existingVersion in existingVersionsForPlot)
                 {
                     existingVersion.IsActive = false;

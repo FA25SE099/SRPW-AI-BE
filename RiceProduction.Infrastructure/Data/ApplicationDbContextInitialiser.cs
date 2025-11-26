@@ -139,6 +139,7 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
             await SeedDemoClusterAndFarmersAsync();
+            await SeedEmergencyReportsAsync();
 
         }
         public async Task TrySeedAsync()
@@ -311,6 +312,57 @@ namespace RiceProduction.Infrastructure.Data
             }
         }
 
+        #endregion
+
+        #region Emergency Reports Seeding
+        private async Task SeedEmergencyReportsAsync()
+        {
+            if (_context.Set<EmergencyReport>().Any())
+            {
+                _logger.LogInformation("Emergency reports already exist - skipping");
+                return;
+            }
+
+            var farmer1 = await _userManager.FindByEmailAsync("demo.farmer1@ricepro.com") as Farmer;
+            if (farmer1 == null)
+            {
+                _logger.LogError("Farmer not found for seeding reports");
+                return;
+            }
+
+            var plotCultivation = await _context.Set<PlotCultivation>()
+                .Include(pc => pc.Plot)
+                .FirstOrDefaultAsync(pc => pc.Plot.FarmerId == farmer1.Id);
+
+            if (plotCultivation == null)
+            {
+                _logger.LogError("No plot cultivation found for farmer");
+                return;
+            }
+
+            var emergencyReport = new EmergencyReport
+            {
+                Id = Guid.NewGuid(),
+                Source = AlertSource.FarmerReport,
+                Severity = AlertSeverity.High,
+                Status = AlertStatus.Pending,
+                PlotCultivationId = plotCultivation.Id,
+                AlertType = "Pest",
+                Title = "Brown planthopper infestation detected",
+                Description = "Noticed severe brown planthopper infestation in the southern section of the plot. Plants are showing yellowing and wilting symptoms. Immediate action required.",
+                ImageUrls = new List<string> { "https://example.com/planthopper1.jpg", "https://example.com/planthopper2.jpg" },
+                Coordinates = "10.881,106.711",
+                ReportedBy = farmer1.Id,
+                NotificationSentAt = DateTime.UtcNow.AddHours(-2),
+                CreatedAt = DateTime.UtcNow.AddHours(-3),
+                LastModified = DateTime.UtcNow.AddHours(-3)
+            };
+
+            await _context.Set<EmergencyReport>().AddAsync(emergencyReport);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Seeded 1 emergency report");
+        }
         #endregion
 
         #region Demo Cluster and Farmers Seeding

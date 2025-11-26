@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.CultivationPlanFeature.Queries;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetByPlotId;
+using RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationPlanById;
 
 [ApiController]
 [Route("api/cultivation-plan")]
@@ -31,6 +32,7 @@ public class CultivationPlanController : ControllerBase
 
         return Ok(result);
     }
+    
     [HttpGet("by-plot/{plotId}")]
     public async Task<IActionResult> GetCultivationsByPlot(Guid plotId)
     {
@@ -44,4 +46,19 @@ public class CultivationPlanController : ControllerBase
 
         return Ok(result);
     }
+    [HttpGet("{planId}")]
+    public async Task<IActionResult> GetCultivationPlanById(Guid planId)
+    {
+        var query = new GetCultivationPlanByIdQuery { PlanId = planId };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return NotFound(result);
+        }
+
+        return Ok(result);
+    }
+
 }
+

@@ -3,19 +3,20 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
+using RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
 using RiceProduction.Application.FarmerFeature.Command.CreateFarmer;
-using RiceProduction.Application.FarmerFeature.Command.UpdateFarmer;
 using RiceProduction.Application.FarmerFeature.Command.ImportFarmer;
+using RiceProduction.Application.FarmerFeature.Command.UpdateFarmer;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel;
+using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerImportTemplate;
 using RiceProduction.Application.FarmerFeature.Queries.ExportFarmerTemplateExcel;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
-using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerImportTemplate;
 
 namespace RiceProduction.API.Controllers
 {
@@ -272,6 +273,38 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, "An error occurred while processing your request");
             }
         }
+        [HttpPost("create-report")]
+        [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<Result<Guid>>> CreateReport([FromBody] CreateEmergencyReportCommand command)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Create emergency report request received: Type={AlertType}, Title={Title}, Severity={Severity}, Images={ImageCount}",
+                    command.AlertType, command.Title, command.Severity, command.ImageUrls?.Count ?? 0);
 
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Failed to create emergency report: {Errors}",
+                        string.Join(", ", result.Errors ?? new string[0]));
+                    return BadRequest(result);
+                }
+
+                _logger.LogInformation(
+                    "Emergency report created successfully with ID: {ReportId}",
+                    result.Data);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error occurred while creating emergency report");
+                return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
+            }
+        }
     }
     }

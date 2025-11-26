@@ -58,7 +58,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<CultivationTaskMaterial> CultivationTaskMaterials => Set<CultivationTaskMaterial>();
     public DbSet<FarmLog> FarmLogs => Set<FarmLog>();
     public DbSet<FarmLogMaterial> FarmLogMaterials => Set<FarmLogMaterial>();
-
+    public DbSet<EmergencyReport> EmergencyReports => Set<EmergencyReport>();
     // UAV services
     public DbSet<UavServiceOrder> UavServiceOrders => Set<UavServiceOrder>();
     public DbSet<UavInvoice> UavInvoices => Set<UavInvoice>();

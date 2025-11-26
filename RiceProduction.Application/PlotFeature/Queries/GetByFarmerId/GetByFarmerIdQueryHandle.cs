@@ -64,7 +64,7 @@ public class GetByFarmerIdQueryHandler : IRequestHandler<GetByFarmerIdQuery, Pag
                 Status = p.Status,
                 GroupId = p.GroupId,
                 GroupName = p.Group?.Cluster?.ClusterName, // Lấy tên Cluster làm tên Group
-                ActiveAlerts = p.Alerts.Count(a => a.Status == AlertStatus.New || a.Status == AlertStatus.Acknowledged),
+                ActiveAlerts = p.Alerts.Count(a => a.Status == AlertStatus.Pending || a.Status == AlertStatus.UnderReview),
                 ActiveCultivations = p.PlotCultivations.Count(pc => pc.Status == CultivationStatus.Planned || pc.Status == CultivationStatus.InProgress)
             }).ToList();
 

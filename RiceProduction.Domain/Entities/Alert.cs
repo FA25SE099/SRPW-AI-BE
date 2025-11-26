@@ -8,7 +8,7 @@ public class Alert : BaseAuditableEntity
     [Required]
     public AlertSeverity Severity { get; set; }
 
-    public AlertStatus Status { get; set; } = AlertStatus.New;
+    public AlertStatus Status { get; set; } = AlertStatus.Pending;
 
     // Affected entities
     public Guid? PlotId { get; set; }

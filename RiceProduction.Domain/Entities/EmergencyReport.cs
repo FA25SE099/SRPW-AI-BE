@@ -14,7 +14,9 @@ public class EmergencyReport : BaseAuditableEntity
     [Required]
     public AlertSeverity Severity { get; set; }
 
-    public AlertStatus Status { get; set; } = AlertStatus.New;
+    public AlertStatus Status { get; set; } = AlertStatus.Pending;
+    
+    public string? Coordinates { get; set; }
 
     // Affected entities
     public Guid? PlotCultivationId { get; set; }
