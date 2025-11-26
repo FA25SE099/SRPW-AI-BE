@@ -52,7 +52,9 @@ public class CreateWeatherProtocolCommandHandler : IRequestHandler<CreateWeather
                 Description = request.Description?.Trim(),
                 Source = request.Source?.Trim(),
                 SourceLink = request.SourceLink?.Trim(),
-                ImageLink = request.ImageLink?.Trim(),
+                ImageLinks = request.ImageLinks?.Where(link => !string.IsNullOrWhiteSpace(link))
+                                                .Select(link => link.Trim())
+                                                .ToList(),
                 IsActive = request.IsActive,
                 Notes = request.Notes?.Trim()
             };
@@ -63,8 +65,8 @@ public class CreateWeatherProtocolCommandHandler : IRequestHandler<CreateWeather
 
 
             _logger.LogInformation(
-                "Successfully created WeatherProtocol {ProtocolId} '{ProtocolName}'",
-                weatherProtocol.Id, weatherProtocol.Name);
+                "Successfully created WeatherProtocol {ProtocolId} '{ProtocolName}' with {ImageCount} images",
+                weatherProtocol.Id, weatherProtocol.Name, weatherProtocol.ImageLinks?.Count ?? 0);
 
             return Result<Guid>.Success(
                 weatherProtocol.Id,
