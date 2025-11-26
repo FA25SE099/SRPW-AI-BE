@@ -14,3 +14,5 @@ public class GetMyReportsQuery : IRequest<PagedResult<List<ReportItemResponse>>>
     public string? ReportType { get; set; }
 }
 
+
+
