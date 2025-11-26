@@ -23,49 +23,58 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
 
     public async Task<Result<List<TodayTaskResponse>>> Handle(GetTodayTasksQuery request, CancellationToken cancellationToken)
     {
-        try{
-            var todayUtc = DateTime.UtcNow.Date;
+        try
+        {
+            var todayUtc = DateTime.UtcNow.Date; // Ngày hôm nay (UTC Date only)
+            
+            // 1. Xác định Active Version IDs cho từng PlotCultivation (Logic remains the same)
+            
+            var plotCultivationIds = await _unitOfWork.Repository<PlotCultivation>()
+                .ListAsync(filter: pc => pc.Plot.FarmerId == request.FarmerId); 
+            
+            var activeVersions = await _unitOfWork.Repository<CultivationVersion>()
+                .ListAsync(
+                    filter: v => plotCultivationIds.Select(pc => pc.Id).Contains(v.PlotCultivationId) && v.IsActive // Sử dụng Select(pc => pc.Id) để lấy IDs
+                );
+            
+            var activeVersionIds = activeVersions.Select(v => v.Id).ToList();
 
             // Xác định các trạng thái tồn đọng mặc định
             var defaultOutstandingStatuses = new List<RiceProduction.Domain.Enums.TaskStatus> 
             { 
                 RiceProduction.Domain.Enums.TaskStatus.Draft, 
                 RiceProduction.Domain.Enums.TaskStatus.InProgress, 
-                RiceProduction.Domain.Enums.TaskStatus.OnHold,
-                RiceProduction.Domain.Enums.TaskStatus.Completed 
+                RiceProduction.Domain.Enums.TaskStatus.OnHold 
             };
             
             var statusesToFilter = request.StatusFilter.HasValue 
-                ? new List<RiceProduction.Domain.Enums.TaskStatus> { request.StatusFilter.Value } // Chỉ lọc trạng thái đơn nếu được cung cấp
-                : defaultOutstandingStatuses; // Ngược lại, dùng các trạng thái tồn đọng mặc định
+                ? new List<RiceProduction.Domain.Enums.TaskStatus> { request.StatusFilter.Value }
+                : defaultOutstandingStatuses;
 
-            // Kiểm tra xem trạng thái Draft có nằm trong bộ lọc không
             var includesDraft = statusesToFilter.Contains(RiceProduction.Domain.Enums.TaskStatus.Draft);
 
-            // 1. Xây dựng biểu thức lọc: Lấy CultivationTasks chưa hoàn thành (Outstanding)
+            // 2. Xây dựng biểu thức lọc:
             Expression<Func<CultivationTask, bool>> filter = ct =>
-                ct.PlotCultivation.Plot.FarmerId == request.FarmerId &&
+                // Lọc theo Version đang hoạt động (MỚI)
+                ct.VersionId.HasValue && activeVersionIds.Contains(ct.VersionId.Value) &&
                 
-                // --- Lọc theo PlotId (Tùy chọn) ---
+                // Lọc theo PlotId (nếu được cung cấp)
                 (!request.PlotId.HasValue || ct.PlotCultivation.PlotId == request.PlotId.Value) &&
                 
-                // --- Lọc theo Mùa vụ Hiện tại ---
+                // Lọc theo Mùa vụ đang hoạt động
                 (ct.PlotCultivation.Status == CultivationStatus.Planned || ct.PlotCultivation.Status == CultivationStatus.InProgress) &&
                 
-                // --- Lọc theo StatusFilter (FIXED: Xử lý an toàn cho Nullable Enum) ---
-                (
-                    // Điều kiện 1: Trạng thái có giá trị và nằm trong danh sách lọc
-                    (ct.Status.HasValue && statusesToFilter.Contains(ct.Status.Value)) ||
-                    
-                    // Điều kiện 2: Trạng thái là NULL VÀ Draft nằm trong danh sách lọc
-                    (!ct.Status.HasValue && includesDraft) 
-                );
+                //Lọc theo StatusFilter
+                (request.StatusFilter.HasValue 
+                    ? ct.Status == request.StatusFilter.Value 
+                    : defaultOutstandingStatuses.Contains(ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft))); 
                     // &&
 
-                // Điều kiện tồn đọng: Task có lịch trình kết thúc hoặc bắt đầu vào hoặc trước ngày hôm nay.
+                // Điều kiện tồn đọng
                 // (ct.ScheduledEndDate.HasValue && ct.ScheduledEndDate.Value.Date <= todayUtc || 
                 //  !ct.ScheduledEndDate.HasValue && ct.ProductionPlanTask.ScheduledDate.Date <= todayUtc);
 
+            // 3. Định nghĩa các Includes sâu
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: filter,
                 orderBy: q => q.OrderBy(ct => ct.ProductionPlanTask.ScheduledDate),
@@ -77,7 +86,7 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                             .ThenInclude(pptm => pptm.Material)
             );
 
-            // 3. Ánh xạ dữ liệu
+            // 4. Ánh xạ dữ liệu
             var responseData = tasks.Select(ct =>
             {
                 var plot = ct.PlotCultivation.Plot;
@@ -88,6 +97,7 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                     : ct.ProductionPlanTask.ScheduledDate.Date;
 
                 var isOverdue = targetCompletionDate < todayUtc;
+                var currentStatus = ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft); 
 
                 // Ánh xạ vật tư dự kiến
                 var materialsResponse = ct.ProductionPlanTask.ProductionPlanTaskMaterials
@@ -111,14 +121,14 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                     PlotCultivationId = ct.PlotCultivationId,
                     TaskName = ct.CultivationTaskName ?? ct.ProductionPlanTask.TaskName,
                     Description = ct.Description ?? ct.ProductionPlanTask.Description,
-                    TaskType = ct.TaskType.GetValueOrDefault(RiceProduction.Domain.Enums.TaskType.Harvesting),
-                    Status = ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft),
-
+                    TaskType = ct.TaskType.GetValueOrDefault(TaskType.Sowing), 
+                    Status = currentStatus, 
+                    
                     ScheduledDate = ct.ProductionPlanTask.ScheduledDate,
                     Priority = ct.ProductionPlanTask.Priority,
-
-                    IsOverdue = ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft) == RiceProduction.Domain.Enums.TaskStatus.InProgress ? isOverdue : false, // <-- Gán trạng thái quá hạn
-
+                    
+                    IsOverdue = isOverdue,
+                    
                     PlotArea = plotArea,
                     PlotSoThuaSoTo = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
                     

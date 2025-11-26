@@ -31,13 +31,14 @@ public class GetCultivationTaskDetailQueryHandler :
                 match: ct => ct.Id == request.CultivationTaskId,
                 includeProperties: q => q
                     .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Plot) // Lấy Plot chính (cho SoThua/SoTo)
-                    .Include(ct => ct.ProductionPlanTask) // Kế hoạch gốc
-                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials) // Vật tư dự kiến
+                        .ThenInclude(pc => pc.Plot) 
+                    .Include(ct => ct.Version) // Thêm Version
+                    .Include(ct => ct.ProductionPlanTask)
+                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
                             .ThenInclude(pptm => pptm.Material)
-                    .Include(ct => ct.CultivationTaskMaterials) // Vật tư thực tế
+                    .Include(ct => ct.CultivationTaskMaterials)
                         .ThenInclude(ctm => ctm.Material)
-                    .Include(ct => ct.FarmLogs.OrderByDescending(fl => fl.LoggedDate)) // Logs của Task (sắp xếp mới nhất)
+                    .Include(ct => ct.FarmLogs.OrderByDescending(fl => fl.LoggedDate))
             );
 
             if (task == null)
@@ -52,7 +53,6 @@ public class GetCultivationTaskDetailQueryHandler :
             // 2. Ánh xạ chi tiết vật tư (kết hợp dự kiến và thực tế)
             var materialDetails = plannedTask.ProductionPlanTaskMaterials.Select(pptm =>
             {
-                // Tìm vật tư thực tế tương ứng trong CultivationTaskMaterials
                 var actualMat = task.CultivationTaskMaterials.FirstOrDefault(ctm => ctm.MaterialId == pptm.MaterialId);
                 
                 return new TaskMaterialDetailResponse
@@ -62,7 +62,7 @@ public class GetCultivationTaskDetailQueryHandler :
                     MaterialUnit = pptm.Material.Unit,
                     
                     PlannedQuantityPerHa = pptm.QuantityPerHa,
-                    PlannedTotalEstimatedCost = pptm.EstimatedAmount.GetValueOrDefault(0M), // Chi phí dự kiến (tổng cho Plan)
+                    PlannedTotalEstimatedCost = pptm.EstimatedAmount.GetValueOrDefault(0M),
                     
                     ActualQuantityUsed = actualMat?.ActualQuantity ?? 0M,
                     ActualCost = actualMat?.ActualCost ?? 0M,
@@ -93,6 +93,10 @@ public class GetCultivationTaskDetailQueryHandler :
                 Status = task.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft),
                 Priority = plannedTask.Priority,
                 IsContingency = task.IsContingency,
+                
+                // Thông tin Version
+                VersionName = task.Version?.VersionName ?? "Original",
+                VersionOrder = task.Version?.VersionOrder ?? 1,
                 
                 PlannedScheduledDate = plannedTask.ScheduledDate,
                 ActualStartDate = task.ActualStartDate,

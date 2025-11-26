@@ -11,14 +11,7 @@ public class PlotCultivationHistoryResponse
     public DateTime PlantingDate { get; set; }
     public decimal? Area { get; set; }
     public CultivationStatus Status { get; set; }
-    
-    /// <summary>
-    /// Năng suất thực tế (nếu đã thu hoạch).
-    /// </summary>
     public decimal? ActualYield { get; set; }
-    
-    /// <summary>
-    /// Tên của Kế hoạch Sản xuất (Production Plan) được liên kết với chu kỳ này.
-    /// </summary>
     public string? ProductionPlanName { get; set; }
+    public string? ActiveVersionName { get; set; }
 }

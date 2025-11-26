@@ -4,9 +4,6 @@ using System;
 using System.Collections.Generic;
 
 namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationTaskDetail;
-/// <summary>
-/// DTO cho vật tư, so sánh Planned vs Actual.
-/// </summary>
 public class TaskMaterialDetailResponse
 {
     public Guid MaterialId { get; set; }
@@ -23,9 +20,6 @@ public class TaskMaterialDetailResponse
     public string? LogNotes { get; set; }
 }
 
-/// <summary>
-/// DTO cho Log Farm gần nhất liên quan đến Task.
-/// </summary>
 public class FarmLogSummaryResponse
 {
     public Guid FarmLogId { get; set; }
@@ -37,9 +31,6 @@ public class FarmLogSummaryResponse
     public decimal? ActualServiceCost { get; set; }
 }
 
-/// <summary>
-/// DTO chi tiết cho Cultivation Task (Response chính).
-/// </summary>
 public class CultivationTaskDetailResponse
 {
     public Guid CultivationTaskId { get; set; }
@@ -50,6 +41,10 @@ public class CultivationTaskDetailResponse
     public RiceProduction.Domain.Enums.TaskStatus Status { get; set; }
     public TaskPriority Priority { get; set; }
     public bool IsContingency { get; set; }
+    
+    // Thông tin Version
+    public string VersionName { get; set; } = string.Empty;
+    public int VersionOrder { get; set; }
     
     // Lịch trình
     public DateTime PlannedScheduledDate { get; set; }

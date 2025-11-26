@@ -34,24 +34,34 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
             {
                 return Result<Guid>.Failure("Cultivation Task not found or does not match Plot.", "TaskNotFound");
             }
+            
+            // --- NEW VERSIONING CHECK ---
+            // 1b. Lấy thông tin PlotCultivation và Version
+            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
+                pc => pc.Id == task.PlotCultivationId,
+                includeProperties: q => q.Include(pc => pc.CultivationVersions.Where(v => v.IsActive))
+            );
+            
+            var activeVersion = plotCultivation?.CultivationVersions.FirstOrDefault();
+            
+            if (activeVersion == null || task.VersionId != activeVersion.Id)
+            {
+                // Nếu Task không thuộc phiên bản đang hoạt động/mới nhất, từ chối ghi Log
+                return Result<Guid>.Failure("Task does not belong to the active plan version. Please refresh.", "VersionConflict");
+            }
 
             if (task.Status == RiceProduction.Domain.Enums.TaskStatus.Completed || task.Status == RiceProduction.Domain.Enums.TaskStatus.Cancelled)
             {
-               // Tùy logic: có cho phép log bổ sung khi đã xong không? Ở đây giả sử là không.
-               return Result<Guid>.Failure("Task is already completed or cancelled.", "TaskClosed");
+               // return Result<Guid>.Failure("Task is already completed or cancelled.", "TaskClosed");
             }
 
             // 2. Upload Images (Parallel Upload)
             var uploadedUrls = new List<string>();
             if (request.ProofImages.Any())
             {
-                // Định nghĩa folder lưu trữ, ví dụ: farm-logs/{taskId}
                 string folder = $"farm-logs/{task.Id}";
-                
-                // Upload đồng thời để tối ưu tốc độ
                 var uploadTasks = request.ProofImages.Select(file => _storageService.UploadAsync(file, folder));
                 var results = await Task.WhenAll(uploadTasks);
-                
                 uploadedUrls = results.Select(r => r.Url).ToList();
             }
 
@@ -70,7 +80,6 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
                 PhotoUrls = uploadedUrls.ToArray(),
                 WeatherConditions = request.WeatherConditions,
                 InterruptionReason = request.InterruptionReason,
-                // VerifiedBy/At sẽ được Supervisor cập nhật sau
             };
 
             // 4. Process Materials & Calculate Costs
@@ -81,13 +90,11 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
             {
                 var materialIds = request.Materials.Select(m => m.MaterialId).Distinct().ToList();
                 
-                // Lấy giá hiện tại của vật tư để tính chi phí thực tế
                 var today = DateTime.UtcNow.Date;
                 var prices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
                     filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom <= today
                 );
                 
-                // Map giá mới nhất cho từng vật tư
                 var priceMap = prices
                     .GroupBy(p => p.MaterialId)
                     .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.ValidFrom).FirstOrDefault()?.PricePerMaterial ?? 0);
@@ -95,8 +102,6 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
                 foreach (var matRequest in request.Materials)
                 {
                     decimal unitPrice = priceMap.GetValueOrDefault(matRequest.MaterialId, 0);
-                    
-                    // Giả định ActualQuantityUsed là tổng số đơn vị (kg, lít, chai) đã dùng
                     decimal cost = matRequest.ActualQuantityUsed * unitPrice;
 
                     var logMaterial = new FarmLogMaterial
@@ -112,33 +117,26 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
                     totalLogMaterialCost += cost;
                 }
                 
-                // Lưu JSON snapshot cho truy vấn nhanh (theo yêu cầu Entity)
                 farmLog.ActualMaterialJson = JsonSerializer.Serialize(request.Materials);
             }
 
             farmLog.FarmLogMaterials = logMaterials;
 
             // 5. Update Cultivation Task Status & Totals
-            // Logic: Cộng dồn chi phí nếu có nhiều logs, hoặc ghi đè nếu log này chốt sổ.
-            // Ở đây ta cộng dồn chi phí vào Task.
-
-            task.Status = RiceProduction.Domain.Enums.TaskStatus.Completed; // Đánh dấu hoàn thành
-            task.ActualEndDate = DateTime.UtcNow; // Ngày hoàn thành thực tế
+            task.Status = RiceProduction.Domain.Enums.TaskStatus.Completed; 
+            task.ActualEndDate = DateTime.UtcNow; 
             
-            // Cập nhật chi phí thực tế tích lũy trên Task
             task.ActualMaterialCost += totalLogMaterialCost;
             task.ActualServiceCost += request.ServiceCost.GetValueOrDefault(0);
 
-            // Nếu là Task đầu tiên (Start), set ActualStartDate nếu chưa có
             if (!task.ActualStartDate.HasValue)
             {
-                // Convert DateTimeOffset to DateTime (use UTC to preserve absolute time)
-                task.ActualStartDate = task.CreatedAt.UtcDateTime; // Hoặc lấy từ log nếu có trường StartTime
+                // Set ActualStartDate from CreatedAt (DateTimeOffset) converting to UTC DateTime
+                task.ActualStartDate = task.CreatedAt.UtcDateTime;
             }
 
             // 6. Save Changes
             await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
-            // FarmLogMaterials được lưu tự động nhờ navigation property
             _unitOfWork.Repository<CultivationTask>().Update(task);
 
             await _unitOfWork.Repository<FarmLog>().SaveChangesAsync();
