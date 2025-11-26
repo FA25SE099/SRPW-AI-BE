@@ -62,6 +62,52 @@ public class ReportController : ControllerBase
         }
     }
 
+    [HttpGet("my-reports")]
+    [ProducesResponseType(typeof(PagedResult<List<ReportItemResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyReports(
+        [FromQuery] int currentPage = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? severity = null,
+        [FromQuery] string? reportType = null)
+    {
+        try
+        {
+            if (!_currentUser.Id.HasValue)
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
+
+            var query = new RiceProduction.Application.ReportFeature.Queries.GetMyReports.GetMyReportsQuery
+            {
+                UserId = _currentUser.Id.Value,
+                CurrentPage = currentPage,
+                PageSize = pageSize,
+                SearchTerm = searchTerm,
+                Status = status,
+                Severity = severity,
+                ReportType = reportType
+            };
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while getting user reports");
+            return StatusCode(500, "An error occurred while processing your request");
+        }
+    }
+
     [HttpGet("{reportId}")]
     [ProducesResponseType(typeof(Result<ReportItemResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

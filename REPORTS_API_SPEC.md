@@ -90,7 +90,65 @@ GET /api/reports?currentPage=1&pageSize=10&status=Pending&severity=High
 
 ---
 
-## 3. GET /api/reports/{reportId}
+## 3. GET /api/reports/my-reports
+
+Get paginated list of reports created by the authenticated user (Farmer/Supervisor).
+
+**Query Parameters:**
+- `currentPage` (int, default: 1)
+- `pageSize` (int, default: 10)
+- `searchTerm` (string, optional)
+- `status` (string, optional): Pending | UnderReview | Resolved | Rejected
+- `severity` (string, optional): Low | Medium | High | Critical
+- `reportType` (string, optional): Pest | Weather | Disease | Other
+
+**Authentication:** Required (Farmer or Supervisor)
+
+**Example Request:**
+```
+GET /api/reports/my-reports?currentPage=1&pageSize=10&status=Pending
+Authorization: Bearer {your-token}
+```
+
+**Example Response:**
+```json
+{
+  "succeeded": true,
+  "data": [
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "plotId": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+      "plotName": "123/45",
+      "plotArea": 2.5,
+      "cultivationPlanId": "7b8c9d0e-1f2g-3h4i-5j6k-7l8m9n0o1p2q",
+      "cultivationPlanName": "Plan 2024-01-15",
+      "reportType": "Pest",
+      "severity": "High",
+      "title": "Brown planthopper infestation",
+      "description": "Severe infestation observed in plot 123/45",
+      "reportedBy": "Nguyen Van A",
+      "reportedByRole": "Farmer",
+      "reportedAt": "2024-11-26T10:30:00Z",
+      "status": "Pending",
+      "images": ["https://example.com/image1.jpg"],
+      "coordinates": "10.762622,106.660172",
+      "resolvedBy": null,
+      "resolvedAt": null,
+      "resolutionNotes": null,
+      "farmerName": "Nguyen Van A",
+      "clusterName": "Cluster A"
+    }
+  ],
+  "currentPage": 1,
+  "pageSize": 10,
+  "totalCount": 5,
+  "totalPages": 1
+}
+```
+
+---
+
+## 4. GET /api/reports/{reportId}
 
 Get single report details.
 
@@ -134,7 +192,7 @@ GET /api/reports/3fa85f64-5717-4562-b3fc-2c963f66afa6
 
 ---
 
-## 4. GET /api/cultivation-plan/{planId}
+## 5. GET /api/cultivation-plan/{planId}
 
 Get cultivation plan details with stages, tasks, and materials (newest version).
 
@@ -197,7 +255,7 @@ GET /api/cultivation-plan/7b8c9d0e-1f2g-3h4i-5j6k-7l8m9n0o1p2q
 
 ---
 
-## 5. POST /api/reports/{reportId}/resolve
+## 6. POST /api/reports/{reportId}/resolve
 
 Resolve a report by creating emergency cultivation tasks.
 
