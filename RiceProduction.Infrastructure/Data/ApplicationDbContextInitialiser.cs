@@ -154,6 +154,7 @@ namespace RiceProduction.Infrastructure.Data
             await SeedStandardPlanDataAsync();
             await SeedClustersAndGroupsAsync(); // Consolidated
             await SeedCompletedPlansForPastGroups();
+            await SeedEmergencyReportsAsync();
         }
 
         #region Role Seeding
@@ -452,7 +453,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7105 10.8805, 106.7105 10.8815, 106.7115 10.8815, 106.7115 10.8805, 106.7105 10.8805))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71498059235353 10.884914175930405, 106.71500634870534 10.88494494631992, 106.71505143418733 10.884921977418259, 106.71555851534043 10.88404830600929, 106.71551607799915 10.884048085817966, 106.7148021440646 10.884227751931704, 106.71480011622322 10.884263559457352, 106.71498059235353 10.884914175930405))")
                 },
                 new Plot
                 {
@@ -476,7 +477,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7115 10.8805, 106.7115 10.8815, 106.7125 10.8815, 106.7125 10.8805, 106.7115 10.8805))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.884105936898294, 106.71071846252238 10.884055109694685, 106.71207612180888 10.883699319026704, 106.71213186148651 10.883738416923123, 106.71219556397517 10.88406683905012, 106.71216769413752 10.884105936898294, 106.71073438814449 10.884493005318205, 106.71068661127799 10.88444999774083, 106.71069457408902 10.884105936898294))")
                 },
                 
                 // Farmer 2 - 2 plots
@@ -502,7 +503,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7125 10.8815, 106.7125 10.8825, 106.7135 10.8825, 106.7135 10.8815, 106.7125 10.8815))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71070253690021 10.883026834407332, 106.71073438814449 10.882995556015928, 106.71176557217888 10.88272577975404, 106.71181733044978 10.88275314837145, 106.71194871683156 10.883136308751276, 106.71192880980504 10.883175406721506, 106.71073438814449 10.883496009884027, 106.71069059268234 10.883449092369588, 106.71070253690021 10.883026834407332))")
                 },
                 new Plot
                 {
@@ -526,7 +527,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7135 10.8815, 106.7135 10.8825, 106.7145 10.8825, 106.7145 10.8815, 106.7135 10.8815))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71246520193125 10.884549962144803, 106.7124773433348 10.884470684363805, 106.71283314047417 10.884372696581664, 106.71286735397456 10.884412393761849, 106.71314217194521 10.885425479558137, 106.71311518277992 10.885474251051647, 106.7126604114211 10.885281875234625, 106.71246520193125 10.884549962144803))")
                 },
                 
                 // Farmer 3 - 2 plots
@@ -552,7 +553,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7145 10.8825, 106.7145 10.8835, 106.7155 10.8835, 106.7155 10.8825, 106.7145 10.8825))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71475993094629 10.884185857813065, 106.7147898575455 10.88420899070907, 106.71553304049667 10.884007850338875, 106.7155673615681 10.883981671719155, 106.71576933706774 10.883620934353317, 106.7157510766865 10.88360394426607, 106.71475220093299 10.883874493323304, 106.71469404169272 10.883939745415574, 106.71475993094629 10.884185857813065))")
                 },
                 new Plot
                 {
@@ -576,7 +577,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7155 10.8825, 106.7155 10.8835, 106.7165 10.8835, 106.7165 10.8825, 106.7155 10.8825))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71291179093043 10.884394856084313, 106.71294090122916 10.884345214055259, 106.71412842547488 10.88403926673567, 106.71418326435332 10.884056329391782, 106.71425742751671 10.884306040529339, 106.7142414508669 10.884338972609328, 106.7130036923827 10.88465981337437, 106.71296966024477 10.884634018643936, 106.71291179093043 10.884394856084313))")
                 },
                 
                 // Farmer 4 - 2 plots
@@ -602,7 +603,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7165 10.8835, 106.7165 10.8845, 106.7175 10.8845, 106.7175 10.8835, 106.7165 10.8835))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.883589844890736, 106.71073438814449 10.883546837183019, 106.71192482839831 10.883230143871259, 106.71198853088697 10.883249692850825, 106.7120920474311 10.883566386141851, 106.71204427056455 10.883652401545447, 106.71071846252238 10.88400819226824, 106.71069059268234 10.883961274834505, 106.71069457408902 10.883589844890736))")
                 },
                 new Plot
                 {
@@ -626,7 +627,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7175 10.8835, 106.7175 10.8845, 106.7185 10.8845, 106.7185 10.8835, 106.7175 10.8835))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7145518044752 10.883408825499856, 106.71460057814164 10.883434939117606, 106.71613453708704 10.88302139060329, 106.71632233452652 10.882705425364477, 106.71630426939402 10.882656355947788, 106.7161268171239 10.882584475771338, 106.71607069260227 10.882588139470599, 106.71447202698675 10.883032314320317, 106.71445363139475 10.883083423087626, 106.7145518044752 10.883408825499856))")
                 },
                 
                 // Farmer 5 - 2 plots
@@ -652,7 +653,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7105 10.8845, 106.7105 10.8855, 106.7115 10.8855, 106.7115 10.8845, 106.7105 10.8845))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.71465576665639 10.883801812868853, 106.71467954706998 10.883825129275792, 106.71584935841179 10.88349513933052, 106.71590053930089 10.883456879875283, 106.71606663309001 10.883153403591834, 106.71605716856175 10.883100706802935, 106.71601578265847 10.883091484992235, 106.7146030776417 10.883487238839052, 106.71458712618221 10.883520643578692, 106.71458756737309 10.883560472932956, 106.71465576665639 10.883801812868853))")
                 },
                 new Plot
                 {
@@ -676,7 +677,7 @@ namespace RiceProduction.Infrastructure.Data
                             Status = CultivationStatus.Planned
                         }
                     },
-                    Boundary = CreatePolygonFromWkt("POLYGON((106.7115 10.8845, 106.7115 10.8855, 106.7125 10.8855, 106.7125 10.8845, 106.7115 10.8845))")
+                    Boundary = CreatePolygonFromWkt("POLYGON((106.7107264253334 10.884543832447122, 106.7107264253334 10.88461420845745, 106.71102901215232 10.884782328858108, 106.71109271464098 10.884782328858108, 106.71226324787057 10.884469546640403, 106.7122950991149 10.884410899937805, 106.71224334084167 10.884180222795635, 106.71217565694866 10.88415285430932, 106.7107264253334 10.884543832447122))")
                 }
             };
 
@@ -701,6 +702,177 @@ namespace RiceProduction.Infrastructure.Data
             _logger.LogInformation("Seeded demo cluster with 5 farmers and 10 plots");
         }
         #endregion
+
+
+        private async Task SeedEmergencyReportsAsync()
+        {
+            if (_context.Set<EmergencyReport>().Any())
+            {
+                _logger.LogInformation("Emergency reports already exist - skipping");
+                return;
+            }
+
+            // Get required entities
+            var expert = await _context.Set<AgronomyExpert>().FirstOrDefaultAsync(e => e.Email == "expert1@ricepro.com");
+            var supervisor = await _context.Set<Supervisor>().FirstOrDefaultAsync(s => s.Email == "supervisor1@ricepro.com");
+            var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com");
+
+            // Get the specific plot with SoThua = 1 and SoTo = 2
+            var targetPlot = await _context.Plots
+                .Include(p => p.PlotCultivations)
+                .FirstOrDefaultAsync(p => p.SoThua == 1 && p.SoTo == 2);
+
+            if (targetPlot == null || expert == null || targetPlot.PlotCultivations.Count == 0)
+            {
+                _logger.LogWarning("Target plot (SoThua=1, SoTo=2) or its cultivation not found for emergency report seeding");
+                return;
+            }
+
+            var plotCultivationId = targetPlot.PlotCultivations.FirstOrDefault()?.Id;
+
+            var emergencyReports = new List<EmergencyReport>
+            {
+                // Critical pest infestation - Brown Planthopper
+                new EmergencyReport
+                {
+                    Id = Guid.NewGuid(),
+                    Source = AlertSource.AiPest,
+                    Severity = AlertSeverity.Critical,
+                    Status = AlertStatus.New,
+                    PlotCultivationId = plotCultivationId,
+                    AlertType = "Pest Infestation",
+                    Title = "Rầy nâu mật độ cao - Thửa 1, Tờ 2",
+                    Description = "Hệ thống AI phát hiện mật độ rầy nâu vượt ngưỡng nguy hiểm (>1000 con/m²) trên thửa 1, tờ 2. Phát hiện qua ảnh UAV và cảm biến IoT. Cần phun thuốc trừ sâu ngay lập tức trong vòng 24 giờ để tránh thiệt hại nghiêm trọng về năng suất.",
+                    RecommendedUrgencyHours = 24,
+                    ImageUrls = new List<string>
+                    {
+                        "https://stickershop.line-scdn.net/stickershop/v1/product/1043153/LINEStorePC/main.png?v=1",
+                        "https://stickershop.line-scdn.net/stickershop/v1/product/9044256/LINEStorePC/main.png?v=1",
+                        "https://cdn.custom-cursor.com/packs/10851/cute-bugcat-capoo-pack.png"
+                    },
+                    ReportedBy = supervisor?.Id,
+                    NotificationSentAt = DateTime.UtcNow.AddHours(-1),
+                    CreatedAt = DateTime.UtcNow.AddHours(-2),
+                    LastModified = DateTime.UtcNow.AddHours(-1)
+                },
+
+                //// Urgent - Blast disease early stage
+                //new EmergencyReport
+                //{
+                //    Id = Guid.NewGuid(),
+                //    Source = AlertSource.FarmerReport,
+                //    Severity = AlertSeverity.Urgent,
+                //    Status = AlertStatus.Acknowledged,
+                //    PlotCultivationId = plotCultivationId,
+                //    AlertType = "Disease Outbreak",
+                //    Title = "Bệnh đạo ôn lá giai đoạn đầu - Thửa 1, Tờ 2",
+                //    Description = "Nông dân Tom Anderson báo cáo phát hiện các đốm đạo ôn hình thoi màu nâu xám trên lá lúa ở góc Đông Bắc của thửa đất. Ước tính 15-20% diện tích bị ảnh hưởng. Nếu không xử lý ngay sẽ lan rộng trong 48-72 giờ tới. Khuyến nghị phun thuốc trừ nấm Tricyclazole hoặc Isoprothiolane.",
+                //    RecommendedUrgencyHours = 48,
+                //    ImageUrls = new List<string>
+                //    {
+                //        "https://storage.ricepro.com/alerts/plot1-2-blast-disease-1.jpg",
+                //        "https://storage.ricepro.com/alerts/plot1-2-blast-disease-2.jpg"
+                //    },
+                //    ReportedBy = farmer1?.Id,
+                //    NotificationSentAt = DateTime.UtcNow.AddDays(-1),
+                //    NotificationAcknowledgeAt = DateTime.UtcNow.AddHours(-18),
+                //    CreatedAt = DateTime.UtcNow.AddDays(-1),
+                //    LastModified = DateTime.UtcNow.AddHours(-18)
+                //},
+
+                //// Warning - Nitrogen deficiency
+                //new EmergencyReport
+                //{
+                //    Id = Guid.NewGuid(),
+                //    Source = AlertSource.SupervisorInspection,
+                //    Severity = AlertSeverity.Warning,
+                //    Status = AlertStatus.New,
+                //    PlotCultivationId = plotCultivationId,
+                //    AlertType = "Nutrient Deficiency",
+                //    Title = "Thiếu hụt đạm nghiêm trọng - Thửa 1, Tờ 2",
+                //    Description = "Kiểm tra thực địa phát hiện hiện tượng vàng lá từ gốc lên ngọn, đặc biệt ở các lá già. Phân tích đất cho thấy hàm lượng N thấp hơn ngưỡng khuyến nghị 30%. Cần bón phân đạm bổ sung (Ure hoặc Ammonium Sulfate) với liều lượng 40-50kg/ha trong vòng 5-7 ngày.",
+                //    RecommendedUrgencyHours = 120,
+                //    ImageUrls = new List<string>
+                //    {
+                //        "https://storage.ricepro.com/alerts/plot1-2-nitrogen-deficiency.jpg",
+                //        "https://storage.ricepro.com/alerts/plot1-2-soil-test-result.jpg"
+                //    },
+                //    ReportedBy = supervisor?.Id,
+                //    NotificationSentAt = DateTime.UtcNow.AddHours(-4),
+                //    CreatedAt = DateTime.UtcNow.AddHours(-6),
+                //    LastModified = DateTime.UtcNow.AddHours(-4)
+                //},
+
+                //// Resolved - Water stress issue
+                //new EmergencyReport
+                //{
+                //    Id = Guid.NewGuid(),
+                //    Source = AlertSource.System,
+                //    Severity = AlertSeverity.Critical,
+                //    Status = AlertStatus.Resolved,
+                //    PlotCultivationId = plotCultivationId,
+                //    AlertType = "Water Stress",
+                //    Title = "Thiếu nước nghiêm trọng đã xử lý - Thửa 1, Tờ 2",
+                //    Description = "Cảm biến độ ẩm đất phát hiện độ ẩm giảm xuống dưới 40% (ngưỡng nguy hiểm) trong 60 giờ liên tục. Hệ thống tự động cảnh báo và khuyến nghị tưới khẩn cấp. Diện tích: 2.00 ha.",
+                //    RecommendedUrgencyHours = 12,
+                //    ResolvedBy = expert?.Id,
+                //    ReportedBy = supervisor?.Id,
+                //    ResolvedAt = DateTime.UtcNow.AddDays(-3),
+                //    ResolutionNotes = "Đã thực hiện tưới khẩn cấp 800m³ nước vào ngày 22/11. Độ ẩm đất đã phục hồi lên 75% sau 24 giờ. Đã lắp đặt thêm 2 cảm biến độ ẩm để giám sát chặt chẽ hơn. Không phát hiện thiệt hại về cây trồng.",
+                //    NotificationSentAt = DateTime.UtcNow.AddDays(-6),
+                //    NotificationAcknowledgeAt = DateTime.UtcNow.AddDays(-5),
+                //    CreatedAt = DateTime.UtcNow.AddDays(-6),
+                //    LastModified = DateTime.UtcNow.AddDays(-3)
+                //},
+
+                //// Info - Weed competition warning
+                //new EmergencyReport
+                //{
+                //    Id = Guid.NewGuid(),
+                //    Source = AlertSource.SupervisorInspection,
+                //    Severity = AlertSeverity.Info,
+                //    Status = AlertStatus.Acknowledged,
+                //    PlotCultivationId = plotCultivationId,
+                //    AlertType = "Weed Infestation",
+                //    Title = "Cỏ dại cạnh tranh dinh dưỡng - Thửa 1, Tờ 2",
+                //    Description = "Khảo sát phát hiện mật độ cỏ dại tăng cao, chủ yếu là cỏ lồng vực và cỏ đuôi chồn. Ước tính mật độ 30-40 cây/m². Khuyến nghị phun thuốc diệt cỏ Butachlor hoặc Pretilachlor trong vòng 10-14 ngày để tránh cạnh tranh dinh dưỡng và nước với cây lúa.",
+                //    RecommendedUrgencyHours = 240,
+                //    ImageUrls = new List<string>
+                //    {
+                //        "https://storage.ricepro.com/alerts/plot1-2-weed-survey-1.jpg",
+                //        "https://storage.ricepro.com/alerts/plot1-2-weed-survey-2.jpg"
+                //    },
+                //    ReportedBy = supervisor?.Id,
+                //    NotificationSentAt = DateTime.UtcNow.AddDays(-2),
+                //    NotificationAcknowledgeAt = DateTime.UtcNow.AddDays(-2).AddHours(3),
+                //    CreatedAt = DateTime.UtcNow.AddDays(-2),
+                //    LastModified = DateTime.UtcNow.AddDays(-2).AddHours(3)
+                //},
+
+                //// Warning - Weather alert for this specific plot area
+                //new EmergencyReport
+                //{
+                //    Id = Guid.NewGuid(),
+                //    Source = AlertSource.AiWeather,
+                //    Severity = AlertSeverity.Warning,
+                //    Status = AlertStatus.New,
+                //    PlotCultivationId = plotCultivationId,
+                //    AlertType = "Weather Alert",
+                //    Title = "Cảnh báo mưa lớn kéo dài - Thửa 1, Tờ 2",
+                //    Description = "Dự báo thời tiết cho biết khu vực sẽ có mưa lớn 100-150mm trong 36-48 giờ tới. Nguy cơ ngập úng cao vì địa hình thấp. Khuyến nghị: (1) Hoãn kế hoạch bón phân, (2) Kiểm tra và chuẩn bị hệ thống thoát nước, (3) Theo dõi mực nước liên tục.",
+                //    RecommendedUrgencyHours = 36,
+                //    ReportedBy = supervisor?.Id,
+                //    NotificationSentAt = DateTime.UtcNow.AddHours(-3),
+                //    CreatedAt = DateTime.UtcNow.AddHours(-4),
+                //    LastModified = DateTime.UtcNow.AddHours(-3)
+                //}
+            };
+
+            await _context.Set<EmergencyReport>().AddRangeAsync(emergencyReports);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Seeded {Count} emergency reports for plot SoThua=1, SoTo=2", emergencyReports.Count);
+        }
 
         #region Rice Variety Seeding
         private async Task SeedRiceVarietyCategoriesAsync()
@@ -1685,14 +1857,14 @@ namespace RiceProduction.Infrastructure.Data
                     ActualMaterialCost = 450000,
                     ActualServiceCost = 200000,
                     CompletedAt = plantingDate.AddDays(-5),
-                    Status = Domain.Enums.TaskStatus.Completed,
+                    Status = Domain.Enums.TaskStatus.InProgress,
                     PlotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
                         RiceVarietyId = group.RiceVarietyId!.Value,
                         SeasonId = group.SeasonId!.Value,
                         PlantingDate = plantingDate,
-                        Status = CultivationStatus.Completed,
+                        Status = CultivationStatus.Planned,
                         ActualYield = plot.Area * 7.2m
                     }
                 });

@@ -62,6 +62,8 @@ public class GetByFarmerIdQueryHandler : IRequestHandler<GetByFarmerIdQuery, Pag
                 SoThua = p.SoThua,
                 SoTo = p.SoTo,
                 Status = p.Status,
+                Boundary = p.Boundary != null ? p.Boundary.AsText() : null,
+                Coordinate = p.Coordinate != null ? p.Coordinate.AsText() : null,
                 GroupId = p.GroupId,
                 GroupName = p.Group?.Cluster?.ClusterName, // Lấy tên Cluster làm tên Group
                 ActiveAlerts = p.Alerts.Count(a => a.Status == AlertStatus.Pending || a.Status == AlertStatus.UnderReview),

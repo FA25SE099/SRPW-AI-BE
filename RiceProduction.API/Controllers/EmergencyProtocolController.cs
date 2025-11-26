@@ -111,21 +111,13 @@ public class EmergencyProtocolController : ControllerBase
         }
     }
 
-    [HttpPut("{id:guid}")]
-    public async Task<ActionResult<Result<Guid>>> Update(
-        Guid id,
-        [FromBody] UpdateEmergencyProtocolCommand command)
+    [HttpPut]
+    public async Task<ActionResult<Result<Guid>>> Update([FromBody] UpdateEmergencyProtocolCommand command)
     {
         try
         {
-            if (id != command.EmergencyProtocolId)
-            {
-                return BadRequest(Result<Guid>.Failure(
-                    "Route ID does not match command ID.",
-                    "IdMismatch"));
-            }
 
-            _logger.LogInformation("UpdateEmergencyProtocol request received for ID: {ProtocolId}", id);
+            _logger.LogInformation("UpdateEmergencyProtocol request received for ID: {ProtocolId}", command.EmergencyProtocolId);
 
             var result = await _mediator.Send(command);
 
@@ -133,19 +125,19 @@ public class EmergencyProtocolController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to update emergency protocol ID {ProtocolId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    command.EmergencyProtocolId, string.Join(", ", result.Errors ?? new string[0]));
 
                 return BadRequest(result);
             }
 
-            _logger.LogInformation("Successfully updated emergency protocol ID: {ProtocolId}", id);
+            _logger.LogInformation("Successfully updated emergency protocol ID: {ProtocolId}", command.EmergencyProtocolId);
             return Ok(result);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
                 "Unexpected error occurred while updating emergency protocol ID: {ProtocolId}",
-                id);
+                command.EmergencyProtocolId);
             return StatusCode(500, Result<Guid>.Failure(
                 "An unexpected error occurred"));
         }

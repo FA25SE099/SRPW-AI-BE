@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PestProtocolRequests;
 using RiceProduction.Application.Common.Models.Response.PestProtocolResponses;
 using RiceProduction.Application.PestProtocolFeature.Commands.CreatePestProtocol;
+using RiceProduction.Application.PestProtocolFeature.Commands.UpdatePestProtocol;
 using RiceProduction.Application.PestProtocolFeature.Queries.GetAllPestProtocols;
 
 namespace RiceProduction.API.Controllers;
@@ -67,6 +68,35 @@ public class PestProtocolController : Controller
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error occurred while creating pest protocol");
+            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
+        }
+    }
+
+    [HttpPut]
+    public async Task<ActionResult<Result<Guid>>> Update([FromBody] UpdatePestProtocolCommand command)
+    {
+        try
+        {
+
+            _logger.LogInformation("Update PestProtocol request received for ID: {ProtocolId}", command.Id);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Failed to update pest protocol ID {ProtocolId}: {Errors}",
+                    command.Id, string.Join(", ", result.Errors ?? new string[0]));
+
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation("Successfully updated pest protocol with ID: {ProtocolId}", result.Data);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error occurred while updating pest protocol ID: {ProtocolId}", command.Id);
             return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
         }
     }
