@@ -5,6 +5,8 @@ public class FarmerPlanViewResponse
     public string PlanName { get; set; } = string.Empty;
     public DateTime BasePlantingDate { get; set; }
     public RiceProduction.Domain.Enums.TaskStatus PlanStatus { get; set; }
+
+    public string ActiveVersionName { get; set; } = string.Empty;
     public decimal PlotArea { get; set; }
 
     public List<FarmerPlanStageViewResponse> Stages { get; set; } = new();

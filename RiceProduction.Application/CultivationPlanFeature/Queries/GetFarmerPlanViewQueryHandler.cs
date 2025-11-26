@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.CultivationPlanFeature.Queries;
 public class GetFarmerPlanViewQueryHandler :
@@ -21,32 +22,49 @@ public class GetFarmerPlanViewQueryHandler :
     {
         try
         {
-            // Tải tất cả CultivationTasks liên quan đến PlotCultivationId
-            // và bao gồm tất cả các mối quan hệ cần thiết để ánh xạ
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.PlotCultivationId == request.PlotCultivationId,
-                orderBy: q => q.OrderBy(ct => ct.ScheduledEndDate),
+            // 1. Tải PlotCultivation và Active Version
+            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
+                pc => pc.Id == request.PlotCultivationId,
                 includeProperties: q => q
-                    .Include(ct => ct.CultivationTaskMaterials) // Vật tư thực tế
-                        .ThenInclude(ctm => ctm.Material)
-                    .Include(ct => ct.ProductionPlanTask) // Công việc kế hoạch gốc
-                        .ThenInclude(ppt => ppt.ProductionStage) // Giai đoạn gốc
-                            .ThenInclude(ps => ps.ProductionPlan) // Kế hoạch gốc
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials) // Vật tư kế hoạch
-                            .ThenInclude(pptm => pptm.Material)
-                    .Include(ct => ct.PlotCultivation) // Thửa đất canh tác
+                    .Include(pc => pc.CultivationVersions.Where(v => v.IsActive)) // Load Active Version
+                    .Include(pc => pc.Plot)
+            );
+
+            if (plotCultivation == null)
+            {
+                return Result<FarmerPlanViewResponse>.Failure($"Plot Cultivation with ID {request.PlotCultivationId} not found.", "PlotCultivationNotFound");
+            }
+            
+            var activeVersion = plotCultivation.CultivationVersions.FirstOrDefault();
+            var activeVersionId = activeVersion?.Id;
+            var activeVersionName = activeVersion?.VersionName ?? "Original";
+
+            if (!activeVersionId.HasValue)
+            {
+                // Xử lý trường hợp không có Version nào được đánh dấu là Active (có thể là Original Plan)
+                _logger.LogWarning("No active version found for PlotCultivation {PCId}", request.PlotCultivationId);
+            }
+            
+            // 2. Tải CultivationTasks chỉ thuộc về Version đang hoạt động/mới nhất
+            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
+                filter: ct => 
+                    ct.PlotCultivationId == request.PlotCultivationId && 
+                    (!activeVersionId.HasValue || ct.VersionId == activeVersionId.Value), // Lọc theo VersionId nếu có
+                orderBy: q => q.OrderBy(ct => ct.ProductionPlanTask.ProductionStage.SequenceOrder)
+                              .ThenBy(ct => ct.ExecutionOrder),
+                includeProperties: q => q
+                    .Include(ct => ct.CultivationTaskMaterials).ThenInclude(ctm => ctm.Material) 
+                    .Include(ct => ct.ProductionPlanTask).ThenInclude(ppt => ppt.ProductionStage).ThenInclude(ps => ps.ProductionPlan)
+                    .Include(ct => ct.ProductionPlanTask).ThenInclude(ppt => ppt.ProductionPlanTaskMaterials).ThenInclude(pptm => pptm.Material)
             );
 
             if (!tasks.Any())
             {
-                return Result<FarmerPlanViewResponse>.Failure($"No tasks found for Plot Cultivation ID {request.PlotCultivationId}.", "TasksNotFound");
+                return Result<FarmerPlanViewResponse>.Failure($"No active tasks found for Plot Cultivation ID {request.PlotCultivationId}.", "TasksNotFound");
             }
 
-            // Lấy thông tin chung từ task đầu tiên (vì tất cả đều thuộc cùng một Plan)
             var firstTask = tasks.First();
             var plan = firstTask.ProductionPlanTask.ProductionStage.ProductionPlan;
-            var plotCultivation = firstTask.PlotCultivation;
 
             var response = new FarmerPlanViewResponse
             {
@@ -55,16 +73,16 @@ public class GetFarmerPlanViewQueryHandler :
                 PlanName = plan.PlanName,
                 BasePlantingDate = plan.BasePlantingDate,
                 PlanStatus = plan.Status,
-                PlotArea = plotCultivation.Area ?? 0M
+                PlotArea = plotCultivation.Area ?? 0M,
+                ActiveVersionName = activeVersionName
             };
 
-            // Nhóm các CultivationTasks theo ProductionStage (Giai đoạn)
             var stagesMap = new Dictionary<Guid, FarmerPlanStageViewResponse>();
 
             foreach (var task in tasks)
             {
                 var stage = task.ProductionPlanTask.ProductionStage;
-
+                
                 if (!stagesMap.ContainsKey(stage.Id))
                 {
                     stagesMap[stage.Id] = new FarmerPlanStageViewResponse
@@ -74,18 +92,18 @@ public class GetFarmerPlanViewQueryHandler :
                     };
                 }
 
-                // Ánh xạ Công việc Canh tác
                 var taskResponse = new FarmerCultivationTaskResponse
                 {
                     Id = task.Id,
                     TaskName = task.CultivationTaskName ?? task.ProductionPlanTask.TaskName,
                     Description = task.Description ?? task.ProductionPlanTask.Description,
-                    TaskType = task.TaskType ?? task.ProductionPlanTask.TaskType,
-                    ScheduledDate = (DateTime)(task.ScheduledEndDate ?? task.ProductionPlanTask.ScheduledEndDate),
-                    Status = task.Status ?? RiceProduction.Domain.Enums.TaskStatus.Draft,
+                    TaskType = task.TaskType.GetValueOrDefault(TaskType.Harvesting),
+                    ScheduledDate = task.ProductionPlanTask.ScheduledDate,
+                    Status = task.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft),
                     Priority = task.ProductionPlanTask.Priority,
                     IsContingency = task.IsContingency,
-                    ActualMaterialCost = task.ActualMaterialCost
+                    ActualMaterialCost = task.ActualMaterialCost,
+                    VersionName = activeVersionName // Gán tên Version
                 };
 
                 // Ánh xạ và So sánh Vật tư

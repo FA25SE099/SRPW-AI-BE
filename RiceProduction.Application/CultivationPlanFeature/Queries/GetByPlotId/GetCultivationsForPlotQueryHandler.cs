@@ -23,7 +23,6 @@ public class GetCultivationsForPlotQueryHandler : IRequestHandler<GetCultivation
     {
         try
         {
-            // 1. Xác thực Nông dân sở hữu Thửa đất
             var plotOwner = await _unitOfWork.Repository<Plot>().FindAsync(p => p.Id == request.PlotId && p.FarmerId == request.FarmerId);
             if (plotOwner == null)
             {
@@ -31,40 +30,37 @@ public class GetCultivationsForPlotQueryHandler : IRequestHandler<GetCultivation
                 return PagedResult<List<PlotCultivationHistoryResponse>>.Failure("Plot not found or unauthorized.", "Unauthorized");
             }
 
-            // 2. Xây dựng biểu thức lọc (Filter Expression)
             Expression<Func<PlotCultivation, bool>> filter = pc => pc.PlotId == request.PlotId;
 
-            // 3. Định nghĩa các Includes
+            // Load PlotCultivation cùng với Season, RiceVariety, CultivationVersions và ProductionPlans
             Func<IQueryable<PlotCultivation>, IIncludableQueryable<PlotCultivation, object>> includes =
                 q => q.Include(pc => pc.Season)
                       .Include(pc => pc.RiceVariety)
-                      // Tải các CultivationTasks và ProductionPlan liên quan
+                      .Include(pc => pc.CultivationVersions.Where(v => v.IsActive)) // Load Active Version
                       .Include(pc => pc.CultivationTasks)
                           .ThenInclude(ct => ct.ProductionPlanTask)
                           .ThenInclude(ppt => ppt.ProductionStage)
                           .ThenInclude(ps => ps.ProductionPlan);
 
-            // 4. Tải tất cả dữ liệu phù hợp (cho in-memory paging)
             var allCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                 filter: filter,
                 orderBy: q => q.OrderByDescending(pc => pc.PlantingDate),
                 includeProperties: includes
             );
 
-            // 5. Lấy tổng số lượng
             var totalCount = allCultivations.Count;
 
-            // 6. Áp dụng Paging (in-memory)
             var pagedCultivations = allCultivations
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
                 .ToList();
 
-            // 7. Ánh xạ sang Response DTO
             var responseData = pagedCultivations.Select(pc =>
             {
-                // Tìm ProductionPlanName từ CultivationTask đầu tiên (giả định tất cả tasks thuộc 1 plan)
+                var activeVersion = pc.CultivationVersions.FirstOrDefault();
+                
                 var planName = pc.CultivationTasks
+                    .Where(ct => ct.VersionId == activeVersion?.Id) // Lọc Tasks theo Version đang hoạt động
                     .Select(ct => ct.ProductionPlanTask?.ProductionStage?.ProductionPlan?.PlanName)
                     .FirstOrDefault(name => name != null);
 
@@ -74,12 +70,13 @@ public class GetCultivationsForPlotQueryHandler : IRequestHandler<GetCultivation
                     SeasonId = pc.SeasonId,
                     SeasonName = pc.Season.SeasonName, 
                     RiceVarietyId = pc.RiceVarietyId,
-                    RiceVarietyName = pc.RiceVariety.VarietyName,
+                    RiceVarietyName = pc.RiceVariety.VarietyName, 
                     PlantingDate = pc.PlantingDate,
                     Area = pc.Area,
                     Status = pc.Status,
                     ActualYield = pc.ActualYield,
-                    ProductionPlanName = planName ?? "N/A"
+                    ProductionPlanName = planName ?? "N/A",
+                    ActiveVersionName = activeVersion?.VersionName ?? "Original"
                 };
             }).ToList();
 
