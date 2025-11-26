@@ -17,7 +17,7 @@ public class PestProtocol : BaseAuditableEntity
     [MaxLength(50)]
     public string? Type { get; set; }
 
-    public string? ImageLink { get; set; }
+    public List<string>? ImageLinks { get; set; }
 
     public bool IsActive { get; set; } = true;
 

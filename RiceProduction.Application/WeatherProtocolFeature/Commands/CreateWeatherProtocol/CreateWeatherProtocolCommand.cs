@@ -21,7 +21,7 @@ public class CreateWeatherProtocolCommand : IRequest<Result<Guid>>
 
     public string? SourceLink { get; set; }
 
-    public string? ImageLink { get; set; }
+    public List<string>? ImageLinks { get; set; }
 
     public bool IsActive { get; set; } = true;
 

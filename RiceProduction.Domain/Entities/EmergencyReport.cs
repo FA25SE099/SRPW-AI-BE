@@ -1,6 +1,12 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
 namespace RiceProduction.Domain.Entities;
 
-public class Alert : BaseAuditableEntity
+public class EmergencyReport : BaseAuditableEntity
 {
     [Required]
     public AlertSource Source { get; set; }
@@ -11,13 +17,13 @@ public class Alert : BaseAuditableEntity
     public AlertStatus Status { get; set; } = AlertStatus.New;
 
     // Affected entities
-    public Guid? PlotId { get; set; }
+    public Guid? PlotCultivationId { get; set; }
 
     public Guid? GroupId { get; set; }
 
     public Guid? ClusterId { get; set; }
 
-    // Alert details
+        // Alert details
     [Required]
     [MaxLength(100)]
     public string AlertType { get; set; } = string.Empty;
@@ -43,14 +49,15 @@ public class Alert : BaseAuditableEntity
     public DateTime? NotificationAcknowledgeAt { get; set; }
 
     public Guid? ResolvedBy { get; set; }
+    public Guid? ReportedBy { get; set; }
 
     public DateTime? ResolvedAt { get; set; }
 
     public string? ResolutionNotes { get; set; }
 
     // Navigation properties
-    [ForeignKey("PlotId")]
-    public Plot? Plot { get; set; }
+    [ForeignKey("PlotCultivationId")]
+    public PlotCultivation? PlotCultivation { get; set; }
 
     [ForeignKey("GroupId")]
     public Group? Group { get; set; }
@@ -61,5 +68,9 @@ public class Alert : BaseAuditableEntity
     [ForeignKey("ResolvedBy")]
     public AgronomyExpert? Resolver { get; set; }
 
+    [ForeignKey("ReportedBy")]
+    public ApplicationUser? Reporter { get; set; }
+
     public List<CultivationTask>? CreatedEmergencyTasks { get; set; }
+    
 }

@@ -75,7 +75,7 @@ public class GetAllPestProtocolsQueryHandler : IRequestHandler<GetAllPestProtoco
                     Name = p.Name,
                     Description = p.Description,
                     Type = p.Type,
-                    ImageLink = p.ImageLink,
+                    ImageLinks = p.ImageLinks,
                     IsActive = p.IsActive,
                     Notes = p.Notes,
                     CreatedAt = p.CreatedAt,
@@ -85,7 +85,11 @@ public class GetAllPestProtocolsQueryHandler : IRequestHandler<GetAllPestProtoco
 
             if (!pestProtocolResponses.Any())
             {
-                return PagedResult<List<PestProtocolResponse>>.Failure(
+                return PagedResult<List<PestProtocolResponse>>.Success(
+                    new List<PestProtocolResponse>(),
+                    request.CurrentPage,
+                    request.PageSize,
+                    0,
                     "No pest protocols found matching the criteria.");
             }
 
