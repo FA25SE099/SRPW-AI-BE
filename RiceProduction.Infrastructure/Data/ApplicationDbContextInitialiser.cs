@@ -266,12 +266,12 @@ namespace RiceProduction.Infrastructure.Data
                 ("Supervisor", "supervisor2@ricepro.com", "supervisor2@ricepro.com", "Super123!", "Maria Garcia", "+1234567897", null, null, "SUP002", null, null, null, null, null),
                 ("Supervisor", "supervisor3@ricepro.com", "supervisor3@ricepro.com", "Super123!", "David Lee", "+1234567898", null, null, "SUP003", null, null, null, null, null),
                 ("AgronomyExpert", "expert1@ricepro.com", "expert1@ricepro.com", "Expert123!", "Dr. John Smith", "+1234567892", "Rice Varieties", 15, null, null, null, null, null, null),
-                ("ClusterManager", "clustermgr@ricepro.com", "clustermgr@ricepro.com", "Manager123!", "Mike Wilson", "+1234567894", null, null, "CM001", null, null, null, null, null),
-                ("Farmer", "demo.farmer1@ricepro.com", "demo.farmer1@ricepro.com", "Farmer123!", "Nguyen Van A", "+1234567810", null, null, null, 4.5m, "Demo Area A", null, null, null),
-                ("Farmer", "demo.farmer2@ricepro.com", "demo.farmer2@ricepro.com", "Farmer123!", "Tran Van B", "+1234567811", null, null, null, 5.2m, "Demo Area B", null, null, null),
-                ("Farmer", "demo.farmer3@ricepro.com", "demo.farmer3@ricepro.com", "Farmer123!", "Le Thi C", "+1234567812", null, null, null, 6.0m, "Demo Area C", null, null, null),
-                ("Farmer", "demo.farmer4@ricepro.com", "demo.farmer4@ricepro.com", "Farmer123!", "Pham Van D", "+1234567813", null, null, null, 3.8m, "Demo Area D", null, null, null),
-                ("Farmer", "demo.farmer5@ricepro.com", "demo.farmer5@ricepro.com", "Farmer123!", "Hoang Thi E", "+1234567814", null, null, null, 5.5m, "Demo Area E", null, null, null),
+                ("ClusterManager", "cluster1@ricepro.com", "cluster1@ricepro.com", "Manager123!", "Mike Wilson", "+1234567894", null, null, "CM001", null, null, null, null, null),
+                ("Farmer", "farmer1@ricepro.com", "farmer1@ricepro.com", "Farmer123!", "Nguyen Van A", "+1234567810", null, null, null, 4.5m, "Demo Area A", null, null, null),
+                ("Farmer", "farmer2@ricepro.com", "farmer2@ricepro.com", "Farmer123!", "Tran Van B", "+1234567811", null, null, null, 5.2m, "Demo Area B", null, null, null),
+                ("Farmer", "farmer3@ricepro.com", "farmer3@ricepro.com", "Farmer123!", "Le Thi C", "+1234567812", null, null, null, 6.0m, "Demo Area C", null, null, null),
+                ("Farmer", "farmer4@ricepro.com", "farmer4@ricepro.com", "Farmer123!", "Pham Van D", "+1234567813", null, null, null, 3.8m, "Demo Area D", null, null, null),
+                ("Farmer", "farmer5@ricepro.com", "farmer5@ricepro.com", "Farmer123!", "Hoang Thi E", "+1234567814", null, null, null, 5.5m, "Demo Area E", null, null, null),
 
             };
 
@@ -324,7 +324,7 @@ namespace RiceProduction.Infrastructure.Data
                 return;
             }
 
-            var farmer1 = await _userManager.FindByEmailAsync("demo.farmer1@ricepro.com") as Farmer;
+            var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
             if (farmer1 == null)
             {
                 _logger.LogError("Farmer not found for seeding reports");
