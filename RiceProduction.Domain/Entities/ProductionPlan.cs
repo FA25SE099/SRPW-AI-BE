@@ -35,7 +35,7 @@ public class ProductionPlan : BaseAuditableEntity
     public Group? Group { get; set; }
 
 
-    [ForeignKey("StandardPlanId")] 
+    [ForeignKey("StandardPlanId")]
     public StandardPlan? StandardPlan { get; set; }
 
     [ForeignKey("ApprovedBy")]

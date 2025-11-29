@@ -2,9 +2,8 @@ namespace RiceProduction.Domain.Enums;
 
 public enum AlertStatus
 {
-    New,
-    Acknowledged,
-    InProgress,
+    Pending,
+    UnderReview,
     Resolved,
-    Cancelled
+    Rejected
 }

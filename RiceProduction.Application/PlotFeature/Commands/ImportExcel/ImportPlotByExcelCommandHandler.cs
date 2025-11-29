@@ -145,6 +145,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
                 var plotList = new List<Plot>();
                 var plotCultivationsToCreate = new List<PlotCultivation>();
+                var cultivationVersionsToCreate = new List<CultivationVersion>();
                 var skippedRows = 0;
 
                 foreach (var row in plotImportRows)
@@ -205,8 +206,10 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         varietyLookup.TryGetValue(row.RiceVarietyName, out var riceVariety) &&
                         currentSeason != null)
                     {
+                        var plotCultivationId = Guid.NewGuid();
                         var plotCultivation = new PlotCultivation
                         {
+                            Id = plotCultivationId,
                             PlotId = plotId,
                             SeasonId = currentSeason.Id,
                             RiceVarietyId = riceVariety.Id,
@@ -216,6 +219,19 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         };
 
                         plotCultivationsToCreate.Add(plotCultivation);
+
+                        // Create first version for this PlotCultivation
+                        var firstVersion = new CultivationVersion
+                        {
+                            PlotCultivationId = plotCultivationId,
+                            VersionName = "Initial Version",
+                            VersionOrder = 1,
+                            IsActive = true,
+                            Reason = "Created during plot import",
+                            ActivatedAt = DateTime.UtcNow
+                        };
+
+                        cultivationVersionsToCreate.Add(firstVersion);
                     }
                 }
 
@@ -235,6 +251,16 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         plotCultivationsToCreate.Count,
                         currentSeason?.SeasonName,
                         currentYear);
+                }
+
+                if (cultivationVersionsToCreate.Any())
+                {
+                    var cultivationVersionRepo = _unitOfWork.Repository<CultivationVersion>();
+                    await cultivationVersionRepo.AddRangeAsync(cultivationVersionsToCreate);
+                    
+                    _logger.LogInformation(
+                        "Creating {Count} CultivationVersion records (initial versions)",
+                        cultivationVersionsToCreate.Count);
                 }
 
                 await _unitOfWork.CompleteAsync();
@@ -277,7 +303,12 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 var message = $"Successfully imported {plotCreateSuccessList.Count} plots";
                 if (plotCultivationsToCreate.Any())
                 {
-                    message += $" with {plotCultivationsToCreate.Count} cultivation records for {currentSeason?.SeasonName} {currentYear}";
+                    message += $" with {plotCultivationsToCreate.Count} cultivation records";
+                    if (cultivationVersionsToCreate.Any())
+                    {
+                        message += $" and {cultivationVersionsToCreate.Count} initial versions";
+                    }
+                    message += $" for {currentSeason?.SeasonName} {currentYear}";
                 }
                 if (skippedRows > 0)
                 {

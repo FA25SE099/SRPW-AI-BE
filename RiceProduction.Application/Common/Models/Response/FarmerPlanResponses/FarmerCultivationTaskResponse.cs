@@ -11,5 +11,6 @@ public class FarmerCultivationTaskResponse
     public TaskPriority Priority { get; set; }
     public bool IsContingency { get; set; }
     public decimal ActualMaterialCost { get; set; }
+    public string VersionName { get; set; } = string.Empty;
     public List<FarmerMaterialComparisonResponse> Materials { get; set; } = new();
 }

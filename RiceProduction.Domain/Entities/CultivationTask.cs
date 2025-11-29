@@ -4,11 +4,12 @@ namespace RiceProduction.Domain.Entities;
 
 public class CultivationTask : BaseAuditableEntity
 {
-    [Required]
-    public Guid ProductionPlanTaskId { get; set; }
+    public Guid? ProductionPlanTaskId { get; set; }
 
     [Required]
     public Guid PlotCultivationId { get; set; }
+
+    public Guid? VersionId { get; set; }
 
     public Guid? AssignedToUserId { get; set; }
 
@@ -50,10 +51,13 @@ public class CultivationTask : BaseAuditableEntity
 
     // Navigation properties
     [ForeignKey("ProductionPlanTaskId")]
-    public ProductionPlanTask ProductionPlanTask { get; set; } = null!;
+    public ProductionPlanTask? ProductionPlanTask { get; set; } = null!;
 
     [ForeignKey("PlotCultivationId")]
     public PlotCultivation PlotCultivation { get; set; } = null!;
+
+    [ForeignKey("VersionId")]
+    public CultivationVersion? Version { get; set; }
 
     [ForeignKey("AssignedToUserId")]
     public Supervisor? AssignedSupervisor { get; set; }

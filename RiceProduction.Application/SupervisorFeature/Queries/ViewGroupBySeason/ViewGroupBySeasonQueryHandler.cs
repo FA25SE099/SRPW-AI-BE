@@ -11,7 +11,7 @@ using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 namespace RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
 
 public class ViewGroupBySeasonQueryHandler 
-    : IRequestHandler<ViewGroupBySeasonQuery, Result<GroupBySeasonResponse>>
+    : IRequestHandler<ViewGroupBySeasonQuery, Result<List<GroupBySeasonResponse>>>
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ViewGroupBySeasonQueryHandler> _logger;
@@ -24,7 +24,7 @@ public class ViewGroupBySeasonQueryHandler
         _logger = logger;
     }
 
-    public async Task<Result<GroupBySeasonResponse>> Handle(
+    public async Task<Result<List<GroupBySeasonResponse>>> Handle(
         ViewGroupBySeasonQuery request, 
         CancellationToken cancellationToken)
     {
@@ -37,152 +37,147 @@ public class ViewGroupBySeasonQueryHandler
 
             if (supervisor == null)
             {
-                return Result<GroupBySeasonResponse>.Failure("Supervisor not found");
+                return Result<List<GroupBySeasonResponse>>.Failure("Supervisor not found");
             }
 
-            // 2. Determine target season and year
             Season targetSeason;
             int targetYear;
 
             if (request.SeasonId.HasValue && request.Year.HasValue)
             {
-                // Specific season + year requested
                 targetSeason = await _unitOfWork.Repository<Season>()
                     .FindAsync(s => s.Id == request.SeasonId.Value);
                 
                 if (targetSeason == null)
                 {
-                    return Result<GroupBySeasonResponse>.Failure("Season not found");
+                    return Result<List<GroupBySeasonResponse>>.Failure("Season not found");
                 }
                 
                 targetYear = request.Year.Value;
             }
             else
             {
-                // Get current season and year
                 var currentSeasonResult = await GetCurrentSeasonAndYear();
                 if (currentSeasonResult.season == null)
                 {
-                    return Result<GroupBySeasonResponse>.Failure("No current season could be determined");
+                    return Result<List<GroupBySeasonResponse>>.Failure("No current season could be determined");
                 }
                 
                 targetSeason = currentSeasonResult.season;
                 targetYear = currentSeasonResult.year;
             }
 
-            // 3. Get group for this supervisor, season, and year
-            var group = await _unitOfWork.Repository<Group>()
-                .FindAsync(g => 
+            var groups = await _unitOfWork.Repository<Group>()
+                .ListAsync(g => 
                     g.SupervisorId == request.SupervisorId && 
                     g.SeasonId == targetSeason.Id &&
                     g.Year == targetYear);
 
-            if (group == null)
+            if (!groups.Any())
             {
-                return Result<GroupBySeasonResponse>.Failure(
-                    $"No group assigned to this supervisor for {targetSeason.SeasonName} {targetYear}");
+                return Result<List<GroupBySeasonResponse>>.Failure(
+                    $"No groups assigned to this supervisor for {targetSeason.SeasonName} {targetYear}");
             }
 
-            // 4. Load basic data
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => p.GroupId == group.Id);
-            var plotsList = plots.ToList();
-
-            var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
-            var farmers = await _unitOfWork.FarmerRepository
-                .ListAsync(f => farmerIds.Contains(f.Id));
-            var farmerDict = farmers.ToDictionary(f => f.Id);
-
-            RiceVariety? riceVariety = null;
-            if (group.RiceVarietyId.HasValue)
-            {
-                riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                    .FindAsync(rv => rv.Id == group.RiceVarietyId.Value);
-            }
-
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == group.ClusterId);
-
-            var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
-                .ListAsync(pp => pp.GroupId == group.Id);
-            var plansList = productionPlans.ToList();
-
-            // 5. Determine season context and group state
+            var responses = new List<GroupBySeasonResponse>();
             bool isPastSeason = IsPastSeason(targetSeason, targetYear);
             bool isCurrentSeason = IsCurrentSeason(targetSeason, targetYear);
-            
-            var activePlan = plansList
-                .Where(p => p.Status == TaskStatus.Approved || p.Status == TaskStatus.InProgress)
-                .OrderByDescending(p => p.CreatedAt)
-                .FirstOrDefault();
 
-            GroupState currentState = DetermineGroupState(
-                isCurrentSeason, 
-                isPastSeason, 
-                plansList, 
-                activePlan);
-
-            // 6. Build response based on state
-            var response = new GroupBySeasonResponse
+            foreach (var group in groups)
             {
-                GroupId = group.Id,
-                GroupName = $"Group {group.Id.ToString().Substring(0, 8)}",
-                Status = group.Status.ToString(),
-                IsCurrentSeason = isCurrentSeason,
-                IsPastSeason = isPastSeason,
-                CurrentState = currentState,
-                
-                Season = new GroupSeasonInfo
+                var plots = await _unitOfWork.Repository<Plot>()
+                    .ListAsync(p => p.GroupId == group.Id);
+                var plotsList = plots.ToList();
+
+                var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
+                var farmers = await _unitOfWork.FarmerRepository
+                    .ListAsync(f => farmerIds.Contains(f.Id));
+                var farmerDict = farmers.ToDictionary(f => f.Id);
+
+                RiceVariety? riceVariety = null;
+                if (group.RiceVarietyId.HasValue)
                 {
-                    SeasonId = targetSeason.Id,
-                    SeasonName = targetSeason.SeasonName,
-                    SeasonType = targetSeason.SeasonType ?? "",
-                    StartDate = targetSeason.StartDate,
-                    EndDate = targetSeason.EndDate,
-                    IsActive = targetSeason.IsActive,
-                    Year = targetYear
-                },
+                    riceVariety = await _unitOfWork.Repository<RiceVariety>()
+                        .FindAsync(rv => rv.Id == group.RiceVarietyId.Value);
+                }
+
+                var cluster = await _unitOfWork.Repository<Cluster>()
+                    .FindAsync(c => c.Id == group.ClusterId);
+
+                var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
+                    .ListAsync(pp => pp.GroupId == group.Id);
+                var plansList = productionPlans.ToList();
                 
-                TotalArea = group.TotalArea,
-                AreaGeoJson = group.Area != null ? SerializeGeometry(group.Area) : null,
-                PlantingDate = group.PlantingDate,
-                RiceVarietyId = group.RiceVarietyId,
-                RiceVarietyName = riceVariety?.VarietyName,
-                ClusterId = group.ClusterId,
-                ClusterName = cluster?.ClusterName,
-                
-                // Plots with conditional readiness
-                Plots = MapPlotOverviews(plotsList, farmerDict, currentState == GroupState.PrePlanning),
-                
-                // Readiness ONLY for PrePlanning state
-                Readiness = currentState == GroupState.PrePlanning
-                    ? CalculateGroupReadiness(group, plotsList, plansList)
-                    : null,
-                
-                // Plan overview ONLY if plan exists
-                PlanOverview = (activePlan != null || plansList.Any())
-                    ? await CalculatePlanOverview(group.Id, activePlan ?? plansList.First())
-                    : null,
-                
-                // Economics ONLY for completed/archived
-                Economics = (isPastSeason || currentState == GroupState.Completed) && plansList.Any()
-                    ? await CalculateEconomicOverview(group.Id, activePlan ?? plansList.First())
-                    : null
-            };
+                var activePlan = plansList
+                    .Where(p => p.Status == TaskStatus.Approved || p.Status == TaskStatus.InProgress)
+                    .OrderByDescending(p => p.CreatedAt)
+                    .FirstOrDefault();
+
+                GroupState currentState = DetermineGroupState(
+                    isCurrentSeason, 
+                    isPastSeason, 
+                    plansList, 
+                    activePlan);
+
+                var response = new GroupBySeasonResponse
+                {
+                    GroupId = group.Id,
+                    GroupName = $"Group {group.Id.ToString().Substring(0, 8)}",
+                    Status = group.Status.ToString(),
+                    IsCurrentSeason = isCurrentSeason,
+                    IsPastSeason = isPastSeason,
+                    CurrentState = currentState,
+                    
+                    Season = new GroupSeasonInfo
+                    {
+                        SeasonId = targetSeason.Id,
+                        SeasonName = targetSeason.SeasonName,
+                        SeasonType = targetSeason.SeasonType ?? "",
+                        StartDate = targetSeason.StartDate,
+                        EndDate = targetSeason.EndDate,
+                        IsActive = targetSeason.IsActive,
+                        Year = targetYear
+                    },
+                    
+                    TotalArea = group.TotalArea,
+                    AreaGeoJson = group.Area != null ? SerializeGeometry(group.Area) : null,
+                    PlantingDate = group.PlantingDate,
+                    RiceVarietyId = group.RiceVarietyId,
+                    RiceVarietyName = riceVariety?.VarietyName,
+                    ClusterId = group.ClusterId,
+                    ClusterName = cluster?.ClusterName,
+                    
+                    Plots = MapPlotOverviews(plotsList, farmerDict, currentState == GroupState.PrePlanning),
+                    
+                    Readiness = currentState == GroupState.PrePlanning
+                        ? CalculateGroupReadiness(group, plotsList, plansList)
+                        : null,
+                    
+                    PlanOverview = (activePlan != null || plansList.Any())
+                        ? await CalculatePlanOverview(group.Id, activePlan ?? plansList.First())
+                        : null,
+                    
+                    Economics = (isPastSeason || currentState == GroupState.Completed) && plansList.Any()
+                        ? await CalculateEconomicOverview(group.Id, activePlan ?? plansList.First())
+                        : null
+                };
+
+                responses.Add(response);
+            }
 
             _logger.LogInformation(
-                "Retrieved group {GroupId} for supervisor {SupervisorId} in {Season} {Year} (State: {State})",
-                group.Id, request.SupervisorId, targetSeason.SeasonName, targetYear, currentState);
+                "Retrieved {GroupCount} groups for supervisor {SupervisorId} in {Season} {Year}",
+                responses.Count, request.SupervisorId, targetSeason.SeasonName, targetYear);
 
-            return Result<GroupBySeasonResponse>.Success(response);
+            return Result<List<GroupBySeasonResponse>>.Success(responses);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, 
-                "Error getting group for supervisor {SupervisorId}", 
+                "Error getting groups for supervisor {SupervisorId}", 
                 request.SupervisorId);
-            return Result<GroupBySeasonResponse>.Failure(
-                $"Error retrieving group: {ex.Message}");
+            return Result<List<GroupBySeasonResponse>>.Failure(
+                $"Error retrieving groups: {ex.Message}");
         }
     }
 

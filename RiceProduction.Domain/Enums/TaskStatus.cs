@@ -8,5 +8,7 @@ public enum TaskStatus
     InProgress,
     OnHold,
     Completed,
-    Cancelled
+    Cancelled,
+    Emergency,
+    EmergencyApproval,
 }

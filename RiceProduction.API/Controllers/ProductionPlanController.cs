@@ -2,18 +2,22 @@ using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
+using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
+using RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
 using RiceProduction.Application.ProductionPlanFeature.Commands.CreateProductionPlan;
 using RiceProduction.Application.ProductionPlanFeature.Commands.EditPlan;
 using RiceProduction.Application.ProductionPlanFeature.Commands.SubmitPlan;
-using RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GeneratePlanDraft;
+using RiceProduction.Application.ReportFeature.Command;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved;
+using RiceProduction.Application.ProductionPlanFeature.Queries.GetCultivationTasksByPlan;
+using RiceProduction.Application.ProductionPlanFeature.Queries.GetEmergencyPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPendingApprovals;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanDetail;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanExecutionSummary;
-using RiceProduction.Application.ProductionPlanFeature.Queries.GetCultivationTasksByPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlotImplementation;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
+using RiceProduction.Application.ProductionPlanFeature.Commands.ResolveEmergencyPlan;
 namespace RiceProduction.API.Controllers;
 
 [ApiController]
@@ -242,6 +246,118 @@ public class ProductionPlanController : ControllerBase
         {
             _logger.LogError(ex, "Unexpected error occurred while getting pending approvals");
             return StatusCode(500, new { message = "An unexpected error occurred" });
+        }
+    }
+
+    [HttpPost("emergency")]
+    public async Task<IActionResult> GetEmergencyPlans([FromBody] GetEmergencyPlansQuery query)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "GetEmergencyPlans request received - Page: {Page}, PageSize: {PageSize}",
+                query.CurrentPage, query.PageSize);
+
+            //var query = new GetEmergencyPlansQuery
+            //{
+            //    CurrentPage = currentPage,
+            //    PageSize = pageSize,
+            //    GroupId = groupId,
+            //    ClusterId = clusterId,
+            //    SearchTerm = searchTerm
+            //};
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Failed to retrieve emergency plans: {Errors}",
+                    string.Join(", ", result.Errors ?? new string[0]));
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation("Successfully retrieved emergency plans");
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error occurred while getting emergency plans");
+            return StatusCode(500, new { message = "An unexpected error occurred" });
+        }
+    }
+
+    //[HttpPost("resolve-emergency")]
+    //public async Task<IActionResult> ResolveEmergency([FromBody] ResolveEmergencyPlanCommand1 command)
+    //{
+    //    try
+    //    {
+
+    //        _logger.LogInformation(
+    //            "ResolveEmergencyPlan request received for ID: {PlanId}, NewVersion: {VersionName}",
+    //            command.PlanId, command.NewVersionName);
+
+    //        var result = await _mediator.Send(command);
+
+    //        if (!result.Succeeded)
+    //        {
+    //            _logger.LogWarning(
+    //                "Failed to resolve emergency plan ID {PlanId}: {Errors}",
+    //                command.PlanId, string.Join(", ", result.Errors ?? new string[0]));
+
+    //            return BadRequest(result);
+    //        }
+
+    //        _logger.LogInformation(
+    //            "Successfully resolved emergency plan ID {PlanId} with new version '{VersionName}'",
+    //            command.PlanId, command.NewVersionName);
+    //        return Ok(result);
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        _logger.LogError(ex,
+    //            "Unexpected error occurred while resolving emergency plan ID: {PlanId}",
+    //            command.PlanId);
+    //        return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
+    //    }
+    //}
+
+    /// <summary>
+    /// Creates an emergency plan for a single plot (not the entire group)
+    /// </summary>
+    [HttpPost("emergency-plan-for-plot")]
+    [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CreateEmergencyPlanForPlot([FromBody] CreateEmergencyPlanForPlotCommand command)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "CreateEmergencyPlanForPlot request received for Plot: {PlotId}, Report: {ReportId}, NewVersion: {VersionName}",
+                command.PlotId, command.EmergencyReportId, command.NewVersionName);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Failed to create emergency plan for Plot {PlotId}: {Errors}",
+                    command.PlotId, string.Join(", ", result.Errors ?? new string[0]));
+
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation(
+                "Successfully created emergency plan for Plot {PlotId} with new version '{VersionName}'",
+                command.PlotId, command.NewVersionName);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Unexpected error occurred while creating emergency plan for Plot: {PlotId}",
+                command.PlotId);
+            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
         }
     }
 

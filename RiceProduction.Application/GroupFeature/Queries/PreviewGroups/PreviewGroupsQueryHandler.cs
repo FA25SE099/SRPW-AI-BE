@@ -53,12 +53,12 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
             // Build grouping parameters
             var parameters = new GroupingParameters
             {
-                ProximityThreshold = request.ProximityThreshold ?? 2000,
+                ProximityThreshold = request.ProximityThreshold ?? 100000,
                 PlantingDateTolerance = request.PlantingDateTolerance ?? 2,
-                MinGroupArea = request.MinGroupArea ?? 15.0m,
+                MinGroupArea = request.MinGroupArea ?? 5.0m,
                 MaxGroupArea = request.MaxGroupArea ?? 50.0m,
-                MinPlotsPerGroup = request.MinPlotsPerGroup ?? 5,
-                MaxPlotsPerGroup = request.MaxPlotsPerGroup ?? 15
+                MinPlotsPerGroup = request.MinPlotsPerGroup ?? 3,
+                MaxPlotsPerGroup = request.MaxPlotsPerGroup ?? 10
             };
 
             // Get all farmers in cluster

@@ -3,11 +3,11 @@ using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
 
-public class ViewGroupBySeasonQuery : IRequest<Result<GroupBySeasonResponse>>
+public class ViewGroupBySeasonQuery : IRequest<Result<List<GroupBySeasonResponse>>>
 {
     public Guid SupervisorId { get; set; }
-    public Guid? SeasonId { get; set; }  // null = current season
-    public int? Year { get; set; }        // null = current year
+    public Guid? SeasonId { get; set; }
+    public int? Year { get; set; }
 }
 
 /// <summary>

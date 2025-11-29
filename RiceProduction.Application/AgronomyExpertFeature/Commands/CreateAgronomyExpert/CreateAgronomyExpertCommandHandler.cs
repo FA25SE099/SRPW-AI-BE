@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.SmsFeature.Event;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using System;

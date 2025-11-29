@@ -7,6 +7,7 @@ namespace RiceProduction.Infrastructure.Repository
     {
         Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default);
         Task<IEnumerable<ClusterManager>> FindAsync(Expression<Func<ClusterManager, bool>> predicate, CancellationToken cancellationToken = default);
+        Task<ClusterManager> GetEntityByIdAsync(Expression<Func<ClusterManager, bool>> match);
         Task<IEnumerable<ClusterManager?>> GetAllClusterManagerAsync(CancellationToken cancellationToken = default);
         Task<(IEnumerable<ClusterManager> Items, int TotalCount)> GetAllClusterManagerByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default);
         Task<(IEnumerable<ClusterManager> Items, int TotalCount)> GetAllClusterManagerAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, bool? freeOrAssigned, CancellationToken cancellationToken = default);

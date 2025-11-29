@@ -1,6 +1,6 @@
 using RiceProduction.Application.Common.Models;
 
-namespace RiceProduction.Application.Common.Interfaces;
+namespace RiceProduction.Application.Common.Interfaces.External;
 
 /// <summary>
 /// Service for handling SMS retry logic

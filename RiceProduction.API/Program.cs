@@ -1,7 +1,12 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models; // Add this for OpenApiSecurityScheme
+using Microsoft.OpenApi.Models;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using RiceProduction.API.Middlewares;
 using RiceProduction.API.Services;
 using RiceProduction.Application;
 using RiceProduction.Application.Common.Interfaces;
@@ -10,9 +15,80 @@ using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using System.Text;
 using System.Text.Json.Serialization;
-using System.Text.Json.Serialization;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(new ConfigurationBuilder()
+        .AddJsonFile("appsettings.json")
+        .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true)
+        .Build())
+    .Enrich.FromLogContext()
+    .Enrich.WithThreadId()
+    .CreateLogger();
+
+    Log.Information("Starting Rice Production API");
+
+    var builder = WebApplication.CreateBuilder(args);
+
+    builder.Host.UseSerilog();
+//var otel = builder.Configuration.GetSection("OpenTelemetry");
+//var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
+//var serviceVersion = otel["ServiceVersion"] ?? "1.0.0";
+//var otlpEndpoint = otel.GetSection("Otlp")["Endpoint"];
+//var otlpHeaders = otel.GetSection("Otlp")["Headers"];
+var isProduction = builder.Configuration.GetValue<bool>("IsProduction"); // or builder.Environment.IsProduction()
+
+//if (!string.IsNullOrEmpty(otlpEndpoint))
+//{
+//    var resourceBuilder = ResourceBuilder.CreateDefault()
+//        .AddService(serviceName: serviceName, serviceVersion: serviceVersion)
+//        .AddAttributes(new Dictionary<string, object>
+//        {
+//            ["deployment.environment"] = builder.Environment.EnvironmentName.ToLowerInvariant(),
+//            ["host.name"] = Environment.MachineName
+//            // add more static attributes if needed
+//        });
+
+//    // === Logs ===
+//    builder.Logging.AddOpenTelemetry(logging =>
+//    {
+//        logging.SetResourceBuilder(resourceBuilder);
+//        logging.IncludeFormattedMessage = true;
+//        logging.IncludeScopes = true;
+//        logging.ParseStateValues = true;
+
+//        logging.AddOtlpExporter(otlp =>
+//        {
+//            otlp.Endpoint = new Uri(otlpEndpoint!); // ! asserts non-null because we checked above
+//            otlp.Headers = otlpHeaders;             // e.g. "Authorization=Basic ..."
+//        });
+//    });
+
+//    // === Traces + Metrics ===
+//    builder.Services.AddOpenTelemetry()
+//        .ConfigureResource(rb => rb.Clear().AddService(serviceName, serviceVersion)) // or reuse resourceBuilder
+//        .WithTracing(tracing => tracing
+//            .SetResourceBuilder(resourceBuilder)
+//            .SetErrorStatusOnException()               // recommended
+//            .AddAspNetCoreInstrumentation()
+//            .AddHttpClientInstrumentation()
+//            .AddOtlpExporter(otlp =>
+//            {
+//                otlp.Endpoint = new Uri(otlpEndpoint);
+//                otlp.Headers = otlpHeaders;
+//            }))
+//        .WithMetrics(metrics => metrics
+//            .SetResourceBuilder(resourceBuilder)
+//            .AddAspNetCoreInstrumentation()
+//            .AddHttpClientInstrumentation()
+//            .AddRuntimeInstrumentation()
+//            .AddOtlpExporter(otlp =>
+//            {
+//                otlp.Endpoint = new Uri(otlpEndpoint);
+//                otlp.Headers = otlpHeaders;
+//            }));
+//}
+
 
 builder.AddApplicationServices();
 builder.AddInfrastructureServices();
@@ -30,7 +106,7 @@ builder.Services.AddSwaggerGen(c =>
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. " +
-                      "Enter **only the token** (without 'Bearer ' prefix) in the text input below. " +
+                      "Enter *only the token* (without 'Bearer ' prefix) in the text input below. " +
                       "Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
         Name = "Authorization",
         In = ParameterLocation.Header,
@@ -108,7 +184,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 var app = builder.Build();
 var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
-var isProduction = builder.Configuration.GetValue<bool>("IsProduction");
+
 
 if (seedDatabase)
 {
@@ -133,7 +209,6 @@ if (seedDatabase)
         }
         //await initializer.SeedAsyncAdminOnly();
         await initializer.SeedAsync();
-
     }
     catch (Exception ex)
     {
@@ -148,7 +223,7 @@ app.UseCors("AllowFrontend");
 app.UseCors("AllowGemini");
 
 app.UseHttpsRedirection();
-
+app.UseMiddleware<LoggingMiddleware>();
 // Add authentication and authorization middleware
 app.UseAuthentication();
 app.UseAuthorization();
