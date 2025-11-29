@@ -1,5 +1,5 @@
 ﻿namespace RiceProduction.Domain.Entities;
-
+//status: bao trùm trong farm log
 public class FarmLogMaterial : BaseAuditableEntity
 {
     public Guid FarmLogId { get; set; }

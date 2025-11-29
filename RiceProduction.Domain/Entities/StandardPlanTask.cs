@@ -1,5 +1,5 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities; 
+//status: Type: làm đất các loại và priority: mức độ ưu tiên tuef 1-5
 public class StandardPlanTask : BaseAuditableEntity
 {
 

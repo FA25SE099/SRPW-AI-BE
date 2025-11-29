@@ -1,5 +1,6 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: Invoice Status: Paid
+//một trạng thái khác là paid bởi ai
 public class UavInvoice : BaseAuditableEntity
 {
     [Required]

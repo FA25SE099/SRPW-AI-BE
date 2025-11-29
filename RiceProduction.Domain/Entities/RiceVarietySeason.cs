@@ -1,5 +1,7 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: IsRecommended: true false
+//là bảng trung gian giữa lúa và mùa cho biết mùa này giống
+//này có nên trồng hay không
 public class RiceVarietySeason : BaseAuditableEntity
 {
     [Required]

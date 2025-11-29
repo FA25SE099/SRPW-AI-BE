@@ -1,5 +1,6 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: không có,
+//nhưng khuyến cáo nên thêm nhận vật tư hay chưa và ai nhận để tracking
 public class ProductionPlanTaskMaterial : BaseAuditableEntity
 {
     [Required]

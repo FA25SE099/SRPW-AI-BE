@@ -1,5 +1,5 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: alert triggered or not triggered vì lượng mưa
 public class FieldWeather : BaseAuditableEntity
 {
     public Guid? ClusterId { get; set; }

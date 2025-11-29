@@ -1,7 +1,7 @@
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: In Progress, Completed, Emergency Approved, Cancelled
 public class CultivationTask : BaseAuditableEntity
 {
     public Guid? ProductionPlanTaskId { get; set; }
@@ -23,7 +23,7 @@ public class CultivationTask : BaseAuditableEntity
     /// Order for UAV route optimization
     /// </summary>
     public int? ExecutionOrder { get; set; }
-
+        
     public bool IsContingency { get; set; } = false;
 
     public string? ContingencyReason { get; set; }
