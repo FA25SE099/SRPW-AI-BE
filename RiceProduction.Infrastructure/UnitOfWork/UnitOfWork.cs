@@ -33,6 +33,7 @@ namespace RiceProduction.Infrastructure.UnitOfWork
         private IPlotRepository? _plotRepository;
         private IClusterRepository? _clusterRepository;
         private IUavVendorRepository? _uavVendorRepository;
+        
 
         // ===================================
         // === Constructors

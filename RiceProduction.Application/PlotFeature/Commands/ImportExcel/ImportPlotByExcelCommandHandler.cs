@@ -185,17 +185,17 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         new Coordinate(0, 0)
                     };
                     var defaultBoundary = geometryFactory.CreatePolygon(coordinates);
-                    
+
                     var newPlot = new Plot
                     {
-                        Id = id,
-                        SoThua = plot.SoThua,
-                        SoTo = plot.SoTo,
-                        Area = plot.Area,
-                        FarmerId = plot.FarmerId,
-                        SoilType = plot.SoilType,
-                        Status = Domain.Enums.PlotStatus.Active,
-                        Boundary = defaultBoundary 
+                        Id = plotId,
+                        SoThua = row.SoThua,
+                        SoTo = row.SoTo,
+                        Area = row.Area.Value,
+                        FarmerId = farmer.Id,
+                        SoilType = row.SoilType,
+                        Status = PlotStatus.PendingPolygon,
+                        Boundary = defaultBoundary
                     };
 
                     plotList.Add(newPlot);

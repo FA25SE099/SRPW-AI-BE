@@ -24,6 +24,8 @@
 		<PackageReference Include="Polly" Version="8.4.2" />
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
 		<PackageReference Include="vng.zalo.ZaloDotNetSDK" Version="2.1.2" />
+		<PackageReference Include="FirebaseAdmin" Version="3.0.1" />
+		<PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
 	</ItemGroup>
 	<ItemGroup>
 	  <ProjectReference Include="..\RiceProduction.Application\RiceProduction.Application.csproj" />

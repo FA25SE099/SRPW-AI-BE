@@ -80,7 +80,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
         builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
-
+        builder.Services.AddScoped<INotificationService, NotificationService>();
         // Configure SMS Retry Strategy
         builder.Services.Configure<SmsRetryConfiguration>(
             builder.Configuration.GetSection("SmsRetry"));
