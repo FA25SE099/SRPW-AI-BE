@@ -11,11 +11,13 @@ namespace RiceProduction.API.Controllers
 
         private readonly IStorageService _storageService;
         private readonly ILogger<TestController> _logger;
+        private readonly ISmSService _smsService;
 
-        public TestController(IStorageService storageService, ILogger<TestController> logger)
+        public TestController(IStorageService storageService, ILogger<TestController> logger, ISmSService smsService)
         {
             _storageService = storageService;
             _logger = logger;
+            _smsService = smsService;
         }
 
         [HttpPost("upload-files")]
@@ -134,6 +136,157 @@ namespace RiceProduction.API.Controllers
                 return BadRequest(new { Success = false, Error = ex.Message });
             }
         }
+
+        [HttpPost("sms/send")]
+        public async Task<ActionResult<object>> TestSendSms([FromBody] TestSmsRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Testing SMS send to: {Phones}", string.Join(", ", request.PhoneNumbers));
+
+                if (request.PhoneNumbers == null || request.PhoneNumbers.Length == 0)
+                {
+                    return BadRequest(new { Success = false, Error = "Phone numbers are required" });
+                }
+
+                if (string.IsNullOrEmpty(request.Content))
+                {
+                    return BadRequest(new { Success = false, Error = "Content is required" });
+                }
+
+                var result =  _smsService.sendSMS(
+                    request.PhoneNumbers,
+                    request.Content,
+                    (int)request.Type,
+                    request.Sender
+                );
+
+                return Ok(new
+                {
+                    Success = true,
+                    Response = result,
+                    SentTo = request.PhoneNumbers,
+                    Type = request.Type ?? 2,
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending SMS");
+                return BadRequest(new { Success = false, Error = ex.Message });
+            }
+        }
+
+        [HttpGet("sms/user-info")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public ActionResult<object> TestGetUserInfo()
+        {
+            try
+            {
+                _logger.LogInformation("Getting SMS user info");
+
+                var result = _smsService.getUserInfo();
+
+                return Ok(new
+                {
+                    Success = true,
+                    UserInfo = result,
+                    Message = "User info retrieved successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting user info");
+                return BadRequest(new { Success = false, Error = ex.Message });
+            }
+        }
+
+        [HttpPost("sms/send-mms")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public ActionResult<object> TestSendMms([FromBody] TestMmsRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Testing MMS send to: {Phones}", string.Join(", ", request.PhoneNumbers));
+
+                if (request.PhoneNumbers == null || request.PhoneNumbers.Length == 0)
+                {
+                    return BadRequest(new { Success = false, Error = "Phone numbers are required" });
+                }
+
+                if (string.IsNullOrEmpty(request.Content))
+                {
+                    return BadRequest(new { Success = false, Error = "Content is required" });
+                }
+
+                if (string.IsNullOrEmpty(request.Link))
+                {
+                    return BadRequest(new { Success = false, Error = "Link is required for MMS" });
+                }
+
+                var result = _smsService.sendMMS(
+                    request.PhoneNumbers,
+                    request.Content,
+                    request.Link,
+                    request.Sender ?? ""
+                );
+
+                return Ok(new
+                {
+                    Success = true,
+                    Response = result,
+                    SentTo = request.PhoneNumbers,
+                    Message = "MMS sent successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending MMS");
+                return BadRequest(new { Success = false, Error = ex.Message });
+            }
+        }
+
+        [HttpPost("infobip/send")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<object>> TestInfobipSendSms([FromBody] TestSmsRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Testing Infobip SMS send to: {Phones}", string.Join(", ", request.PhoneNumbers));
+
+                if (request.PhoneNumbers == null || request.PhoneNumbers.Length == 0)
+                {
+                    return BadRequest(new { Success = false, Error = "Phone numbers are required" });
+                }
+
+                if (string.IsNullOrEmpty(request.Content))
+                {
+                    return BadRequest(new { Success = false, Error = "Content is required" });
+                }
+
+                var result = await _smsService.SendSMSAsync(
+                    request.PhoneNumbers,
+                    request.Content,
+                    request.Type ?? 2,
+                    request.Sender ?? ""
+                );
+
+                return Ok(new
+                {
+                    Success = true,
+                    Response = result,
+                    SentTo = request.PhoneNumbers,
+                    Message = "Infobip SMS sent"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending Infobip SMS");
+                return BadRequest(new { Success = false, Error = ex.Message });
+            }
+        }
     }
 }
 public class UploadSingleFileRequest
@@ -143,4 +296,19 @@ public class UploadSingleFileRequest
 public class UploadMultiples
 {
     public List<IFormFile> Files { get; set; }
+}
+public class TestSmsRequest
+{
+    public string[] PhoneNumbers { get; set; }
+    public string Content { get; set; }
+    public int? Type { get; set; }
+    public string? Sender { get; set; }
+}
+
+public class TestMmsRequest
+{
+    public string[] PhoneNumbers { get; set; }
+    public string Content { get; set; }
+    public string Link { get; set; }
+    public string? Sender { get; set; }
 }
