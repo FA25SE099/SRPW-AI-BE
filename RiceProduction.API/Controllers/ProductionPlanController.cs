@@ -104,22 +104,16 @@ public class ProductionPlanController : ControllerBase
         }
     }
 
-    [HttpPut("{id:guid}")]
+    [HttpPut]
     [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Edit(Guid id, [FromBody] EditPlanCommand command)
+    public async Task<IActionResult> Edit([FromBody] EditPlanCommand command)
     {
         try
         {
-            if (id != command.PlanId)
-            {
-                return BadRequest(Result<Guid>.Failure(
-                    "Route ID does not match command PlanId.",
-                    "IdMismatch"));
-            }
 
-            _logger.LogInformation("EditProductionPlan request received for ID: {PlanId}", id);
+            _logger.LogInformation("EditProductionPlan request received for ID: {PlanId}", command.PlanId);
 
             var result = await _mediator.Send(command);
 
@@ -127,17 +121,17 @@ public class ProductionPlanController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to edit production plan ID {PlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    command.PlanId, string.Join(", ", result.Errors ?? new string[0]));
 
                 return BadRequest(result);
             }
 
-            _logger.LogInformation("Successfully edited production plan with ID: {PlanId}", id);
+            _logger.LogInformation("Successfully edited production plan with ID: {PlanId}", command.PlanId);
             return Ok(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error occurred while editing production plan ID: {PlanId}", id);
+            _logger.LogError(ex, "Unexpected error occurred while editing production plan ID: {PlanId}", command.PlanId);
             return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
         }
     }

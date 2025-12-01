@@ -164,7 +164,7 @@ public class UpdateEmergencyProtocolCommandHandler : IRequestHandler<UpdateEmerg
             stageRepo.DeleteRange(emergencyProtocol.StandardPlanStages);
 
             var thresholdRepo = _unitOfWork.Repository<Threshold>();
-            thresholdRepo.Delete(emergencyProtocol.Thresholds);
+            thresholdRepo.DeleteRange(emergencyProtocol.Thresholds);
 
             // 9. Add new stages
             emergencyProtocol.StandardPlanStages.Clear();
