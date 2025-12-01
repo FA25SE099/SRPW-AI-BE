@@ -18,7 +18,7 @@ namespace RiceProduction.Infrastructure.Data
         // Material ID Constants
         private static class MaterialIds
         {
-            public static readonly Guid DAP = new Guid("7A8B9C0D-1E2F-3456-7890-ABCDEF123456");  // Use a unique GUID
+            public static readonly Guid DAP = new Guid("7A8B9C0D-1E2F-3456-7890-ABCDEF123456"); 
             public static readonly Guid PhanHuuCo = new Guid("1F25B94C-02A9-4558-BA4E-AD44CE155E49");
             public static readonly Guid Ure = new Guid("98AB7097-ECC9-444B-A9A2-26207E28E679");
             public static readonly Guid LuaXanhBonThuc = new Guid("A575B22D-053D-440E-BCC5-F152F11C8A22");

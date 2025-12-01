@@ -17,6 +17,7 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
+using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.API.Controllers
 {
@@ -93,13 +94,15 @@ namespace RiceProduction.API.Controllers
          public async Task<ActionResult<PagedResult<IEnumerable<FarmerDTO>>>> GetAllFarmers(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 10,
-            [FromQuery] string? searchTerm = null)
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] Guid? clusterManagerId = null)
          {
             var query = new GetAllFarmerQueries
             {
                 PageNumber = pageNumber,
                 PageSize = pageSize,
-                SearchTerm = searchTerm
+                SearchTerm = searchTerm,
+                ClusterManagerId = clusterManagerId
             };
 
             var result = await _mediator.Send(query);

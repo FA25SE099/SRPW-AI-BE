@@ -42,7 +42,7 @@ public class PreviewGroupDto
     public decimal TotalArea { get; set; }
     public double CentroidLat { get; set; }
     public double CentroidLng { get; set; }
-    public string? GroupBoundaryWkt { get; set; }
+    public string? GroupBoundaryGeoJson { get; set; }
     public List<Guid> PlotIds { get; set; } = new();
     public List<PlotInGroupDto> Plots { get; set; } = new();
 }
@@ -55,7 +55,7 @@ public class PlotInGroupDto
     public string? FarmerPhone { get; set; }
     public decimal Area { get; set; }
     public DateTime PlantingDate { get; set; }
-    public CoordinateDto? Coordinate { get; set; }
+    public string? BoundaryGeoJson { get; set; }
     public string? SoilType { get; set; }
     public int? SoThua { get; set; }
     public int? SoTo { get; set; }
@@ -77,8 +77,7 @@ public class UngroupedPlotDto
     public string RiceVarietyName { get; set; } = string.Empty;
     public DateTime PlantingDate { get; set; }
     public decimal Area { get; set; }
-    public CoordinateDto? Coordinate { get; set; }
-    public string? BoundaryWkt { get; set; }
+    public string? BoundaryGeoJson { get; set; }
     public string UngroupReason { get; set; } = string.Empty;
     public string ReasonDescription { get; set; } = string.Empty;
     public double? DistanceToNearestGroup { get; set; }

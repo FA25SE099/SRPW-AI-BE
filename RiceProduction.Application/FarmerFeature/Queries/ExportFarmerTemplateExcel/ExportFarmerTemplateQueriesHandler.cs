@@ -22,24 +22,22 @@ namespace RiceProduction.Application.FarmerFeature.Queries.ExportFarmerTemplateE
         {
             try
             {
-                var farmerList = new List<FarmerDTO>
+                var farmerList = new List<FarmerExcelDTO>
                 {
-                    new FarmerDTO
+                    new FarmerExcelDTO
                     {
                         FullName = "Nguyễn Văn A",
                         Address = "36/6 Thanh Hóa",
                         PhoneNumber = "09036363636",
-                        IsActive = true,
                         FarmCode = "36TH",
                         PlotCount = 2
                     },
                     
-                    new FarmerDTO
+                    new FarmerExcelDTO
                     {
                         FullName = "Nguyễn Văn B",
                         Address = "18 Nam Định",
                         PhoneNumber = "0901818181818",
-                        IsActive = true,
                         FarmCode = "18ND",
                         PlotCount = 4
                     }

@@ -150,6 +150,14 @@ namespace RiceProduction.Infrastructure.Repository
                 .OrderBy(s => s.AssignedDate)
                 .FirstOrDefaultAsync(s => s.ClusterId == ClusterId, cancellationToken);
         }
+        public async Task<ClusterManager?> GetClusterByManagerId(Guid ClusterId, CancellationToken cancellationToken = default)
+        {
+            return await _clusterManager
+                .Include(s => s.ManagedCluster)
+                .OrderBy(s => s.AssignedDate)
+                .FirstOrDefaultAsync(s => s.ClusterId == ClusterId, cancellationToken);
+        }
+
 
         public async Task<(IEnumerable<ClusterManager> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<ClusterManager, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {

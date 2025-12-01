@@ -32,7 +32,6 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             var result = new ImportFarmerResult();
             var rowNumber = 1;
 
-            // Get ClusterId from ClusterManager if provided
             Guid? clusterId = null;
             if (clusterManagerId.HasValue)
             {
@@ -106,33 +105,12 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                         continue;
                     }
 
-                    // ✅ Parse Id nếu có (optional)
-                    Guid? farmerId = null;
-                    if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
-                    {
-                        farmerId = dto.Id.Value;
-
-                        // Kiểm tra Id có bị trùng không
-                        var existingById = await _farmers
-                            .FirstOrDefaultAsync(f => f.Id == farmerId, cancellationToken);
-                        if (existingById != null)
-                        {
-                            result.FailureCount++;
-                            result.Errors.Add(new ImportError
-                            {
-                                RowNumber = rowNumber,
-                                FieldName = "Id",
-                                ErrorMessage = $"Id '{farmerId}' đã tồn tại trong hệ thống"
-                            });
-                            continue;
-                        }
-                    }
 
                     const string TEMP_PASSWORD = "Farmer@123"; 
 
                     var farmer = new Farmer
                     {
-                        Id = farmerId ?? Guid.NewGuid(), 
+                        Id = Guid.NewGuid(), 
                         PhoneNumber = dto.PhoneNumber,
                         UserName = dto.PhoneNumber,
                         FullName = dto.FullName,
