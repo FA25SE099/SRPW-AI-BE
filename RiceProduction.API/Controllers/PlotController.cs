@@ -8,6 +8,7 @@ using RiceProduction.Application.Common.Models.Response.PlotResponse;
 using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
+using RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate;
 using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 using RiceProduction.Application.PlotFeature.Queries.DownloadSample;
@@ -17,6 +18,7 @@ using RiceProduction.Application.PlotFeature.Queries.GetById;
 using RiceProduction.Application.PlotFeature.Queries.GetDetail;
 using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
 using RiceProduction.Domain.Entities;
+using static RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate.UpdateCoordinateCommand;
 
 namespace RiceProduction.API.Controllers
 {
@@ -378,7 +380,64 @@ namespace RiceProduction.API.Controllers
                 timestamp = DateTime.UtcNow
             });
         }
-        
+        [HttpPut("{plotId}/coordinate")]
+        [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<Result<bool>>> UpdatePlotCoordinate(
+    Guid plotId,
+    [FromBody] UpdateCoordinateRequest request)
+        {
+            try
+            {
+                if (plotId == Guid.Empty)
+                {
+                    return BadRequest(Result<bool>.Failure("Invalid Plot ID"));
+                }
+
+                if (request == null || string.IsNullOrWhiteSpace(request.CoordinateGeoJson))
+                {
+                    return BadRequest(Result<bool>.Failure("Coordinate GeoJSON is required"));
+                }
+
+                var command = new UpdateCoordinateCommand
+                {
+                    PlotId = plotId,
+                    CoordinateGeoJson = request.CoordinateGeoJson,
+                    Notes = request.Notes
+                };
+
+                _logger.LogInformation(
+                    "Updating coordinate for Plot {PlotId}",
+                    plotId);
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Failed to update coordinate for Plot {PlotId}: {Message}",
+                        plotId,
+                        result.Message);
+                    return BadRequest(result);
+                }
+
+                _logger.LogInformation(
+                    "Successfully updated coordinate for Plot {PlotId}",
+                    plotId);
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error occurred while updating coordinate for Plot {PlotId}",
+                    plotId);
+                return StatusCode(500, Result<bool>.Failure("An error occurred while processing your request"));
+            }
+        }
+
 
     }
 }

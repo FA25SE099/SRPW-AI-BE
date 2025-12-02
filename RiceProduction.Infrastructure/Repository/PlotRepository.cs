@@ -46,10 +46,15 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<(IEnumerable<Plot> Items, int TotalCount)> GetAllPlotPagedAsync(int pageNumber, int pageSize, Expression<Func<Plot, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
             var query = _plots
-                .Include(p => p.Farmer)
-                .Include(p => p.Group)
-                .ThenInclude(p => p.RiceVariety)
-                .AsQueryable();
+        .Include(p => p.Farmer)
+        .Include(p => p.Group)
+        .ThenInclude(g => g.RiceVariety)
+        .Include(p => p.PlotCultivations)
+        .ThenInclude(pc => pc.RiceVariety)
+        .Include(p => p.PlotCultivations)
+        .ThenInclude(pc => pc.Season)
+        .AsSplitQuery()                
+        .AsQueryable();
 
             if (predicate != null)
             {

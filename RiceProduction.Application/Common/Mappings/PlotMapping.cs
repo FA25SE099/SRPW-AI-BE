@@ -1,37 +1,41 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using RiceProduction.Application.Common.Models;
+﻿using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
-using AutoMapper;
-using NetTopologySuite.IO;
-using NetTopologySuite.Geometries;
 
-namespace RiceProduction.Application.Common.Mappings
+public class PlotMapping : Profile
 {
-    public class PlotMapping : Profile
+    public PlotMapping()
     {
-        public PlotMapping()
-        {
-            CreateMap<Plot, PlotDTO>()
-                .ForMember(dest => dest.PlotId, opt => opt.MapFrom(src => src.Id))
-                .ForMember(dest => dest.FarmerName, opt => opt.MapFrom(src => src.Farmer != null ? src.Farmer.FullName : null))
-                .ForMember(dest => dest.VarietyName, opt => opt.MapFrom(src => src.Group != null && src.Group.RiceVariety != null ? src.Group.RiceVariety.VarietyName : string.Empty))
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
-                .ForMember(dest => dest.BoundaryGeoJson, opt => opt.MapFrom(src => src.Boundary))
-                .ForMember(dest => dest.CoordinateGeoJson, opt => opt.MapFrom(src => src.Coordinate))
-                .ForMember(dest => dest.Seasons, opt => opt.MapFrom(src => src.PlotCultivations.Select(s => s.Season).Where(s => s != null).Distinct()));
-            CreateMap<Plot, PlotDetailDTO>().IncludeBase<Plot, PlotDTO>()
-                .ForMember(dest => dest.PlotCultivations, opt => opt.MapFrom(src =>
-                src.Group != null ? src.PlotCultivations : new List<PlotCultivation>()))
-                .ForMember(dest => dest.ProductionPlans, opt => opt.MapFrom(src =>
-                src.Group != null ? src.Group.ProductionPlans : new List<ProductionPlan>()));
-            CreateMap<Season, SeasonDTO>()
-                .ForMember(dest => dest.SeasonId, opt => opt.MapFrom(src => src.Id));
-        }
+        CreateMap<Plot, PlotDTO>()
+            .ForMember(dest => dest.PlotId, opt => opt.MapFrom(src => src.Id))
+            .ForMember(dest => dest.FarmerName,
+                opt => opt.MapFrom(src => src.Farmer != null ? src.Farmer.FullName : null))
+            .ForMember(dest => dest.VarietyName, opt => opt.MapFrom(src =>
+                src.PlotCultivations
+                    .OrderByDescending(pc => pc.PlantingDate)
+                    .Select(pc => pc.RiceVariety != null ? pc.RiceVariety.VarietyName : null)
+                    .FirstOrDefault()
+                ?? string.Empty
+            ))
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status))
+            .ForMember(dest => dest.BoundaryGeoJson, opt => opt.MapFrom(src => src.Boundary))
+            .ForMember(dest => dest.CoordinateGeoJson, opt => opt.MapFrom(src => src.Coordinate))
+            .ForMember(dest => dest.Seasons, opt => opt.MapFrom(src =>
+                src.PlotCultivations
+                    .Where(pc => pc.Season != null)
+                    .Select(pc => pc.Season)
+                    .Distinct()
+            ));
 
-        
+        CreateMap<Plot, PlotDetailDTO>()
+            .IncludeBase<Plot, PlotDTO>()       
+            .ForMember(dest => dest.PlotCultivations,
+                opt => opt.MapFrom(src => src.PlotCultivations))
+            .ForMember(dest => dest.ProductionPlans,
+                opt => opt.MapFrom(src =>
+                    src.Group != null ? src.Group.ProductionPlans : new List<ProductionPlan>()
+                ));
+
+        CreateMap<Season, SeasonDTO>()
+            .ForMember(dest => dest.SeasonId, opt => opt.MapFrom(src => src.Id));
     }
 }

@@ -178,14 +178,16 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmersCommand command)
         {
+            try { 
             var result = await _mediator.Send(command);
 
-                if (!result.Succeeded)
-                {
-                    return BadRequest(result);
-                }
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
 
-                return Ok(result);
+            return Ok(result);
+
             }
             catch (Exception ex)
             {

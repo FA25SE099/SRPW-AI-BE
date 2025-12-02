@@ -18,5 +18,6 @@ namespace RiceProduction.Application.Common.Models
         public GroupStatus Status { get; set; } = GroupStatus.Active;
         public string? Area { get; set; }
         public decimal? TotalArea { get; set; }
+        public ICollection<ProductionPlanDTO> ProductionPlans { get; set; } = new List<ProductionPlanDTO>();
     }
 }

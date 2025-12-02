@@ -40,10 +40,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                     p.SoTo.HasValue && p.SoTo.ToString().Contains(request.SearchTerm) ||
                     p.Farmer != null && p.Farmer.FullName.Contains(request.SearchTerm));
                 }
-                else
-                {
-                    predicate = p => p.Status == PlotStatus.Active;
-                }
+                
                 var (items, totalCount) = await _unitOfWork.PlotRepository
                     .GetAllPlotPagedAsync(request.PageNumber, request.PageSize, predicate, cancellationToken);
                 var plotDTOs = _mapper.Map<IEnumerable<PlotDTO>>(items);
