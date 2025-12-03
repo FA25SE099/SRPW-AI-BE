@@ -15,3 +15,6 @@ public class GetAllPestProtocolsQuery : IRequest<PagedResult<List<PestProtocolRe
     public string? SearchName { get; set; }
     public bool? IsActive { get; set; }
 }
+//db sửa ảnh material thành list
+//tính giá riêng lúc emergency và preview standard
+//thêm filter thời gian xem giá cho material 
