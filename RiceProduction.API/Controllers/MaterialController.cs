@@ -14,9 +14,11 @@ using RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
+using RiceProduction.Application.MaterialFeature.Queries.CalculateGroupMaterialCost;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
+using RiceProduction.Application.MaterialFeature.Queries.CalculatePrice;
 
 namespace RiceProduction.API.Controllers;
 
@@ -154,6 +156,31 @@ public class MaterialController : ControllerBase
         {
             return BadRequest(result);
         }
+        return Ok(result);
+    }
+    
+    [HttpGet("calculate-price")]
+    public async Task<IActionResult> CalculatePrice([FromQuery] CalculateMaterialPriceQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    [HttpPost("calculate-group-material-cost")]
+    public async Task<IActionResult> CalculateGroupMaterialCost([FromBody] CalculateGroupMaterialCostQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
         return Ok(result);
     }
 
