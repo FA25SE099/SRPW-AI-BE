@@ -97,7 +97,8 @@ public static class DependencyInjection
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
-
+        //Email Services
+        builder.Services.AddScoped<IEmailService, EmailService>();
         // Register Zalo Services
         builder.Services.AddHttpClient<IZaloOAuthService, ZaloOAuthService>();
         builder.Services.AddHttpClient<IZaloZnsService, ZaloZnsService>();

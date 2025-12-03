@@ -73,7 +73,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     
     // Assignments
     public DbSet<SupervisorFarmerAssignment> SupervisorFarmerAssignments => Set<SupervisorFarmerAssignment>();
-
+    // Emails
+    public DbSet<EmailRequest> EmailRequests => Set<EmailRequest>();
+    public DbSet<EmailBatch> EmailBatches => Set<EmailBatch>();
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
