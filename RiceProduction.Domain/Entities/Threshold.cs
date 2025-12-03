@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: không có trạng thái
 /// <summary>
 /// Threshold conditions for emergency protocols
 /// Can contain BOTH pest and weather thresholds simultaneously

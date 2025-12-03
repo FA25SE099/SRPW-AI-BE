@@ -1,5 +1,5 @@
 ﻿namespace RiceProduction.Domain.Entities;
-
+//status: IsActive: true false không cần xài
 public class Season : BaseAuditableEntity
 {
     [Required]

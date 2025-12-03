@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Is Active: true false, về mặt thời gian: xét theo thời gian thì có active hay không
 public class Material : BaseAuditableEntity
 {
     [Required]

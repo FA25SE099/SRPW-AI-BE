@@ -1,5 +1,5 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: IsMandatory: true false có khẩn cấp hay không 
 /// <summary>
 /// Defines which production stages are covered by a standard plan template
 /// </summary>

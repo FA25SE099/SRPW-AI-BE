@@ -1,5 +1,5 @@
 ﻿namespace RiceProduction.Domain.Entities;
-
+//status: active, pending polygon
 public class Plot : BaseAuditableEntity
 {
 

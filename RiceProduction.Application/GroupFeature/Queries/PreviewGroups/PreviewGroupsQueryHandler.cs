@@ -1,10 +1,11 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using NetTopologySuite.IO;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.GroupFormationResponses;
 using RiceProduction.Application.Common.Services;
 using RiceProduction.Domain.Entities;
+using System.Text.Json;
 using static RiceProduction.Application.Common.Services.GroupFormationService;
 
 namespace RiceProduction.Application.GroupFeature.Queries.PreviewGroups;
@@ -14,7 +15,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<PreviewGroupsQueryHandler> _logger;
     private readonly GroupFormationService _groupFormationService;
-    private readonly WKTWriter _wktWriter;
+    private readonly GeoJsonWriter _geoJsonWriter;
 
     public PreviewGroupsQueryHandler(
         IUnitOfWork unitOfWork,
@@ -23,7 +24,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
         _unitOfWork = unitOfWork;
         _logger = logger;
         _groupFormationService = new GroupFormationService();
-        _wktWriter = new WKTWriter();
+        _geoJsonWriter = new GeoJsonWriter();
     }
 
     public async Task<Result<PreviewGroupsResponse>> Handle(
@@ -53,10 +54,10 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
             // Build grouping parameters
             var parameters = new GroupingParameters
             {
-                ProximityThreshold = request.ProximityThreshold ?? 100000,
+                ProximityThreshold = request.ProximityThreshold ?? 100,
                 PlantingDateTolerance = request.PlantingDateTolerance ?? 2,
                 MinGroupArea = request.MinGroupArea ?? 5.0m,
-                MaxGroupArea = request.MaxGroupArea ?? 50.0m,
+                MaxGroupArea = request.MaxGroupArea ?? 15,
                 MinPlotsPerGroup = request.MinPlotsPerGroup ?? 3,
                 MaxPlotsPerGroup = request.MaxPlotsPerGroup ?? 10
             };
@@ -174,7 +175,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                     TotalArea = g.TotalArea,
                     CentroidLat = g.Centroid.Y,
                     CentroidLng = g.Centroid.X,
-                    GroupBoundaryWkt = g.GroupBoundary != null ? _wktWriter.Write(g.GroupBoundary) : null,
+                    GroupBoundaryGeoJson = g.GroupBoundary != null ? _geoJsonWriter.Write(g.GroupBoundary) : null,
                     PlotIds = g.Plots.Select(p => p.Plot.Id).ToList(),
                     Plots = g.Plots.Select(p => new PlotInGroupDto
                     {
@@ -184,11 +185,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                         FarmerPhone = farmerDict.GetValueOrDefault(p.Plot.FarmerId)?.PhoneNumber,
                         Area = p.Plot.Area,
                         PlantingDate = p.PlantingDate,
-                        Coordinate = p.Coordinate != null ? new CoordinateDto 
-                        { 
-                            Lat = p.Coordinate.Y, 
-                            Lng = p.Coordinate.X 
-                        } : null,
+                        BoundaryGeoJson = p.Plot.Boundary != null ? _geoJsonWriter.Write(p.Plot.Boundary) : null,
                         SoilType = p.Plot.SoilType,
                         SoThua = p.Plot.SoThua,
                         SoTo = p.Plot.SoTo
@@ -204,12 +201,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                     RiceVarietyName = varietyDict.GetValueOrDefault(u.Plot.RiceVarietyId)?.VarietyName ?? "Unknown",
                     PlantingDate = u.Plot.PlantingDate,
                     Area = u.Plot.Plot.Area,
-                    Coordinate = u.Plot.Coordinate != null ? new CoordinateDto 
-                    { 
-                        Lat = u.Plot.Coordinate.Y, 
-                        Lng = u.Plot.Coordinate.X 
-                    } : null,
-                    BoundaryWkt = u.Plot.Plot.Boundary != null ? _wktWriter.Write(u.Plot.Plot.Boundary) : null,
+                    BoundaryGeoJson = u.Plot.Plot.Boundary != null ? _geoJsonWriter.Write(u.Plot.Plot.Boundary) : null,
                     UngroupReason = u.Reason.ToString(),
                     ReasonDescription = u.ReasonDescription,
                     DistanceToNearestGroup = u.DistanceToNearestGroup,

@@ -6,6 +6,7 @@ using RiceProduction.Application.ProductionPlanFeature.Commands.EditPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetApprovedPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPendingApprovals;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanDetail;
+using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanPlotMaterials;
 namespace RiceProduction.API.Controllers
 {
     [ApiController]
@@ -57,6 +58,21 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
         }
+
+        [HttpGet("plans/{planId}/plot-materials")]
+        public async Task<IActionResult> GetPlanPlotMaterials(Guid planId)
+        {
+            var query = new GetPlanPlotMaterialsQuery { PlanId = planId };
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
         [HttpPut("{planId}")]
         public async Task<IActionResult> EditPlan(Guid planId, [FromBody] EditPlanCommand command)
         {

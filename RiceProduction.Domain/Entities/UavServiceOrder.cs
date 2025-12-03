@@ -1,7 +1,8 @@
-using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
+﻿using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Status: Draft
+//trạng thái kiểu khác là bắt đầu khi nào và kết thúc khi nào bởi ai
 public class UavServiceOrder : BaseAuditableEntity
 {
     [Required]

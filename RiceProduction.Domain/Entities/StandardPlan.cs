@@ -1,5 +1,5 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: Is Actice: true false chưa cần sử dụng trong flow nào
 public class StandardPlan : BaseAuditableEntity
 {
     [Required]

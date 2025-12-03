@@ -75,6 +75,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     // Assignments
     public DbSet<SupervisorFarmerAssignment> SupervisorFarmerAssignments => Set<SupervisorFarmerAssignment>();
 
+    // Emergencies
+    public DbSet<EmergencyProtocol> EmergencyProtocols => Set<EmergencyProtocol>();
+    public DbSet<PestProtocol> PestProtocols => Set<PestProtocol>();
+    public DbSet<WeatherProtocol> WeatherProtocols => Set<WeatherProtocol>();
+    public DbSet<Threshold> Thresholds => Set<Threshold>();
+    public DbSet<CultivationVersion> CultivationVersions => Set<CultivationVersion>();
+
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

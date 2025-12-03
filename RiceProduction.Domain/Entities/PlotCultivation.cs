@@ -1,5 +1,5 @@
 ﻿namespace RiceProduction.Domain.Entities;
-
+//status: In progress, planned, completed
 public class PlotCultivation : BaseAuditableEntity
 {
     [Required]

@@ -1,5 +1,5 @@
 ﻿namespace RiceProduction.Domain.Entities;
-
+//status: IsActive true false nhưng không hẳn cần xài
 public class RiceVariety : BaseAuditableEntity
 {
     [Required]

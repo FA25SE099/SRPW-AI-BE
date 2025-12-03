@@ -16,6 +16,7 @@ using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
 using RiceProduction.Application.PlotFeature.Queries.GetById;
 using RiceProduction.Application.PlotFeature.Queries.GetDetail;
 using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
+using RiceProduction.Application.PlotFeature.Queries.GetPlotsAwaitingPolygon;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.API.Controllers
@@ -69,13 +70,15 @@ namespace RiceProduction.API.Controllers
         public async Task<ActionResult<PagedResult<PlotDTO>>> GetAllPlots(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 10,
-            [FromQuery] string? searchTerm = null)
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] Guid? clusterManagerId = null)
         {
             var query = new GetAllPlotQueries
             {
                 PageNumber = pageNumber,
                 PageSize = pageSize,
-                SearchTerm = searchTerm
+                SearchTerm = searchTerm,
+                ClusterManagerId = clusterManagerId
             };
             var result = await _mediator.Send(query);
 
@@ -145,6 +148,46 @@ namespace RiceProduction.API.Controllers
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to get plots out of season: {Message}", result.Message);
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        [HttpGet("awaiting-polygon")]
+        [ProducesResponseType(typeof(PagedResult<IEnumerable<PlotAwaitingPolygonDto>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetPlotsAwaitingPolygon(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] Guid? clusterId = null,
+            [FromQuery] Guid? clusterManagerId = null,
+            [FromQuery] Guid? supervisorId = null,
+            [FromQuery] bool? hasActiveTask = null,
+            [FromQuery] string? taskStatus = null,
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] string? sortBy = "DaysWaiting",
+            [FromQuery] bool descending = true)
+        {
+            var query = new GetPlotsAwaitingPolygonQuery
+            {
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                ClusterId = clusterId,
+                ClusterManagerId = clusterManagerId,
+                SupervisorId = supervisorId,
+                HasActiveTask = hasActiveTask,
+                TaskStatus = taskStatus,
+                SearchTerm = searchTerm,
+                SortBy = sortBy,
+                Descending = descending
+            };
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to get plots awaiting polygon: {Message}", result.Message);
                 return BadRequest(result);
             }
 

@@ -36,7 +36,6 @@ public class DownloadPlotImportTemplateQueryHandler
     {
         try
         {
-            // Get cluster from cluster manager
             Guid? clusterId = null;
             if (request.ClusterManagerId.HasValue)
             {
@@ -45,7 +44,6 @@ public class DownloadPlotImportTemplateQueryHandler
                 clusterId = clusterManager?.ClusterId;
             }
 
-            // Get farmers in cluster
             var farmers = clusterId.HasValue
                 ? await _unitOfWork.FarmerRepository.ListAsync(f => f.ClusterId == clusterId.Value)
                 : await _unitOfWork.FarmerRepository.ListAsync(f => true);
@@ -62,23 +60,18 @@ public class DownloadPlotImportTemplateQueryHandler
                     "No farmers found. Please import farmers first using the farmer import template.");
             }
 
-            // Get available rice varieties with their category info
             var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
                 .ListAsync(rv => rv.IsActive);
             var riceVarietiesList = riceVarieties.OrderBy(rv => rv.VarietyName).ToList();
 
-            // Get current season to show season-specific info
             var (currentSeason, currentYear) = await GetCurrentSeasonAndYear(cancellationToken);
 
-            // Create template rows - ONE ROW PER PLOT based on farmer's NumberOfPlots
             var templateRows = new List<PlotImportRow>();
             
             foreach (var farmer in farmersList)
             {
-                // Use the farmer's NumberOfPlots, default to 1 if not set
                 int plotCount = farmer.NumberOfPlots ?? 1;
                 
-                // Create a row for each plot
                 for (int plotNum = 1; plotNum <= plotCount; plotNum++)
                 {
                     var row = new PlotImportRow
@@ -98,12 +91,10 @@ public class DownloadPlotImportTemplateQueryHandler
                 }
             }
 
-            // Get season information for varieties
             var seasonInfo = currentSeason != null 
                 ? $"{currentSeason.SeasonName} ({currentSeason.StartDate} - {currentSeason.EndDate})"
                 : "All Seasons";
 
-            // Create rice variety reference data
             var varietyReferences = riceVarietiesList.Select(rv => new RiceVarietyReference
             {
                 VarietyName = rv.VarietyName ?? "",
@@ -114,7 +105,6 @@ public class DownloadPlotImportTemplateQueryHandler
                 Description = rv.Description ?? rv.Characteristics ?? ""
             }).ToList();
 
-            // Add instruction row if no rice varieties found
             if (!varietyReferences.Any())
             {
                 varietyReferences.Add(new RiceVarietyReference
@@ -126,7 +116,6 @@ public class DownloadPlotImportTemplateQueryHandler
                 });
             }
 
-            // Create multi-sheet Excel using IGenericExcel
             var sheets = new Dictionary<string, object>
             {
                 { "Plot_Import", templateRows },

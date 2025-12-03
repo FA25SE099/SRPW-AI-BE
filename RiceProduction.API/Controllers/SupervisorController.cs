@@ -149,14 +149,14 @@ public class SupervisorController : Controller
     /// </summary>
     [HttpGet("group-by-season")]
     [Authorize(Roles = "Supervisor")]
-    public async Task<ActionResult<Result<GroupBySeasonResponse>>> GetGroupBySeason(
+    public async Task<ActionResult<Result<List<GroupBySeasonResponse>>>> GetGroupBySeason(
         [FromQuery] Guid? seasonId = null,
         [FromQuery] int? year = null)
     {
         var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
         {
-            return Unauthorized(Result<GroupBySeasonResponse>.Failure("User not authenticated"));
+            return Unauthorized(Result<List<GroupBySeasonResponse>>.Failure("User not authenticated"));
         }
 
         var query = new ViewGroupBySeasonQuery

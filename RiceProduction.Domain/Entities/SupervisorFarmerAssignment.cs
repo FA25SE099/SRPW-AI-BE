@@ -1,7 +1,8 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Is Active: true false
+//một trạng thái khác là được phân công vào farmer hay sup nào
 public class SupervisorFarmerAssignment : BaseAuditableEntity
 {
     [Required]

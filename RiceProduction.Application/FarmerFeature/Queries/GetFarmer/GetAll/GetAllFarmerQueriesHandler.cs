@@ -1,14 +1,15 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models;
+using RiceProduction.Domain.Entities;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Extensions.Logging;
-using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll
 {
@@ -33,14 +34,22 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll
                     request.PageNumber, request.PageSize);
 
                 Expression<Func<Farmer, bool>>? predicate = null;
+                Guid? clusterId = null;
+                var clusterManagerId = request.ClusterManagerId;
+                if (clusterManagerId.HasValue)
+                {
+                    var clusterManager = await _unitOfWork.ClusterManagerRepository
+                        .GetClusterManagerByIdAsync(clusterManagerId.Value, cancellationToken);
+                    clusterId = clusterManager?.ClusterId;
+                }
 
                 if (!string.IsNullOrWhiteSpace(request.SearchTerm))
                 {
-                    predicate = f => f.IsActive && (f.FullName.Contains(request.SearchTerm) || f.PhoneNumber != null && f.PhoneNumber.Contains(request.SearchTerm));
+                    predicate = f => f.IsActive && (f.FullName.Contains(request.SearchTerm) || f.PhoneNumber != null && f.PhoneNumber.Contains(request.SearchTerm)) && f.ClusterId == clusterId;
                 }
                 else
                 {
-                    predicate = f => f.IsActive;
+                    predicate = f => f.IsActive && f.ClusterId == clusterId;
                 }
 
                 var (items, totalCount) = await _unitOfWork.FarmerRepository

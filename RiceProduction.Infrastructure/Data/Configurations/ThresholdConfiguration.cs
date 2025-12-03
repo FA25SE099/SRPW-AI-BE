@@ -55,7 +55,7 @@ public class ThresholdConfiguration : IEntityTypeConfiguration<Threshold>
             .HasMaxLength(50);
 
         builder.Property(e => e.WeatherThresholdOperator)
-            .HasMaxLength(10);
+            .HasMaxLength(50);
 
         builder.Property(e => e.WeatherDurationDaysThreshold);
 

@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Is Active: true false nhưng không sử dụng
 public class WeatherProtocol : BaseAuditableEntity
 {
     [Required]

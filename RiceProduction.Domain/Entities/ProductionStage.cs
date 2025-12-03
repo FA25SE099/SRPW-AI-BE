@@ -1,5 +1,5 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: tạm có Is active nhưng thật sự không xài đến
 /// <summary>
 /// Represents distinct stages in rice production lifecycle
 /// </summary>

@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: kế thừa StandardPlan, không status
 public class EmergencyProtocol : StandardPlan
 {
     // Navigation properties - one to many

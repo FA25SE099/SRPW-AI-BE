@@ -1,5 +1,6 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: Active, Compleleted, Ready for Optimization
+//status 2: có phải là exception không: true false
 public class Group : BaseAuditableEntity
 {
     [Required]
