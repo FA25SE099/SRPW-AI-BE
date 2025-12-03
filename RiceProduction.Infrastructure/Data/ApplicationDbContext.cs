@@ -40,6 +40,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     // Material management
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<MaterialPrice> MaterialPrices => Set<MaterialPrice>();
+    public DbSet<UavOrderPlotAssignment> UavOrderPlotAssignments => Set<UavOrderPlotAssignment>();
 
     // Planning entities
     public DbSet<StandardPlan> StandardPlans => Set<StandardPlan>();

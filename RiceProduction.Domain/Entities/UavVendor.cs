@@ -49,4 +49,4 @@ public class UavVendor : ApplicationUser
     public ICollection<CultivationTask> AssignedTasks { get; set; } = new List<CultivationTask>();
     public ICollection<UavServiceOrder> UavServiceOrders { get; set; } = new List<UavServiceOrder>();
     public ICollection<UavInvoice> UavInvoices { get; set; } = new List<UavInvoice>();
-}
+} 
