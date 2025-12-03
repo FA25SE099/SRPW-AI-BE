@@ -18,6 +18,7 @@ using RiceProduction.Application.MaterialFeature.Queries.CalculatePrice;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
+using RiceProduction.Application.MaterialFeature.Queries.GetMaterialById;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
@@ -36,19 +37,33 @@ public class MaterialController : ControllerBase
     }
 
     [HttpPost("get-all")]
-    public async Task<ActionResult<PagedResult<List<MaterialResponse>>>> AllMaterialPaging([FromForm] MaterialListRequest request)
+    public async Task<ActionResult<PagedResult<List<MaterialResponseForList>>>> AllMaterialPaging([FromForm] MaterialListRequest request)
     {
         var query = new GetAllMaterialByTypeQuery
         {
             CurrentPage = request.CurrentPage,
             PageSize = request.PageSize,
-            MaterialType = request.Type
+            MaterialType = request.Type,
+            PriceDateTime = request.PriceDateTime
         };
         var result = await _mediator.Send(query);
         if (!result.Succeeded)
         {
             return BadRequest(result);
         }
+        return Ok(result);
+    }
+    [HttpGet("by-id")]
+    public async Task<IActionResult> GetMaterialById([FromQuery] Guid id)
+    {
+        var query = new GetMaterialByIdQuery { MaterialId = id };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
         return Ok(result);
     }
     [HttpPost("download-excel")]
