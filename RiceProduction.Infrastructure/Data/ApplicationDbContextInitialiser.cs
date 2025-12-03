@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using System.Text.Json;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using RiceProduction.Domain.Entities;
@@ -155,6 +156,7 @@ namespace RiceProduction.Infrastructure.Data
             await SeedClustersAndGroupsAsync(); // Consolidated
             await SeedCompletedPlansForPastGroups();
             await SeedEmergencyReportsAsync();
+            await SeedUavOrdersAsync();
         }
 
         #region Role Seeding
@@ -704,175 +706,175 @@ namespace RiceProduction.Infrastructure.Data
         #endregion
 
 
-        //private async Task SeedEmergencyReportsAsync()
-        //{
-        //    if (_context.Set<EmergencyReport>().Any())
-        //    {
-        //        _logger.LogInformation("Emergency reports already exist - skipping");
-        //        return;
-        //    }
+        // private async Task SeedEmergencyReportsAsync()
+        // {
+        //     if (_context.Set<EmergencyReport>().Any())
+        //     {
+        //         _logger.LogInformation("Emergency reports already exist - skipping");
+        //         return;
+        //     }
 
-        //    // Get required entities
-        //    var expert = await _context.Set<AgronomyExpert>().FirstOrDefaultAsync(e => e.Email == "expert1@ricepro.com");
-        //    var supervisor = await _context.Set<Supervisor>().FirstOrDefaultAsync(s => s.Email == "supervisor1@ricepro.com");
-        //    var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com");
+        //     // Get required entities
+        //     var expert = await _context.Set<AgronomyExpert>().FirstOrDefaultAsync(e => e.Email == "expert1@ricepro.com");
+        //     var supervisor = await _context.Set<Supervisor>().FirstOrDefaultAsync(s => s.Email == "supervisor1@ricepro.com");
+        //     var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com");
 
-        //    // Get the specific plot with SoThua = 1 and SoTo = 2
-        //    var targetPlot = await _context.Plots
-        //        .Include(p => p.PlotCultivations)
-        //        .FirstOrDefaultAsync(p => p.SoThua == 1 && p.SoTo == 2);
+        //     // Get the specific plot with SoThua = 1 and SoTo = 2
+        //     var targetPlot = await _context.Plots
+        //         .Include(p => p.PlotCultivations)
+        //         .FirstOrDefaultAsync(p => p.SoThua == 1 && p.SoTo == 2);
 
-        //    if (targetPlot == null || expert == null || targetPlot.PlotCultivations.Count == 0)
-        //    {
-        //        _logger.LogWarning("Target plot (SoThua=1, SoTo=2) or its cultivation not found for emergency report seeding");
-        //        return;
-        //    }
+        //     if (targetPlot == null || expert == null || targetPlot.PlotCultivations.Count == 0)
+        //     {
+        //         _logger.LogWarning("Target plot (SoThua=1, SoTo=2) or its cultivation not found for emergency report seeding");
+        //         return;
+        //     }
 
-        //    var plotCultivationId = targetPlot.PlotCultivations.FirstOrDefault()?.Id;
+        //     var plotCultivationId = targetPlot.PlotCultivations.FirstOrDefault()?.Id;
 
-        //    var emergencyReports = new List<EmergencyReport>
-        //    {
-        //        // Critical pest infestation - Brown Planthopper
-        //        new EmergencyReport
-        //        {
-        //            Id = Guid.NewGuid(),
-        //            Source = AlertSource.AiPest,
-        //            Severity = AlertSeverity.Critical,
-        //            Status = AlertStatus.New,
-        //            PlotCultivationId = plotCultivationId,
-        //            AlertType = "Pest Infestation",
-        //            Title = "Rầy nâu mật độ cao - Thửa 1, Tờ 2",
-        //            Description = "Hệ thống AI phát hiện mật độ rầy nâu vượt ngưỡng nguy hiểm (>1000 con/m²) trên thửa 1, tờ 2. Phát hiện qua ảnh UAV và cảm biến IoT. Cần phun thuốc trừ sâu ngay lập tức trong vòng 24 giờ để tránh thiệt hại nghiêm trọng về năng suất.",
-        //            RecommendedUrgencyHours = 24,
-        //            ImageUrls = new List<string>
-        //            {
-        //                "https://stickershop.line-scdn.net/stickershop/v1/product/1043153/LINEStorePC/main.png?v=1",
-        //                "https://stickershop.line-scdn.net/stickershop/v1/product/9044256/LINEStorePC/main.png?v=1",
-        //                "https://cdn.custom-cursor.com/packs/10851/cute-bugcat-capoo-pack.png"
-        //            },
-        //            ReportedBy = supervisor?.Id,
-        //            NotificationSentAt = DateTime.UtcNow.AddHours(-1),
-        //            CreatedAt = DateTime.UtcNow.AddHours(-2),
-        //            LastModified = DateTime.UtcNow.AddHours(-1)
-        //        },
+        //     var emergencyReports = new List<EmergencyReport>
+        //     {
+        //         // Critical pest infestation - Brown Planthopper
+        //         new EmergencyReport
+        //         {
+        //             Id = Guid.NewGuid(),
+        //             Source = AlertSource.AiPest,
+        //             Severity = AlertSeverity.Critical,
+        //             Status = AlertStatus.Pending,
+        //             PlotCultivationId = plotCultivationId,
+        //             AlertType = "Pest Infestation",
+        //             Title = "Rầy nâu mật độ cao - Thửa 1, Tờ 2",
+        //             Description = "Hệ thống AI phát hiện mật độ rầy nâu vượt ngưỡng nguy hiểm (>1000 con/m²) trên thửa 1, tờ 2. Phát hiện qua ảnh UAV và cảm biến IoT. Cần phun thuốc trừ sâu ngay lập tức trong vòng 24 giờ để tránh thiệt hại nghiêm trọng về năng suất.",
+        //             RecommendedUrgencyHours = 24,
+        //             ImageUrls = new List<string>
+        //             {
+        //                 "https://stickershop.line-scdn.net/stickershop/v1/product/1043153/LINEStorePC/main.png?v=1",
+        //                 "https://stickershop.line-scdn.net/stickershop/v1/product/9044256/LINEStorePC/main.png?v=1",
+        //                 "https://cdn.custom-cursor.com/packs/10851/cute-bugcat-capoo-pack.png"
+        //             },
+        //             ReportedBy = supervisor?.Id,
+        //             NotificationSentAt = DateTime.UtcNow.AddHours(-1),
+        //             CreatedAt = DateTime.UtcNow.AddHours(-2),
+        //             LastModified = DateTime.UtcNow.AddHours(-1)
+        //         },
 
-        //        //// Urgent - Blast disease early stage
-        //        //new EmergencyReport
-        //        //{
-        //        //    Id = Guid.NewGuid(),
-        //        //    Source = AlertSource.FarmerReport,
-        //        //    Severity = AlertSeverity.Urgent,
-        //        //    Status = AlertStatus.Acknowledged,
-        //        //    PlotCultivationId = plotCultivationId,
-        //        //    AlertType = "Disease Outbreak",
-        //        //    Title = "Bệnh đạo ôn lá giai đoạn đầu - Thửa 1, Tờ 2",
-        //        //    Description = "Nông dân Tom Anderson báo cáo phát hiện các đốm đạo ôn hình thoi màu nâu xám trên lá lúa ở góc Đông Bắc của thửa đất. Ước tính 15-20% diện tích bị ảnh hưởng. Nếu không xử lý ngay sẽ lan rộng trong 48-72 giờ tới. Khuyến nghị phun thuốc trừ nấm Tricyclazole hoặc Isoprothiolane.",
-        //        //    RecommendedUrgencyHours = 48,
-        //        //    ImageUrls = new List<string>
-        //        //    {
-        //        //        "https://storage.ricepro.com/alerts/plot1-2-blast-disease-1.jpg",
-        //        //        "https://storage.ricepro.com/alerts/plot1-2-blast-disease-2.jpg"
-        //        //    },
-        //        //    ReportedBy = farmer1?.Id,
-        //        //    NotificationSentAt = DateTime.UtcNow.AddDays(-1),
-        //        //    NotificationAcknowledgeAt = DateTime.UtcNow.AddHours(-18),
-        //        //    CreatedAt = DateTime.UtcNow.AddDays(-1),
-        //        //    LastModified = DateTime.UtcNow.AddHours(-18)
-        //        //},
+        //         //// Urgent - Blast disease early stage
+        //         //new EmergencyReport
+        //         //{
+        //         //    Id = Guid.NewGuid(),
+        //         //    Source = AlertSource.FarmerReport,
+        //         //    Severity = AlertSeverity.Urgent,
+        //         //    Status = AlertStatus.Acknowledged,
+        //         //    PlotCultivationId = plotCultivationId,
+        //         //    AlertType = "Disease Outbreak",
+        //         //    Title = "Bệnh đạo ôn lá giai đoạn đầu - Thửa 1, Tờ 2",
+        //         //    Description = "Nông dân Tom Anderson báo cáo phát hiện các đốm đạo ôn hình thoi màu nâu xám trên lá lúa ở góc Đông Bắc của thửa đất. Ước tính 15-20% diện tích bị ảnh hưởng. Nếu không xử lý ngay sẽ lan rộng trong 48-72 giờ tới. Khuyến nghị phun thuốc trừ nấm Tricyclazole hoặc Isoprothiolane.",
+        //         //    RecommendedUrgencyHours = 48,
+        //         //    ImageUrls = new List<string>
+        //         //    {
+        //         //        "https://storage.ricepro.com/alerts/plot1-2-blast-disease-1.jpg",
+        //         //        "https://storage.ricepro.com/alerts/plot1-2-blast-disease-2.jpg"
+        //         //    },
+        //         //    ReportedBy = farmer1?.Id,
+        //         //    NotificationSentAt = DateTime.UtcNow.AddDays(-1),
+        //         //    NotificationAcknowledgeAt = DateTime.UtcNow.AddHours(-18),
+        //         //    CreatedAt = DateTime.UtcNow.AddDays(-1),
+        //         //    LastModified = DateTime.UtcNow.AddHours(-18)
+        //         //},
 
-        //        //// Warning - Nitrogen deficiency
-        //        //new EmergencyReport
-        //        //{
-        //        //    Id = Guid.NewGuid(),
-        //        //    Source = AlertSource.SupervisorInspection,
-        //        //    Severity = AlertSeverity.Warning,
-        //        //    Status = AlertStatus.New,
-        //        //    PlotCultivationId = plotCultivationId,
-        //        //    AlertType = "Nutrient Deficiency",
-        //        //    Title = "Thiếu hụt đạm nghiêm trọng - Thửa 1, Tờ 2",
-        //        //    Description = "Kiểm tra thực địa phát hiện hiện tượng vàng lá từ gốc lên ngọn, đặc biệt ở các lá già. Phân tích đất cho thấy hàm lượng N thấp hơn ngưỡng khuyến nghị 30%. Cần bón phân đạm bổ sung (Ure hoặc Ammonium Sulfate) với liều lượng 40-50kg/ha trong vòng 5-7 ngày.",
-        //        //    RecommendedUrgencyHours = 120,
-        //        //    ImageUrls = new List<string>
-        //        //    {
-        //        //        "https://storage.ricepro.com/alerts/plot1-2-nitrogen-deficiency.jpg",
-        //        //        "https://storage.ricepro.com/alerts/plot1-2-soil-test-result.jpg"
-        //        //    },
-        //        //    ReportedBy = supervisor?.Id,
-        //        //    NotificationSentAt = DateTime.UtcNow.AddHours(-4),
-        //        //    CreatedAt = DateTime.UtcNow.AddHours(-6),
-        //        //    LastModified = DateTime.UtcNow.AddHours(-4)
-        //        //},
+        //         //// Warning - Nitrogen deficiency
+        //         //new EmergencyReport
+        //         //{
+        //         //    Id = Guid.NewGuid(),
+        //         //    Source = AlertSource.SupervisorInspection,
+        //         //    Severity = AlertSeverity.Warning,
+        //         //    Status = AlertStatus.New,
+        //         //    PlotCultivationId = plotCultivationId,
+        //         //    AlertType = "Nutrient Deficiency",
+        //         //    Title = "Thiếu hụt đạm nghiêm trọng - Thửa 1, Tờ 2",
+        //         //    Description = "Kiểm tra thực địa phát hiện hiện tượng vàng lá từ gốc lên ngọn, đặc biệt ở các lá già. Phân tích đất cho thấy hàm lượng N thấp hơn ngưỡng khuyến nghị 30%. Cần bón phân đạm bổ sung (Ure hoặc Ammonium Sulfate) với liều lượng 40-50kg/ha trong vòng 5-7 ngày.",
+        //         //    RecommendedUrgencyHours = 120,
+        //         //    ImageUrls = new List<string>
+        //         //    {
+        //         //        "https://storage.ricepro.com/alerts/plot1-2-nitrogen-deficiency.jpg",
+        //         //        "https://storage.ricepro.com/alerts/plot1-2-soil-test-result.jpg"
+        //         //    },
+        //         //    ReportedBy = supervisor?.Id,
+        //         //    NotificationSentAt = DateTime.UtcNow.AddHours(-4),
+        //         //    CreatedAt = DateTime.UtcNow.AddHours(-6),
+        //         //    LastModified = DateTime.UtcNow.AddHours(-4)
+        //         //},
 
-        //        //// Resolved - Water stress issue
-        //        //new EmergencyReport
-        //        //{
-        //        //    Id = Guid.NewGuid(),
-        //        //    Source = AlertSource.System,
-        //        //    Severity = AlertSeverity.Critical,
-        //        //    Status = AlertStatus.Resolved,
-        //        //    PlotCultivationId = plotCultivationId,
-        //        //    AlertType = "Water Stress",
-        //        //    Title = "Thiếu nước nghiêm trọng đã xử lý - Thửa 1, Tờ 2",
-        //        //    Description = "Cảm biến độ ẩm đất phát hiện độ ẩm giảm xuống dưới 40% (ngưỡng nguy hiểm) trong 60 giờ liên tục. Hệ thống tự động cảnh báo và khuyến nghị tưới khẩn cấp. Diện tích: 2.00 ha.",
-        //        //    RecommendedUrgencyHours = 12,
-        //        //    ResolvedBy = expert?.Id,
-        //        //    ReportedBy = supervisor?.Id,
-        //        //    ResolvedAt = DateTime.UtcNow.AddDays(-3),
-        //        //    ResolutionNotes = "Đã thực hiện tưới khẩn cấp 800m³ nước vào ngày 22/11. Độ ẩm đất đã phục hồi lên 75% sau 24 giờ. Đã lắp đặt thêm 2 cảm biến độ ẩm để giám sát chặt chẽ hơn. Không phát hiện thiệt hại về cây trồng.",
-        //        //    NotificationSentAt = DateTime.UtcNow.AddDays(-6),
-        //        //    NotificationAcknowledgeAt = DateTime.UtcNow.AddDays(-5),
-        //        //    CreatedAt = DateTime.UtcNow.AddDays(-6),
-        //        //    LastModified = DateTime.UtcNow.AddDays(-3)
-        //        //},
+        //         //// Resolved - Water stress issue
+        //         //new EmergencyReport
+        //         //{
+        //         //    Id = Guid.NewGuid(),
+        //         //    Source = AlertSource.System,
+        //         //    Severity = AlertSeverity.Critical,
+        //         //    Status = AlertStatus.Resolved,
+        //         //    PlotCultivationId = plotCultivationId,
+        //         //    AlertType = "Water Stress",
+        //         //    Title = "Thiếu nước nghiêm trọng đã xử lý - Thửa 1, Tờ 2",
+        //         //    Description = "Cảm biến độ ẩm đất phát hiện độ ẩm giảm xuống dưới 40% (ngưỡng nguy hiểm) trong 60 giờ liên tục. Hệ thống tự động cảnh báo và khuyến nghị tưới khẩn cấp. Diện tích: 2.00 ha.",
+        //         //    RecommendedUrgencyHours = 12,
+        //         //    ResolvedBy = expert?.Id,
+        //         //    ReportedBy = supervisor?.Id,
+        //         //    ResolvedAt = DateTime.UtcNow.AddDays(-3),
+        //         //    ResolutionNotes = "Đã thực hiện tưới khẩn cấp 800m³ nước vào ngày 22/11. Độ ẩm đất đã phục hồi lên 75% sau 24 giờ. Đã lắp đặt thêm 2 cảm biến độ ẩm để giám sát chặt chẽ hơn. Không phát hiện thiệt hại về cây trồng.",
+        //         //    NotificationSentAt = DateTime.UtcNow.AddDays(-6),
+        //         //    NotificationAcknowledgeAt = DateTime.UtcNow.AddDays(-5),
+        //         //    CreatedAt = DateTime.UtcNow.AddDays(-6),
+        //         //    LastModified = DateTime.UtcNow.AddDays(-3)
+        //         //},
 
-        //        //// Info - Weed competition warning
-        //        //new EmergencyReport
-        //        //{
-        //        //    Id = Guid.NewGuid(),
-        //        //    Source = AlertSource.SupervisorInspection,
-        //        //    Severity = AlertSeverity.Info,
-        //        //    Status = AlertStatus.Acknowledged,
-        //        //    PlotCultivationId = plotCultivationId,
-        //        //    AlertType = "Weed Infestation",
-        //        //    Title = "Cỏ dại cạnh tranh dinh dưỡng - Thửa 1, Tờ 2",
-        //        //    Description = "Khảo sát phát hiện mật độ cỏ dại tăng cao, chủ yếu là cỏ lồng vực và cỏ đuôi chồn. Ước tính mật độ 30-40 cây/m². Khuyến nghị phun thuốc diệt cỏ Butachlor hoặc Pretilachlor trong vòng 10-14 ngày để tránh cạnh tranh dinh dưỡng và nước với cây lúa.",
-        //        //    RecommendedUrgencyHours = 240,
-        //        //    ImageUrls = new List<string>
-        //        //    {
-        //        //        "https://storage.ricepro.com/alerts/plot1-2-weed-survey-1.jpg",
-        //        //        "https://storage.ricepro.com/alerts/plot1-2-weed-survey-2.jpg"
-        //        //    },
-        //        //    ReportedBy = supervisor?.Id,
-        //        //    NotificationSentAt = DateTime.UtcNow.AddDays(-2),
-        //        //    NotificationAcknowledgeAt = DateTime.UtcNow.AddDays(-2).AddHours(3),
-        //        //    CreatedAt = DateTime.UtcNow.AddDays(-2),
-        //        //    LastModified = DateTime.UtcNow.AddDays(-2).AddHours(3)
-        //        //},
+        //         //// Info - Weed competition warning
+        //         //new EmergencyReport
+        //         //{
+        //         //    Id = Guid.NewGuid(),
+        //         //    Source = AlertSource.SupervisorInspection,
+        //         //    Severity = AlertSeverity.Info,
+        //         //    Status = AlertStatus.Acknowledged,
+        //         //    PlotCultivationId = plotCultivationId,
+        //         //    AlertType = "Weed Infestation",
+        //         //    Title = "Cỏ dại cạnh tranh dinh dưỡng - Thửa 1, Tờ 2",
+        //         //    Description = "Khảo sát phát hiện mật độ cỏ dại tăng cao, chủ yếu là cỏ lồng vực và cỏ đuôi chồn. Ước tính mật độ 30-40 cây/m². Khuyến nghị phun thuốc diệt cỏ Butachlor hoặc Pretilachlor trong vòng 10-14 ngày để tránh cạnh tranh dinh dưỡng và nước với cây lúa.",
+        //         //    RecommendedUrgencyHours = 240,
+        //         //    ImageUrls = new List<string>
+        //         //    {
+        //         //        "https://storage.ricepro.com/alerts/plot1-2-weed-survey-1.jpg",
+        //         //        "https://storage.ricepro.com/alerts/plot1-2-weed-survey-2.jpg"
+        //         //    },
+        //         //    ReportedBy = supervisor?.Id,
+        //         //    NotificationSentAt = DateTime.UtcNow.AddDays(-2),
+        //         //    NotificationAcknowledgeAt = DateTime.UtcNow.AddDays(-2).AddHours(3),
+        //         //    CreatedAt = DateTime.UtcNow.AddDays(-2),
+        //         //    LastModified = DateTime.UtcNow.AddDays(-2).AddHours(3)
+        //         //},
 
-        //        //// Warning - Weather alert for this specific plot area
-        //        //new EmergencyReport
-        //        //{
-        //        //    Id = Guid.NewGuid(),
-        //        //    Source = AlertSource.AiWeather,
-        //        //    Severity = AlertSeverity.Warning,
-        //        //    Status = AlertStatus.New,
-        //        //    PlotCultivationId = plotCultivationId,
-        //        //    AlertType = "Weather Alert",
-        //        //    Title = "Cảnh báo mưa lớn kéo dài - Thửa 1, Tờ 2",
-        //        //    Description = "Dự báo thời tiết cho biết khu vực sẽ có mưa lớn 100-150mm trong 36-48 giờ tới. Nguy cơ ngập úng cao vì địa hình thấp. Khuyến nghị: (1) Hoãn kế hoạch bón phân, (2) Kiểm tra và chuẩn bị hệ thống thoát nước, (3) Theo dõi mực nước liên tục.",
-        //        //    RecommendedUrgencyHours = 36,
-        //        //    ReportedBy = supervisor?.Id,
-        //        //    NotificationSentAt = DateTime.UtcNow.AddHours(-3),
-        //        //    CreatedAt = DateTime.UtcNow.AddHours(-4),
-        //        //    LastModified = DateTime.UtcNow.AddHours(-3)
-        //        //}
-        //    };
+        //         //// Warning - Weather alert for this specific plot area
+        //         //new EmergencyReport
+        //         //{
+        //         //    Id = Guid.NewGuid(),
+        //         //    Source = AlertSource.AiWeather,
+        //         //    Severity = AlertSeverity.Warning,
+        //         //    Status = AlertStatus.New,
+        //         //    PlotCultivationId = plotCultivationId,
+        //         //    AlertType = "Weather Alert",
+        //         //    Title = "Cảnh báo mưa lớn kéo dài - Thửa 1, Tờ 2",
+        //         //    Description = "Dự báo thời tiết cho biết khu vực sẽ có mưa lớn 100-150mm trong 36-48 giờ tới. Nguy cơ ngập úng cao vì địa hình thấp. Khuyến nghị: (1) Hoãn kế hoạch bón phân, (2) Kiểm tra và chuẩn bị hệ thống thoát nước, (3) Theo dõi mực nước liên tục.",
+        //         //    RecommendedUrgencyHours = 36,
+        //         //    ReportedBy = supervisor?.Id,
+        //         //    NotificationSentAt = DateTime.UtcNow.AddHours(-3),
+        //         //    CreatedAt = DateTime.UtcNow.AddHours(-4),
+        //         //    LastModified = DateTime.UtcNow.AddHours(-3)
+        //         //}
+        //     };
 
-        //    await _context.Set<EmergencyReport>().AddRangeAsync(emergencyReports);
-        //    await _context.SaveChangesAsync();
+        //     await _context.Set<EmergencyReport>().AddRangeAsync(emergencyReports);
+        //     await _context.SaveChangesAsync();
 
-        //    _logger.LogInformation("Seeded {Count} emergency reports for plot SoThua=1, SoTo=2", emergencyReports.Count);
-        //}
+        //     _logger.LogInformation("Seeded {Count} emergency reports for plot SoThua=1, SoTo=2", emergencyReports.Count);
+        // }
 
         #region Rice Variety Seeding
         private async Task SeedRiceVarietyCategoriesAsync()
@@ -1874,6 +1876,85 @@ namespace RiceProduction.Infrastructure.Data
             productionPlan.CurrentProductionStages.Add(stage1);
 
             await _context.ProductionPlans.AddAsync(productionPlan);
+        }
+        // --- NEW UAV SEEDING LOGIC ---
+        private async Task SeedUavOrdersAsync()
+        {
+            if (_context.Set<UavServiceOrder>().Any()) return;
+
+            var vendor1 = await _userManager.FindByEmailAsync("uav1@ricepro.com") as UavVendor;
+            var group1 = await _context.Groups.FirstOrDefaultAsync(g => g.Cluster.ClusterName == "DongThap1" && g.Status == GroupStatus.Active);
+            
+            // Tải Plots thuộc Group 1
+            var group1Plots = await _context.Plots
+                .Where(p => p.GroupId == group1!.Id)
+                .ToListAsync();
+
+            if (vendor1 == null || group1 == null || !group1Plots.Any())
+            {
+                _logger.LogWarning("Required entities for UAV seeding not found (Vendor/Group/Plots).");
+                return;
+            }
+
+            // 1. Tạo UavServiceOrder
+            var uavOrderId = Guid.NewGuid();
+            var plannedDate = DateTime.UtcNow.AddDays(5);
+            var geoFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            
+            var serviceOrder = new UavServiceOrder
+            {
+                Id = uavOrderId,
+                GroupId = group1.Id,
+                UavVendorId = vendor1.Id,
+                OrderName = $"Phun Sâu Bệnh Khẩn cấp cho {group1.Cluster.ClusterName}",
+                ScheduledDate = plannedDate,
+                ScheduledTime = new TimeSpan(14, 0, 0),
+                Status = TaskStatus.Approved, // Ready for vendor execution
+                Priority = TaskPriority.High,
+                TotalArea = group1.TotalArea.GetValueOrDefault(0),
+                TotalPlots = group1Plots.Count,
+                EstimatedCost = group1.TotalArea * vendor1.ServiceRatePerHa,
+                OptimizedRoute = geoFactory.CreateLineString(new Coordinate[] { group1Plots.First().Coordinate!.Coordinate, geoFactory.CreatePoint(new Coordinate(106.715, 10.880)).Coordinate, group1Plots.Last().Coordinate!.Coordinate })
+            };
+
+            await _context.UavServiceOrders.AddAsync(serviceOrder);
+            
+            // 2. Tạo UavOrderPlotAssignment cho mỗi Plot
+            var assignments = new List<UavOrderPlotAssignment>();
+            var totalPlots = group1Plots.Count;
+            int completedCount = 0;
+            
+            foreach (var plot in group1Plots)
+            {
+                var isCompleted = completedCount < (totalPlots / 2); // Mark half as completed
+                
+                var assignment = new UavOrderPlotAssignment
+                {
+                    UavServiceOrderId = serviceOrder.Id,
+                    PlotId = plot.Id,
+                    ServicedArea = plot.Area,
+                    Status = isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
+                    
+                    // Chi phí và báo cáo thực tế cho các Plot đã xong
+                    ActualCost = isCompleted ? plot.Area * (vendor1.ServiceRatePerHa * 1.05m) : null,
+                    CompletionDate = isCompleted ? DateTime.UtcNow.AddDays(-1) : null,
+                    ReportNotes = isCompleted ? "Dịch vụ hoàn thành 100%, không gặp sự cố." : null,
+                    ProofUrlsJson = isCompleted ? JsonSerializer.Serialize(new List<string> { "https://report.uav.com/plot1_log.pdf" }) : null
+                };
+                
+                assignments.Add(assignment);
+                if (isCompleted) completedCount++;
+            }
+            
+            await _context.UavOrderPlotAssignments.AddRangeAsync(assignments);
+            
+            // 3. Cập nhật tổng thể Order dựa trên Assignments
+            serviceOrder.ActualCost = assignments.Sum(a => a.ActualCost.GetValueOrDefault(0));
+            serviceOrder.CompletionPercentage = (int)Math.Round((double)completedCount / totalPlots * 100);
+            serviceOrder.Status = TaskStatus.InProgress; // Sẽ là InProgress vì chỉ một nửa hoàn thành
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Seeded 1 UAV Service Order with {Count} plot assignments.", assignments.Count);
         }
         #endregion
 
