@@ -10,7 +10,8 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
 {
     public class GetAllGroupQuery : IRequest<Result<IEnumerable<GroupDTO>>>
     {
-      
-        
+        public Guid ClusterId { get; set; }
+        public Guid SeasonId { get; set; }
+
     }
 }

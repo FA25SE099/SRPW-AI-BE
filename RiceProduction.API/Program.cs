@@ -205,8 +205,8 @@ if (seedDatabase)
             //await initializer.SeedAsync();
 
         }
-        //await initializer.SeedAsyncAdminOnly();
-        await initializer.SeedAsync();
+        await initializer.SeedAsyncAdminOnly();
+        //await initializer.SeedAsync();
     }
     catch (Exception ex)
     {
