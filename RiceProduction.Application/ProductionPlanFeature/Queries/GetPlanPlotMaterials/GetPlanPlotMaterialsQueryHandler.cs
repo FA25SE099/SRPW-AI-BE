@@ -88,6 +88,7 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
                                     MaterialId = material.Id,
                                     MaterialName = material.Name,
                                     MaterialUnit = material.Unit,
+                                    ImgUrl = null,
                                     QuantityPerHa = taskMaterial.QuantityPerHa,
                                     TotalQuantity = totalQuantity,
                                     PricePerUnit = currentPrice.PricePerMaterial,

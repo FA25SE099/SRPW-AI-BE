@@ -94,39 +94,31 @@ namespace RiceProduction.Infrastructure.Data
         }
         public async Task ResetDatabaseAsync()
         {
-            try
-            {
-                _logger.LogInformation("Dropping all data from database...");
+            var tables = _context.Model.GetEntityTypes()
+                .Select(t => t.GetTableName())
+                .Where(t => t != null)
+                .Distinct()
+                .OrderBy(t => t)
+                .Select(t => $"\"{t}\"")
+                .ToList();
 
-                // Get all table names
-                var tableNames = _context.Model.GetEntityTypes()
-                    .Select(t => t.GetTableName())
-                    .Distinct()
-                    .ToList();
+            await _context.Database.ExecuteSqlRawAsync(
+                $"TRUNCATE TABLE {string.Join(", ", tables)} CASCADE;");
 
-                // Disable foreign key constraints
-                await _context.Database.ExecuteSqlRawAsync("SET session_replication_role = 'replica';");
-
-                // Truncate all tables
-                foreach (var tableName in tableNames)
-                {
-                    await _context.Database.ExecuteSqlRawAsync($"TRUNCATE TABLE \"{tableName}\" CASCADE;");
-                }
-
-                // Re-enable foreign key constraints
-                await _context.Database.ExecuteSqlRawAsync("SET session_replication_role = 'origin';");
-
-                _logger.LogInformation("All data dropped successfully.");
-
-                // Reseed
-
-                _logger.LogInformation("Database reseeded successfully.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while resetting the database.");
-                throw;
-            }
+            // Restart only real identity sequences
+            await _context.Database.ExecuteSqlRawAsync(@"
+        DO $$
+        DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT sequencename
+                FROM pg_sequences
+                WHERE schemaname = 'public'
+            ) LOOP
+                EXECUTE 'ALTER SEQUENCE ' || quote_ident(r.sequencename) || ' RESTART WITH 1';
+            END LOOP;
+        END$$;");
         }
         public async Task TrySeedAsyncOnlyAdmin()
         {

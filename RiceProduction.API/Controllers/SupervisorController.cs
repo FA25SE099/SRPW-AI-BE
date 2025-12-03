@@ -205,10 +205,6 @@ public class SupervisorController : Controller
         return Ok(result);
     }
 
-    /// <summary>
-    /// Get list of available seasons for dropdown selector
-    /// Returns all season+year combinations where supervisor has a group
-    /// </summary>
     [HttpGet("available-seasons")]
     [Authorize(Roles = "Supervisor")]
     public async Task<ActionResult<Result<List<AvailableSeasonYearDto>>>> GetAvailableSeasons()
@@ -234,10 +230,6 @@ public class SupervisorController : Controller
         return Ok(result);
     }
 
-    /// <summary>
-    /// [DEPRECATED] Use /group-by-season instead
-    /// Get current group information
-    /// </summary>
     [HttpGet("my-group")]
     [Authorize(Roles = "Supervisor")]
     [Obsolete("Use /group-by-season endpoint instead")]
