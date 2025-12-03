@@ -15,5 +15,8 @@ public class ApplicationUser : IdentityUser<Guid>
     public DateTime? LastActivityAt { get; set; }
 
     public bool IsVerified { get; set; } = false;
+    public bool PushEnabled { get; set; } = true;
+    public string? PushToken { get; set; }
+    public string? PushPlatform { get; set; }
     public List<RefreshToken> RefreshTokens { get; set; }
 }

@@ -16,7 +16,7 @@ public class Material : BaseAuditableEntity
     [MaxLength(50)]
     public string Unit { get; set; } = string.Empty;//don vi tinh vd: ml, kg
     public string? Description { get; set; }
-
+    public string? imgUrl { get; set; }
     [MaxLength(255)]
     public string? Manufacturer { get; set; }
 

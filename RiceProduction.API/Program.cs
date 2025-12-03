@@ -17,20 +17,17 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Serilog;
 
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(new ConfigurationBuilder()
-        .AddJsonFile("appsettings.json")
-        .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true)
-        .Build())
-    .Enrich.FromLogContext()
-    .Enrich.WithThreadId()
-    .CreateLogger();
 
-    Log.Information("Starting Rice Production API");
 
     var builder = WebApplication.CreateBuilder(args);
 
     builder.Host.UseSerilog();
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithThreadId()
+    .CreateLogger();
+
 //var otel = builder.Configuration.GetSection("OpenTelemetry");
 //var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
 //var serviceVersion = otel["ServiceVersion"] ?? "1.0.0";
@@ -201,11 +198,12 @@ if (seedDatabase)
         }
         //if (isProduction)
         //{
-        //    await initializer.ResetDatabaseAsync();
         //}
         if (isProduction)
         {
-            await context.Database.MigrateAsync();
+            await initializer.ResetDatabaseAsync();
+            //await initializer.SeedAsync();
+
         }
         await initializer.SeedAsyncAdminOnly();
         //await initializer.SeedAsync();

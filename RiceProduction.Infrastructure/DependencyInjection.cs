@@ -84,18 +84,22 @@ public static class DependencyInjection
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
         //builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
-
+        builder.Services.AddScoped<INotificationService, NotificationService>();
         // Configure SMS Retry Strategy
         //builder.Services.Configure<SmsRetryConfiguration>(
         //    builder.Configuration.GetSection("SmsRetry"));
         
+        //builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
+        //builder.Services.AddHostedService<SmsRetryBackgroundService>();
+        builder.Services.AddScoped<IFarmerRepository, FarmerRepository>();
         //builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
 
         builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
-
+        //Email Services
+        builder.Services.AddScoped<IEmailService, EmailService>();
         // Register Zalo Services
         builder.Services.AddHttpClient<IZaloOAuthService, ZaloOAuthService>();
         builder.Services.AddHttpClient<IZaloZnsService, ZaloZnsService>();

@@ -121,15 +121,25 @@ public class IdentityService : IIdentityService
         return result.ToApplicationResult();
     }
 
-    public async Task<AuthenticationResult> LoginAsync(string email, string password)
+    public async Task<AuthenticationResult> LoginAsync(string emailOrPhone, string password, bool isEmail = true)
     {
-        var user = await _userManager.FindByEmailAsync(email);
+        ApplicationUser? user = null;
+        
+        if (isEmail)
+        {
+            user = await _userManager.FindByEmailAsync(emailOrPhone);
+        }
+        else
+        {
+            user = await _userManager.Users.FirstOrDefaultAsync(u => u.PhoneNumber == emailOrPhone);
+        }
+        
         if (user == null)
         {
             return new AuthenticationResult
             {
                 Succeeded = false,
-                Errors = new[] { "Invalid email or password." }
+                Errors = new[] { isEmail ? "Invalid email or password." : "Invalid phone number or password." }
             };
         }
 

@@ -186,7 +186,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         new Coordinate(0, 0)
                     };
                     var defaultBoundary = geometryFactory.CreatePolygon(coordinates);
-                    
+
                     var newPlot = new Plot
                     {
                         Id = plotId,

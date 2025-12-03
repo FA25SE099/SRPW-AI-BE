@@ -82,6 +82,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<Threshold> Thresholds => Set<Threshold>();
     public DbSet<CultivationVersion> CultivationVersions => Set<CultivationVersion>();
 
+    // Emails
+    public DbSet<EmailRequest> EmailRequests => Set<EmailRequest>();
+    public DbSet<EmailBatch> EmailBatches => Set<EmailBatch>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

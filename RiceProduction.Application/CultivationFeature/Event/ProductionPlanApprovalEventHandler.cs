@@ -169,7 +169,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             Description = planTask.Description,
             TaskType = planTask.TaskType,
             ScheduledEndDate = planTask.ScheduledEndDate,
-            Status = TaskStatus.InProgress,
+            Status = TaskStatus.Approved,
             ExecutionOrder = planTask.SequenceOrder,
             IsContingency = false,
             ActualMaterialCost = 0,
@@ -229,7 +229,11 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             {
                 await _materialTaskRepo.AddRangeAsync(materials);
             }
-            await _taskRepo.SaveChangesAsync();
+        if (tasks.FirstOrDefault() is CultivationTask firstTask)
+        {
+            firstTask.Status = TaskStatus.InProgress; 
+        }
+        await _taskRepo.SaveChangesAsync();
         }
     }
 

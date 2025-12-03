@@ -12,7 +12,7 @@ public interface IIdentityService
     Task<bool> AuthorizeAsync(Guid userId, string policyName);
     Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string password);
     Task<Result> DeleteUserAsync(Guid userId);
-    Task<AuthenticationResult> LoginAsync(string email, string password);
+    Task<AuthenticationResult> LoginAsync(string emailOrPhone, string password, bool isEmail = true);
     Task<Result> LogoutAsync(Guid userId, string? refreshToken = null);
     Task<AuthenticationResult> RefreshTokenAsync(RefreshTokenRequest request);
     Task<bool> IsTokenValidAsync(Guid userId, string refreshToken);

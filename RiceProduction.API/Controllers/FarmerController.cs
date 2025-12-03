@@ -18,6 +18,7 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
 
 namespace RiceProduction.API.Controllers
 {
@@ -174,69 +175,21 @@ namespace RiceProduction.API.Controllers
             }
             return result.Data;
         }
-
-        [HttpGet("download-import-template")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> DownloadFarmerImportTemplate()
-        {
-            try
-            {
-                var query = new DownloadFarmerImportTemplateQuery();
-                var result = await _mediator.Send(query);
-
-                if (!result.Succeeded || result.Data == null)
-                {
-                    return BadRequest(new { message = result.Message });
-                }
-
-                return result.Data;
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "An error occurred while generating the template" });
-            }
-        }
-
         [HttpPost]
-        [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmerRequest request)
+        [ProducesResponseType(typeof(FarmerDTO), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmersCommand command)
         {
-            try
+            try { 
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
             {
-                // Get current cluster manager ID if authenticated
-                Guid? clusterManagerId = null;
-                var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
-                {
-                    clusterManagerId = userId;
-                }
+                return BadRequest(result);
+            }
 
-                var command = new CreateFarmerCommand
-                {
-                    FullName = request.FullName,
-                    PhoneNumber = request.PhoneNumber,
-                    Address = request.Address,
-                    FarmCode = request.FarmCode,
-                    Plots = request.Plots?.Select(p => new PlotCreationData
-                    {
-                        SoThua = p.SoThua,
-                        SoTo = p.SoTo,
-                        PlotArea = p.PlotArea,
-                        SoilType = p.SoilType
-                    }).ToList(),
-                    ClusterManagerId = clusterManagerId
-                };
+            return Ok(result);
 
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    return BadRequest(result);
-                }
-
-                return Ok(result);
             }
             catch (Exception ex)
             {
