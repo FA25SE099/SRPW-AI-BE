@@ -179,8 +179,7 @@ public class GeneratePlanDraftQueryHandler :
 
                         // Tính toán chi phí:
                         decimal amountPerUnit = materialDetail.AmmountPerMaterial.GetValueOrDefault(1M);
-                        
-                        // PricePerHa = (QuantityPerHa / AmmountPerMaterial) * PricePerMaterial
+
                         decimal pricePerHa = Math.Ceiling(standardMaterial.QuantityPerHa / amountPerUnit) * unitPrice;
                         
                         decimal estimatedAmount = pricePerHa * effectiveTotalArea;
