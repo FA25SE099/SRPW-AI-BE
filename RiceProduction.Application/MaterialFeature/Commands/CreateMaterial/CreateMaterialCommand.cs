@@ -13,6 +13,7 @@ namespace RiceProduction.Application.MaterialFeature.Commands.CreateMaterial
         public string? Description { get; set; }
         public string? Manufacturer { get; set; }
         public bool IsActive { get; set; } = true;
+        public bool IsPartition { get; set; } = false;
         public DateTime PriceValidFrom { get; set; } = DateTime.UtcNow;
     }
 }

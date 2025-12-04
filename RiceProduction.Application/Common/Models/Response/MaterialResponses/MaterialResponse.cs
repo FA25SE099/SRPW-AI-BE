@@ -29,6 +29,7 @@ namespace RiceProduction.Application.Common.Models.Response.MaterialResponses
         public string? Manufacturer { get; set; }
         
         public bool IsActive { get; set; }
+        public bool IsPartition { get; set; }
     }
     public class MaterialResponseInVietnamese
     {
@@ -61,5 +62,7 @@ namespace RiceProduction.Application.Common.Models.Response.MaterialResponses
         
         [JsonPropertyName("Có đang được sử dụng hay không")]
         public bool IsActive { get; set; }
+        [JsonPropertyName("Có thể được mua một phần hay không")]
+        public bool IsPartition { get; set; }
     }
 }

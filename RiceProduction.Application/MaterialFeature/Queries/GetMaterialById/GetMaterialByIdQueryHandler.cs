@@ -58,7 +58,8 @@ public class GetMaterialByIdQueryHandler : IRequestHandler<GetMaterialByIdQuery,
                 Description = material.Description,
                 ImgUrls = material.imgUrls,
                 Manufacturer = material.Manufacturer,
-                IsActive = material.IsActive
+                IsActive = material.IsActive,
+                IsPartition = material.IsPartition
             };
 
             _logger.LogInformation("Successfully retrieved material with ID: {MaterialId}", request.MaterialId);
