@@ -41,8 +41,30 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             }
 
             await using var stream = file.OpenReadStream();
-            var farmerDtos = stream.Query<FarmerImportDto>(startCell: "A2") // Skip header row
-                .ToList();
+            
+            // First, let's read the raw data to see what we're getting
+            var rows = stream.Query(useHeaderRow: true).ToList();
+            
+            // Now convert to DTOs with better error handling
+            var farmerDtos = new List<FarmerImportDto>();
+            foreach (var row in rows)
+            {
+                var dict = row as IDictionary<string, object>;
+                if (dict != null)
+                {
+                    farmerDtos.Add(new FarmerImportDto
+                    {
+                        FullName = dict.ContainsKey("FullName") ? dict["FullName"]?.ToString() ?? string.Empty : string.Empty,
+                        PhoneNumber = dict.ContainsKey("PhoneNumber") ? dict["PhoneNumber"]?.ToString() ?? string.Empty : string.Empty,
+                        Address = dict.ContainsKey("Address") ? dict["Address"]?.ToString() : null,
+                        FarmCode = dict.ContainsKey("FarmCode") ? dict["FarmCode"]?.ToString() : null,
+                        NumberOfPlots = dict.ContainsKey("NumberOfPlots") && dict["NumberOfPlots"] != null 
+                            ? Convert.ToInt32(dict["NumberOfPlots"]) 
+                            : (int?)null,
+                        Email = dict.ContainsKey("Email") ? dict["Email"]?.ToString() : null
+                    });
+                }
+            }
 
             result.TotalRows = farmerDtos.Count;
 
@@ -115,6 +137,7 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                     Id = Guid.NewGuid(),
                     UserName = dto.PhoneNumber,
                     PhoneNumber = dto.PhoneNumber,
+                    Email = dto.Email, // Optional email for notifications
                     FullName = dto.FullName,
                     Address = dto.Address,
                     FarmCode = dto.FarmCode,
@@ -165,7 +188,9 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                     FullName = dto.FullName,
                     Address = dto.Address,
                     FarmCode = dto.FarmCode,
-                    NumberOfPlots = dto.NumberOfPlots
+                    NumberOfPlots = dto.NumberOfPlots,
+                    Email = dto.Email,
+                    TempPassword = TEMP_PASSWORD // Store password for email notification
                 });
             }
 

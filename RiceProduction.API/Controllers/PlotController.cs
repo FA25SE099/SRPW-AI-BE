@@ -5,6 +5,8 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequests;
 using RiceProduction.Application.Common.Models.Response.PlotResponse;
+using RiceProduction.Application.PlotFeature.Commands.CreatePlot;
+using RiceProduction.Application.PlotFeature.Commands.CreatePlots;
 using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
@@ -91,6 +93,68 @@ namespace RiceProduction.API.Controllers
             return Ok(result);
         }
         
+        [HttpPost]
+        [ProducesResponseType(typeof(Result<PlotResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreatePlot([FromBody] CreatePlotCommand command)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Create plot request received for farmer {FarmerId}: SoThua={SoThua}, SoTo={SoTo}",
+                    command.FarmerId, command.SoThua, command.SoTo);
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to create plot: {Errors}", 
+                        string.Join(", ", result.Errors ?? new string[0]));
+                    return BadRequest(result);
+                }
+
+                _logger.LogInformation("Plot created successfully: {PlotId}", result.Data?.PlotId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while creating plot");
+                return StatusCode(500, Result<PlotResponse>.Failure("An error occurred while processing your request"));
+            }
+        }
+
+        [HttpPost("bulk")]
+        [ProducesResponseType(typeof(Result<List<PlotResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreatePlots([FromBody] CreatePlotsCommand command)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Bulk plot creation request received for {Count} plots",
+                    command.Plots?.Count ?? 0);
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to create plots in bulk: {Errors}", 
+                        string.Join(", ", result.Errors ?? new string[0]));
+                    return BadRequest(result);
+                }
+
+                _logger.LogInformation(
+                    "Bulk plot creation successful: {Count} plots created",
+                    result.Data?.Count ?? 0);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while creating plots in bulk");
+                return StatusCode(500, Result<List<PlotResponse>>.Failure("An error occurred while processing your request"));
+            }
+        }
+
         [HttpPut]
         public async Task<ActionResult<Result<UpdatePlotRequest>>> EditPlot([FromBody] UpdatePlotRequest input)
         {
