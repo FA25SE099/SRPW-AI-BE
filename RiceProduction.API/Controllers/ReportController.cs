@@ -137,7 +137,8 @@ public class ReportController : ControllerBase
     [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> CreateReport([FromBody] RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport.CreateEmergencyReportCommand command)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> CreateReport([FromForm] RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport.CreateEmergencyReportCommand command)
     {
         try
         {

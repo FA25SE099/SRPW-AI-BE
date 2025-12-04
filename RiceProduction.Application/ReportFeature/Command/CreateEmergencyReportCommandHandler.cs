@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
@@ -10,15 +11,18 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IUser _currentUser;
+    private readonly IStorageService _storageService;
     private readonly ILogger<CreateEmergencyReportCommandHandler> _logger;
 
     public CreateEmergencyReportCommandHandler(
         IUnitOfWork unitOfWork,
         IUser currentUser,
+        IStorageService storageService,
         ILogger<CreateEmergencyReportCommandHandler> logger)
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
+        _storageService = storageService;
         _logger = logger;
     }
 
@@ -83,7 +87,7 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
 
             if (request.ClusterId.HasValue)
             {
-                var clusterExists = await _unitOfWork.ClusterRepository
+                var clusterExists = await _unitOfWork.ClusterRepository!
                     .ExistClusterAsync(request.ClusterId.Value);
 
                 if (!clusterExists)
@@ -111,7 +115,17 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
 
             var normalizedAlertType = char.ToUpper(alertType[0]) + alertType.Substring(1);
 
-            var hasImages = request.ImageUrls != null && request.ImageUrls.Any();
+            // Upload Images (Parallel Upload)
+            var uploadedUrls = new List<string>();
+            if (request.Images != null && request.Images.Any())
+            {
+                string folder = $"emergency-reports/{normalizedAlertType.ToLower()}";
+                var uploadTasks = request.Images.Select(file => _storageService.UploadAsync(file, folder));
+                var results = await Task.WhenAll(uploadTasks);
+                uploadedUrls = results.Select(r => r.Url).ToList();
+            }
+
+            var hasImages = uploadedUrls.Any();
             var emergencyReport = new EmergencyReport
             {
                 Source = source,
@@ -123,7 +137,7 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                 AlertType = normalizedAlertType,
                 Title = request.Title.Trim(),
                 Description = request.Description.Trim(),
-                ImageUrls = request.ImageUrls,
+                ImageUrls = uploadedUrls,
                 ReportedBy = userId.Value,
                 NotificationSentAt = null
             };
@@ -134,10 +148,10 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
 
             _logger.LogInformation(
                 "Emergency report created successfully. ID: {ReportId}, Type: {AlertType}, Source: {Source}, Reporter: {UserId}, Images: {ImageCount}",
-                emergencyReport.Id, emergencyReport.AlertType, emergencyReport.Source, userId.Value, emergencyReport.ImageUrls?.Count ?? 0);
+                emergencyReport.Id, emergencyReport.AlertType, emergencyReport.Source, userId.Value, uploadedUrls.Count);
 
             var message = hasImages
-                ? "Emergency report created successfully. ."
+                ? $"Emergency report created successfully with {uploadedUrls.Count} image(s) uploaded."
                 : "Emergency report created successfully.";
 
             return Result<Guid>.Success(emergencyReport.Id, message);
