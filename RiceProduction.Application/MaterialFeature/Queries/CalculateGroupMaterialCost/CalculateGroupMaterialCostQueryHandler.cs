@@ -104,8 +104,11 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
                     // Số lượng cần thiết cho plot này
                     var plotQuantityRequired = quantityPerHa * plotArea;
                     
-                    // Số gói cần mua cho plot này (làm tròn lên)
-                    var plotPackagesNeeded = Math.Ceiling(plotQuantityRequired / amountPerPackage);
+                    // Số gói cần mua cho plot này
+                    // Nếu IsPartition = true (vật tư có thể chia nhỏ), không cần làm tròn lên
+                    var plotPackagesNeeded = materialDetail.IsPartition 
+                        ? plotQuantityRequired / amountPerPackage 
+                        : Math.Ceiling(plotQuantityRequired / amountPerPackage);
                     
                     // Chi phí vật tư này cho plot
                     var plotMaterialCost = plotPackagesNeeded * effectivePricePerPackage;
