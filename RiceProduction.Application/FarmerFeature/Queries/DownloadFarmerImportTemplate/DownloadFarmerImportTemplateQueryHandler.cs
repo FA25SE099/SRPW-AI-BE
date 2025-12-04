@@ -39,7 +39,6 @@ public class DownloadFarmerImportTemplateQueryHandler
                     Address = "123 Main Street, District 1, Ho Chi Minh City",
                     FarmCode = "FARM001",
                     NumberOfPlots = 2,
-                    Email = "nguyenvana@example.com"
                 },
                 new FarmerImportDto
                 {
@@ -48,7 +47,6 @@ public class DownloadFarmerImportTemplateQueryHandler
                     Address = "456 Second Street, District 2, Ho Chi Minh City",
                     FarmCode = "FARM002",
                     NumberOfPlots = 4,
-                    Email = "tranvanb@example.com"
                 },
                 new FarmerImportDto
                 {
@@ -57,7 +55,6 @@ public class DownloadFarmerImportTemplateQueryHandler
                     Address = "789 Third Avenue, District 3, Ho Chi Minh City",
                     FarmCode = "FARM003",
                     NumberOfPlots = 3,
-                    Email = "lethic@example.com"
                 },
                 new FarmerImportDto
                 {
@@ -66,7 +63,14 @@ public class DownloadFarmerImportTemplateQueryHandler
                     Address = "321 Fourth Road, District 4, Ho Chi Minh City",
                     FarmCode = "FARM004",
                     NumberOfPlots = 1,
-                    Email = "" // Email is optional
+                },
+                new FarmerImportDto
+                {
+                    FullName = "Pham Van E",
+                    PhoneNumber = "0923456777",
+                    Address = "321 Fourth Road, District 4, Ho Chi Minh City",
+                    FarmCode = "FARM005",
+                    NumberOfPlots = 1,
                 }
             };
 
