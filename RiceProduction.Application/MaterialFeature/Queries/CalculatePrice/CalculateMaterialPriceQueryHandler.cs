@@ -62,7 +62,7 @@ public class CalculateMaterialPriceQueryHandler : IRequestHandler<CalculateMater
             // Tính số lượng đơn vị đóng gói (bao/thùng) cần mua (Làm tròn lên)
             // Ví dụ: 10 kg / 3 kg/bao = 3.33 -> 4 bao
             var packagesNeeded = material.IsPartition
-                ? Math.Floor(requiredQuantity / amountPerPackage)
+                ? requiredQuantity / amountPerPackage
                 : Math.Ceiling(requiredQuantity / amountPerPackage);
 
             // Tổng số lượng thực tế được tính giá (Total Quantity To Bill)
