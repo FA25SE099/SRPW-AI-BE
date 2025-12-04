@@ -5,6 +5,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.CultivationPlanFeature.Queries;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetByPlotId;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationPlanById;
+using RiceProduction.Application.CultivationPlanFeature.Queries.GetCurrentPlotCultivation;
 
 [ApiController]
 [Route("api/cultivation-plan")]
@@ -50,6 +51,20 @@ public class CultivationPlanController : ControllerBase
     public async Task<IActionResult> GetCultivationPlanById(Guid planId)
     {
         var query = new GetCultivationPlanByIdQuery { PlanId = planId };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return NotFound(result);
+        }
+
+        return Ok(result);
+    }
+
+    [HttpGet("current/{plotId}")]
+    public async Task<IActionResult> GetCurrentPlotCultivation(Guid plotId)
+    {
+        var query = new GetCurrentPlotCultivationQuery { PlotId = plotId };
         var result = await _mediator.Send(query);
 
         if (!result.Succeeded)

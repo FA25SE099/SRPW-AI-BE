@@ -22,6 +22,8 @@ public class Material : BaseAuditableEntity
 
     public bool IsActive { get; set; } = true;
 
+    public bool IsPartition { get; set; } = false;
+
     // Navigation properties
     public ICollection<MaterialPrice> MaterialPrices { get; set; } = new List<MaterialPrice>();
     public ICollection<StandardPlanTaskMaterial> StandardPlanTaskMaterials { get; set; } = new List<StandardPlanTaskMaterial>();

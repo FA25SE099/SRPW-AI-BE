@@ -11,6 +11,5 @@ public class MaterialPriceResponse
 
     public decimal TotalCalculatedCost { get; set; }
     
-
     public decimal EffectiveUnitPrice { get; set; }
 }
