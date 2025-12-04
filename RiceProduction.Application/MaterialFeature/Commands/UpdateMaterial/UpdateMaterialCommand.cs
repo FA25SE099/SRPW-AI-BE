@@ -14,6 +14,7 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
         public string? Description { get; set; }
         public string? Manufacturer { get; set; }
         public bool IsActive { get; set; }
+        public bool IsPartition { get; set; }
         public DateTime? PriceValidFrom { get; set; }
         public List<string>? imgUrls { get; set; }
     }

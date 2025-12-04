@@ -20,4 +20,5 @@ public class MaterialResponseForList
     public List<string>? ImgUrls { get; set; }
     public string? Manufacturer { get; set; }
     public bool IsActive { get; set; }
+    public bool IsPartition { get; set; }
 }

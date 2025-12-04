@@ -41,6 +41,7 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
                 material.imgUrls = request.imgUrls;
                 material.Manufacturer = request.Manufacturer;
                 material.IsActive = request.IsActive;
+                material.IsPartition = request.IsPartition;
 
                 materialRepo.Update(material);
 

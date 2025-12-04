@@ -36,10 +36,6 @@ public class Threshold : BaseAuditableEntity
     [MaxLength(50)]
     public string? PestSeverityLevel { get; set; }
 
-    /// <summary>
-    /// Minimum percentage of area affected to trigger (e.g., 25%)
-    /// </summary>
-    [Column(TypeName = "decimal(5,2)")]
     public decimal? PestAreaThresholdPercent { get; set; }
 
     /// <summary>
@@ -48,10 +44,6 @@ public class Threshold : BaseAuditableEntity
     [MaxLength(200)]
     public string? PestPopulationThreshold { get; set; }
 
-    /// <summary>
-    /// Minimum damage percentage to trigger (e.g., 30% leaf damage)
-    /// </summary>
-    [Column(TypeName = "decimal(5,2)")]
     public decimal? PestDamageThresholdPercent { get; set; }
 
     /// <summary>

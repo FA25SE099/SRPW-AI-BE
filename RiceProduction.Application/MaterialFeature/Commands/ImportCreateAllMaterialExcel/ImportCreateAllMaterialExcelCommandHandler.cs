@@ -132,7 +132,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
                                 ValidFrom = request.ImportDate,
                                 ValidTo = null
                             }
-                        }
+                        },
+                        IsPartition = false
                     };
 
                     materialList.Add(newMaterial);

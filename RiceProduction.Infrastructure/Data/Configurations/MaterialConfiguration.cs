@@ -23,6 +23,7 @@ public class MaterialConfiguration : IEntityTypeConfiguration<Material>
         builder.HasIndex(m => m.Name);
         builder.HasIndex(m => m.Type);
         builder.HasIndex(m => m.IsActive);
+        builder.HasIndex(m => m.IsPartition);
         builder.HasIndex(m => m.Manufacturer);
     }
 }
