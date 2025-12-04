@@ -92,7 +92,7 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
 
                 // Calculate packages needed (ceiling)
                 var packagesNeeded = material.IsPartition
-                    ? Math.Floor(totalQuantityNeeded / amountPerMaterial)
+                    ? totalQuantityNeeded / amountPerMaterial
                     : Math.Ceiling(totalQuantityNeeded / amountPerMaterial);
 
                 // Calculate actual quantity after ceiling
