@@ -273,13 +273,14 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<Result<Guid>>> CreateReport([FromBody] CreateEmergencyReportCommand command)
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<Result<Guid>>> CreateReport([FromForm] CreateEmergencyReportCommand command)
         {
             try
             {
                 _logger.LogInformation(
                     "Create emergency report request received: Type={AlertType}, Title={Title}, Severity={Severity}, Images={ImageCount}",
-                    command.AlertType, command.Title, command.Severity, command.ImageUrls?.Count ?? 0);
+                    command.AlertType, command.Title, command.Severity, command.Images?.Count ?? 0);
 
                 var result = await _mediator.Send(command);
 
