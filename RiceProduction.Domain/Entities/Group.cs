@@ -48,7 +48,7 @@ public class Group : BaseAuditableEntity
     [ForeignKey("RiceVarietyId")]
     public RiceVariety? RiceVariety { get; set; }
 
-    public ICollection<Plot> Plots { get; set; } = new List<Plot>();
+    public ICollection<GroupPlot> GroupPlots { get; set; } = new List<GroupPlot>();
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
     public ICollection<UavServiceOrder> UavServiceOrders { get; set; } = new List<UavServiceOrder>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();

@@ -32,7 +32,9 @@ public class PlotMapping : Profile
                 opt => opt.MapFrom(src => src.PlotCultivations))
             .ForMember(dest => dest.ProductionPlans,
                 opt => opt.MapFrom(src =>
-                    src.Group != null ? src.Group.ProductionPlans : new List<ProductionPlan>()
+                    src.GroupPlots.Select(gp => gp.Group).FirstOrDefault() != null 
+                        ? src.GroupPlots.Select(gp => gp.Group).FirstOrDefault()!.ProductionPlans 
+                        : new List<ProductionPlan>()
                 ));
 
         CreateMap<Season, SeasonDTO>()

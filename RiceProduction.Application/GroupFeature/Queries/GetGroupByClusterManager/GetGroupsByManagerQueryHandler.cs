@@ -46,7 +46,7 @@ public class GetGroupsByManagerQueryHandler : IRequestHandler<GetGroupsByManager
                 includeProperties: q => q
                     .Include(g => g.RiceVariety)
                     .Include(g => g.Supervisor)
-                    .Include(g => g.Plots) // Để đếm Plots
+                    .Include(g => g.GroupPlots) // Để đếm Plots
                     .Include(g => g.ProductionPlans.Where(pp => pp.Status != RiceProduction.Domain.Enums.TaskStatus.Cancelled)) // Để đếm Active Plans
             );
 
@@ -68,7 +68,7 @@ public class GetGroupsByManagerQueryHandler : IRequestHandler<GetGroupsByManager
                 PlantingDate = g.PlantingDate,
                 RiceVarietyName = g.RiceVariety?.VarietyName ?? "N/A",
                 SupervisorName = g.Supervisor?.FullName ?? "Chưa phân công",
-                TotalPlots = g.Plots.Count,
+                TotalPlots = g.GroupPlots.Count,
                 ActivePlans = g.ProductionPlans.Count
             }).ToList();
 

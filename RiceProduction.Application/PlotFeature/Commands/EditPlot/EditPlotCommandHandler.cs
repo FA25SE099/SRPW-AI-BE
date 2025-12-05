@@ -83,7 +83,54 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
 
                 // Update plot properties
                 plot.FarmerId = request.Request.FarmerId;
-                plot.GroupId = request.Request.GroupId;
+                // Note: GroupId assignment is now handled through GroupPlot many-to-many relationship
+                // Business rule: A plot can belong to multiple groups, but only one group per season
+                if (request.Request.GroupId.HasValue)
+                {
+                    // Get the target group to find its season
+                    var targetGroup = await _unitOfWork.Repository<Group>()
+                        .FindAsync(g => g.Id == request.Request.GroupId.Value);
+                    
+                    if (targetGroup == null)
+                    {
+                        return Result<UpdatePlotRequest>.Failure($"Group with ID {request.Request.GroupId.Value} not found");
+                    }
+                    
+                    // Only remove GroupPlot associations for the SAME SEASON
+                    // This allows the plot to belong to groups in different seasons
+                    if (targetGroup.SeasonId.HasValue)
+                    {
+                        var existingGroupPlots = await _unitOfWork.Repository<GroupPlot>()
+                            .GetQueryable()
+                            .Include(gp => gp.Group)
+                            .Where(gp => gp.PlotId == plot.Id && gp.Group.SeasonId == targetGroup.SeasonId.Value)
+                            .ToListAsync(cancellationToken);
+                        
+                        foreach (var gp in existingGroupPlots)
+                        {
+                            _unitOfWork.Repository<GroupPlot>().Delete(gp);
+                        }
+                    }
+                    
+                    // Check if plot is already in this specific group
+                    var alreadyInGroup = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupAsync(plot.Id, request.Request.GroupId.Value, cancellationToken);
+                    if (!alreadyInGroup)
+                    {
+                        // Add new GroupPlot association
+                        var newGroupPlot = new GroupPlot
+                        {
+                            GroupId = request.Request.GroupId.Value,
+                            PlotId = plot.Id
+                        };
+                        await _unitOfWork.Repository<GroupPlot>().AddAsync(newGroupPlot);
+                    }
+                }
+                else
+                {
+                    // If GroupId is null, we don't remove associations - plot can still belong to other groups
+                    // This allows removing a plot from one group without affecting its membership in other groups
+                    // If you want to remove ALL associations, that would be a separate operation
+                }
 
                 if (polygonBoundary != null)
                 {

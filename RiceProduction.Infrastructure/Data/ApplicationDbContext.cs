@@ -35,6 +35,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<RiceVarietySeason> RiceVarietySeasons => Set<RiceVarietySeason>();
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<Plot> Plots => Set<Plot>();
+    public DbSet<GroupPlot> GroupPlots => Set<GroupPlot>();
     public DbSet<PlotCultivation> PlotCultivations => Set<PlotCultivation>();
 
     // Material management

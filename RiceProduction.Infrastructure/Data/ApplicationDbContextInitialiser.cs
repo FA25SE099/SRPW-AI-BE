@@ -2029,7 +2029,6 @@ namespace RiceProduction.Infrastructure.Data
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-20),
                     Status = GroupStatus.Active,
-                    Plots = new List<Plot> { plots[1], plots[2], plots[6], plots[9]  },  // NEW unique plots
                     TotalArea = plots[1].Area + plots[2].Area + plots[6].Area + plots[9].Area,
                     Area = UnionPolygons(new[] { plots[1].Boundary, plots[2].Boundary , plots[6].Boundary , plots[9].Boundary })
                 },
@@ -2042,7 +2041,6 @@ namespace RiceProduction.Infrastructure.Data
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-30),
                     Status = GroupStatus.Completed,
-                    Plots = new List<Plot> { plots[3], plots[5] , plots[10] , plots[11]  },
                     TotalArea = plots[3].Area + plots[5].Area + plots[10].Area + plots[11].Area,
                     Area = UnionPolygons(new[] { plots[3].Boundary, plots[5].Boundary , plots[10].Boundary , plots[11].Boundary })
                 },
@@ -2055,7 +2053,6 @@ namespace RiceProduction.Infrastructure.Data
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-5),
                     Status = GroupStatus.Active,
-                    Plots = new List<Plot> { plots[0], plots[4] },
                     TotalArea = plots[0].Area + plots[4].Area,
                     Area = UnionPolygons(new[] { plots[0].Boundary, plots[4].Boundary })
                 },
@@ -2068,13 +2065,32 @@ namespace RiceProduction.Infrastructure.Data
                     Year = 2024,
                     PlantingDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
                     Status = GroupStatus.Completed,
-                    Plots = new List<Plot> { plots[7], plots[8] },
                     TotalArea = plots[7].Area + plots[8].Area,
                     Area = UnionPolygons(new[] { plots[7].Boundary, plots[8].Boundary })
                 }
             };
 
             await _context.Groups.AddRangeAsync(groups);
+            await _context.SaveChangesAsync();
+
+            // Create GroupPlot associations using many-to-many relationship
+            var groupPlots = new List<GroupPlot>
+            {
+                new GroupPlot { GroupId = groups[0].Id, PlotId = plots[1].Id },
+                new GroupPlot { GroupId = groups[0].Id, PlotId = plots[2].Id },
+                new GroupPlot { GroupId = groups[0].Id, PlotId = plots[6].Id },
+                new GroupPlot { GroupId = groups[0].Id, PlotId = plots[9].Id },
+                new GroupPlot { GroupId = groups[1].Id, PlotId = plots[3].Id },
+                new GroupPlot { GroupId = groups[1].Id, PlotId = plots[5].Id },
+                new GroupPlot { GroupId = groups[1].Id, PlotId = plots[10].Id },
+                new GroupPlot { GroupId = groups[1].Id, PlotId = plots[11].Id },
+                new GroupPlot { GroupId = groups[2].Id, PlotId = plots[0].Id },
+                new GroupPlot { GroupId = groups[2].Id, PlotId = plots[4].Id },
+                new GroupPlot { GroupId = groups[3].Id, PlotId = plots[7].Id },
+                new GroupPlot { GroupId = groups[3].Id, PlotId = plots[8].Id }
+            };
+
+            await _context.GroupPlots.AddRangeAsync(groupPlots);
             await _context.SaveChangesAsync();
             await SeedPlotPolygonTasksAsync(plots, clusterManager1, supervisor1, supervisor2);
             _logger.LogInformation("Seeded {ClusterCount} clusters and {GroupCount} groups", clusters.Count, groups.Count);
@@ -2250,7 +2266,7 @@ namespace RiceProduction.Infrastructure.Data
             }
 
             var pastGroup2024 = await _context.Groups
-                .Include(g => g.Plots)
+                .Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot)
                 .FirstOrDefaultAsync(g => g.Year == 2024 && g.Status == GroupStatus.Completed);
 
             if (pastGroup2024 == null)
@@ -2316,7 +2332,13 @@ namespace RiceProduction.Infrastructure.Data
                 CultivationTasks = new List<CultivationTask>()
             };
 
-            foreach (var plot in group.Plots)
+            var groupPlots = await _context.GroupPlots
+                .Where(gp => gp.GroupId == group.Id)
+                .Include(gp => gp.Plot)
+                .ToListAsync();
+            foreach (var groupPlot in groupPlots)
+            {
+                var plot = groupPlot.Plot;
             {
                 task1.CultivationTasks.Add(new CultivationTask
                 {
@@ -2339,6 +2361,7 @@ namespace RiceProduction.Infrastructure.Data
                     }
                 });
             }
+            }
 
             stage1.ProductionPlanTasks.Add(task1);
             productionPlan.CurrentProductionStages.Add(stage1);
@@ -2354,8 +2377,10 @@ namespace RiceProduction.Infrastructure.Data
             var group1 = await _context.Groups.FirstOrDefaultAsync(g => g.Cluster.ClusterName == "DongThap1" && g.Status == GroupStatus.Active);
 
             // Tải Plots thuộc Group 1
-            var group1Plots = await _context.Plots
-                .Where(p => p.GroupId == group1!.Id)
+            var group1Plots = await _context.GroupPlots
+                .Where(gp => gp.GroupId == group1!.Id)
+                .Include(gp => gp.Plot)
+                .Select(gp => gp.Plot)
                 .ToListAsync();
 
             if (vendor1 == null || group1 == null || !group1Plots.Any())
