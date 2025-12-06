@@ -33,7 +33,7 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                     .Include(p => p.PlotCultivations)
                         .ThenInclude(pc => pc.RiceVariety)
                     .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.CultivationVersions.Where(v => v.IsActive))
+                        .ThenInclude(pc => pc.CultivationVersions)
             );
 
             if (plot == null)
@@ -52,10 +52,13 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 return Result<CurrentPlotCultivationDetailResponse>.Failure($"No active cultivation found for plot {request.PlotId}.", "NoCultivationFound");
             }
 
-            var activeVersion = currentCultivation.CultivationVersions.FirstOrDefault();
+            // Get the latest version (highest VersionOrder)
+            var latestVersion = currentCultivation.CultivationVersions
+                .OrderByDescending(v => v.VersionOrder)
+                .FirstOrDefault();
 
-            // Load cultivation tasks with related data
-            Guid? versionId = activeVersion?.Id;
+            // Load cultivation tasks with related data for the latest version
+            Guid? versionId = latestVersion?.Id;
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: ct => ct.PlotCultivationId == currentCultivation.Id && ct.VersionId == versionId,
                 orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
@@ -69,12 +72,28 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
 #pragma warning restore CS8602 // Dereference of a possibly null reference
             );
 
+            // Log warning if duplicates are detected
+            var duplicateCount = tasks.Count - tasks.DistinctBy(t => t.Id).Count();
+            if (duplicateCount > 0)
+            {
+                _logger.LogWarning(
+                    "Found {DuplicateCount} duplicate tasks for PlotCultivation {PlotCultivationId} Version {VersionId}. " +
+                    "This indicates a data integrity issue that should be investigated.",
+                    duplicateCount, currentCultivation.Id, versionId);
+            }
+
+            // Deduplicate tasks by keeping only unique task IDs (taking the first occurrence)
+            var uniqueTasks = tasks
+                .GroupBy(t => t.Id)
+                .Select(g => g.First())
+                .ToList();
+
             // Get production plan info from first task
-            var firstTask = tasks.FirstOrDefault();
+            var firstTask = uniqueTasks.FirstOrDefault();
             var productionPlan = firstTask?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
 
             // Group tasks by stage and create nested structure
-            var stagesGroup = tasks
+            var stagesGroup = uniqueTasks
                 .GroupBy(task => new
                 {
                     StageId = task.ProductionPlanTask?.ProductionStage?.Id,
@@ -118,17 +137,17 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 })
                 .ToList();
 
-            // Calculate progress
-            var totalTasks = tasks.Count;
-            var completedTasks = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.Completed);
-            var inProgressTasks = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
-            var pendingTasks = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.Draft || t.Status == Domain.Enums.TaskStatus.PendingApproval);
+            // Calculate progress (using unique tasks)
+            var totalTasks = uniqueTasks.Count;
+            var completedTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Completed);
+            var inProgressTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+            var pendingTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Draft || t.Status == Domain.Enums.TaskStatus.PendingApproval);
             var completionPercentage = totalTasks > 0 ? (decimal)completedTasks / totalTasks * 100 : 0;
             var daysElapsed = (DateTime.UtcNow - currentCultivation.PlantingDate).Days;
             
             // Estimate remaining days based on last task scheduled end date
             int? estimatedDaysRemaining = null;
-            var lastTask = tasks.OrderByDescending(t => t.ScheduledEndDate).FirstOrDefault();
+            var lastTask = uniqueTasks.OrderByDescending(t => t.ScheduledEndDate).FirstOrDefault();
             if (lastTask?.ScheduledEndDate != null)
             {
                 estimatedDaysRemaining = (lastTask.ScheduledEndDate.Value - DateTime.UtcNow).Days;
@@ -161,8 +180,8 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 ProductionPlanName = productionPlan?.PlanName,
                 ProductionPlanDescription = null, // ProductionPlan doesn't have Description field
                 
-                ActiveVersionId = activeVersion?.Id,
-                ActiveVersionName = activeVersion?.VersionName,
+                ActiveVersionId = latestVersion?.Id,
+                ActiveVersionName = latestVersion?.VersionName,
                 
                 Stages = stagesGroup,
                 Progress = new CultivationProgress
@@ -177,7 +196,11 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 }
             };
 
-            _logger.LogInformation("Successfully retrieved current cultivation plan for plot {PlotId}", request.PlotId);
+            _logger.LogInformation(
+                "Successfully retrieved current cultivation plan for plot {PlotId} using latest version {VersionOrder}. " +
+                "Total unique tasks: {UniqueCount} (from {TotalCount} records)", 
+                request.PlotId, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
+            
             return Result<CurrentPlotCultivationDetailResponse>.Success(response, "Successfully retrieved current cultivation plan.");
         }
         catch (Exception ex)

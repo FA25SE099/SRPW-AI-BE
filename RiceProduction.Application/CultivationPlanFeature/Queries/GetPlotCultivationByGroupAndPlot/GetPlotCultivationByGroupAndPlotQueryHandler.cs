@@ -60,7 +60,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                     .Include(pc => pc.Plot)
                     .Include(pc => pc.Season)
                     .Include(pc => pc.RiceVariety)
-                    .Include(pc => pc.CultivationVersions.Where(v => v.IsActive))
+                    .Include(pc => pc.CultivationVersions)
             );
 
             if (plotCultivation == null)
@@ -70,10 +70,13 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                     "PlotCultivationNotFound");
             }
 
-            var activeVersion = plotCultivation.CultivationVersions.FirstOrDefault();
+            // Get the latest version (highest VersionOrder)
+            var latestVersion = plotCultivation.CultivationVersions
+                .OrderByDescending(v => v.VersionOrder)
+                .FirstOrDefault();
 
-            // 4. Load cultivation tasks with related data
-            Guid? versionId = activeVersion?.Id;
+            // 4. Load cultivation tasks with related data for the latest version
+            Guid? versionId = latestVersion?.Id;
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId,
                 orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
@@ -87,12 +90,28 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 #pragma warning restore CS8602 // Dereference of a possibly null reference
             );
 
+            // Log warning if duplicates are detected
+            var duplicateCount = tasks.Count - tasks.DistinctBy(t => t.Id).Count();
+            if (duplicateCount > 0)
+            {
+                _logger.LogWarning(
+                    "Found {DuplicateCount} duplicate tasks for PlotCultivation {PlotCultivationId} Version {VersionId}. " +
+                    "This indicates a data integrity issue that should be investigated.",
+                    duplicateCount, plotCultivation.Id, versionId);
+            }
+
+            // Deduplicate tasks by keeping only unique task IDs (taking the first occurrence)
+            var uniqueTasks = tasks
+                .GroupBy(t => t.Id)
+                .Select(g => g.First())
+                .ToList();
+
             // 5. Get production plan info from first task
-            var firstTask = tasks.FirstOrDefault();
+            var firstTask = uniqueTasks.FirstOrDefault();
             var productionPlan = firstTask?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
 
             // 6. Group tasks by stage and create nested structure
-            var stagesGroup = tasks
+            var stagesGroup = uniqueTasks
                 .GroupBy(task => new
                 {
                     StageId = task.ProductionPlanTask?.ProductionStage?.Id,
@@ -136,17 +155,17 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                 })
                 .ToList();
 
-            // 7. Calculate progress
-            var totalTasks = tasks.Count;
-            var completedTasks = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.Completed);
-            var inProgressTasks = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
-            var pendingTasks = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.Draft || t.Status == Domain.Enums.TaskStatus.PendingApproval);
+            // 7. Calculate progress (using unique tasks)
+            var totalTasks = uniqueTasks.Count;
+            var completedTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Completed);
+            var inProgressTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+            var pendingTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Draft || t.Status == Domain.Enums.TaskStatus.PendingApproval);
             var completionPercentage = totalTasks > 0 ? (decimal)completedTasks / totalTasks * 100 : 0;
             var daysElapsed = (DateTime.UtcNow - plotCultivation.PlantingDate).Days;
 
             // Estimate remaining days based on last task scheduled end date
             int? estimatedDaysRemaining = null;
-            var lastTask = tasks.OrderByDescending(t => t.ScheduledEndDate).FirstOrDefault();
+            var lastTask = uniqueTasks.OrderByDescending(t => t.ScheduledEndDate).FirstOrDefault();
             if (lastTask?.ScheduledEndDate != null)
             {
                 estimatedDaysRemaining = (lastTask.ScheduledEndDate.Value - DateTime.UtcNow).Days;
@@ -180,8 +199,8 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                 ProductionPlanName = productionPlan?.PlanName,
                 ProductionPlanDescription = null,
 
-                ActiveVersionId = activeVersion?.Id,
-                ActiveVersionName = activeVersion?.VersionName,
+                ActiveVersionId = latestVersion?.Id,
+                ActiveVersionName = latestVersion?.VersionName,
 
                 Stages = stagesGroup,
                 Progress = new CultivationProgress
@@ -197,8 +216,9 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             };
 
             _logger.LogInformation(
-                "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId}",
-                request.PlotId, request.GroupId, group.SeasonId.Value);
+                "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId} using latest version {VersionOrder}. " +
+                "Total unique tasks: {UniqueCount} (from {TotalCount} records)",
+                request.PlotId, request.GroupId, group.SeasonId.Value, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
 
             return Result<CurrentPlotCultivationDetailResponse>.Success(
                 response,
