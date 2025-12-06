@@ -81,6 +81,9 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
 
                 _unitOfWork.Repository<CultivationTask>().Update(cultivationTask);
                 _logger.LogInformation("CultivationTask {TaskId} status updated to Completed via UAV report.", cultivationTask.Id);
+                
+                // Update next task to InProgress
+                await UpdateNextTaskToInProgress(cultivationTask.PlotCultivationId, cultivationTask.VersionId, cultivationTask.ExecutionOrder);
             }
             // 4. Tổng hợp và Cập nhật Order (Aggregate Logic)
             await _unitOfWork.Repository<UavOrderPlotAssignment>().SaveChangesAsync(); // Lưu Assignment trước
@@ -120,6 +123,51 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
         {
             _logger.LogError(ex, "Error reporting UAV service completion for Order {OrderId}, Plot {PlotId}", request.OrderId, request.PlotId);
             return Result<Guid>.Failure("Failed to submit service report.", "ReportCompletionFailed");
+        }
+    }
+    private async Task UpdateNextTaskToInProgress(Guid plotCultivationId, Guid? versionId, int? currentExecutionOrder)
+    {
+        try
+        {
+            if (!currentExecutionOrder.HasValue)
+            {
+                _logger.LogWarning("Current task has no ExecutionOrder, cannot determine next task.");
+                return;
+            }
+
+            // Find the next task with higher ExecutionOrder for the same PlotCultivation and Version
+            var nextTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
+                filter: t => t.PlotCultivationId == plotCultivationId 
+                          && t.VersionId == versionId
+                          && t.ExecutionOrder.HasValue
+                          && t.ExecutionOrder > currentExecutionOrder
+                          && (t.Status == RiceProduction.Domain.Enums.TaskStatus.Approved 
+                              || t.Status == RiceProduction.Domain.Enums.TaskStatus.Draft),
+                orderBy: q => q.OrderBy(t => t.ExecutionOrder)
+            );
+
+            var nextTask = nextTasks.FirstOrDefault();
+
+            if (nextTask != null)
+            {
+                nextTask.Status = RiceProduction.Domain.Enums.TaskStatus.InProgress;
+                nextTask.ActualStartDate = DateTime.UtcNow;
+                
+                _unitOfWork.Repository<CultivationTask>().Update(nextTask);
+                
+                _logger.LogInformation(
+                    "Next task {NextTaskId} (Order: {Order}) automatically updated to InProgress after completing current task.",
+                    nextTask.Id, nextTask.ExecutionOrder);
+            }
+            else
+            {
+                _logger.LogInformation("No eligible next task found for PlotCultivation {PlotId}.", plotCultivationId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating next task to InProgress for PlotCultivation {PlotId}", plotCultivationId);
+            // Don't throw - this is a secondary operation
         }
     }
 }
