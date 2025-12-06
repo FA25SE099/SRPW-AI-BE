@@ -110,10 +110,11 @@ public class GetClusterCurrentSeasonQueryHandler
     {
         var groupIds = groups.Select(g => g.Id).ToList();
 
-        // Get plots
-        var plots = await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => p.GroupId.HasValue && groupIds.Contains(p.GroupId.Value));
-        var plotsList = plots.ToList();
+        // Get plots using many-to-many relationship
+        var groupPlots = await _unitOfWork.Repository<GroupPlot>()
+            .ListAsync(gp => groupIds.Contains(gp.GroupId), 
+                includeProperties: q => q.Include(gp => gp.Plot));
+        var plotsList = groupPlots.Select(gp => gp.Plot).ToList();
 
         // Get farmers
         var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
@@ -156,7 +157,7 @@ public class GetClusterCurrentSeasonQueryHandler
                 : null,
             PlantingDate = g.PlantingDate,
             Status = g.Status.ToString(),
-            PlotCount = plotsList.Count(p => p.GroupId == g.Id),
+            PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => gp.GroupId == g.Id)),
             TotalArea = g.TotalArea
         }).ToList();
 
@@ -169,8 +170,7 @@ public class GetClusterCurrentSeasonQueryHandler
                 RiceVarietyId = g.Key,
                 RiceVarietyName = varietyDict.GetValueOrDefault(g.Key)?.VarietyName ?? "Unknown",
                 GroupCount = g.Count(),
-                PlotCount = plotsList.Count(p => p.GroupId.HasValue &&
-                                                 g.Select(gr => gr.Id).Contains(p.GroupId.Value)),
+                PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => g.Select(gr => gr.Id).Contains(gp.GroupId))),
                 TotalArea = g.Sum(gr => gr.TotalArea ?? 0)
             })
             .OrderByDescending(v => v.PlotCount)

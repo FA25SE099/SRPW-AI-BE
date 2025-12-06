@@ -35,14 +35,23 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     return Result<SeasonCostAnalysisResponse>.Failure("Season not found");
                 }
 
+                // First get plot IDs for the group if GroupId is specified
+                var plotIds = new List<Guid>();
+                if (request.GroupId.HasValue)
+                {
+                    var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken);
+                    plotIds = plots.Select(p => p.Id).ToList();
+                }
+
                 var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                     filter: pc => pc.SeasonId == request.SeasonId &&
-                                  (request.GroupId == null || pc.Plot.GroupId == request.GroupId) &&
-                                  (request.ClusterId == null || pc.Plot.Group!.ClusterId == request.ClusterId) &&
+                                  (request.GroupId == null || plotIds.Contains(pc.PlotId)) &&
+                                  (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)) &&
                                   (request.RiceVarietyId == null || pc.RiceVarietyId == request.RiceVarietyId),
                     includeProperties: q => q
                         .Include(pc => pc.Plot)
-                            .ThenInclude(p => p.Group)
+                            .ThenInclude(p => p.GroupPlots)
+                                .ThenInclude(gp => gp.Group)
                         .Include(pc => pc.RiceVariety)
                         .Include(pc => pc.CultivationTasks)
                             .ThenInclude(ct => ct.ProductionPlanTask)

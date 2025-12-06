@@ -112,12 +112,13 @@ public class GetSupervisorAvailableSeasonsQueryHandler
                     .GroupBy(pp => pp.GroupId)
                     .ToDictionary(g => g.Key!.Value, g => g.ToList());
 
-                // Load plot counts for each group
-                var plots = await _unitOfWork.Repository<Plot>()
-                    .ListAsync(p => groupIds.Contains(p.GroupId!.Value));
-                var plotCountDict = plots
-                    .GroupBy(p => p.GroupId)
-                    .ToDictionary(g => g.Key!.Value, g => g.Count());
+                // Load plot counts for each group using many-to-many relationship
+                var plotCountDict = new Dictionary<Guid, int>();
+                foreach (var groupId in groupIds)
+                {
+                    var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(groupId, cancellationToken);
+                    plotCountDict[groupId] = plots.Count();
+                }
 
                 // Build result list from existing groups
                 foreach (var grouping in groupedBySeasonYear)

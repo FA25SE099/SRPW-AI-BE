@@ -61,8 +61,7 @@ public class GetMyGroupHistoryQueryHandler
                 var season = allSeasons.FirstOrDefault(s => s.Id == group.SeasonId);
                 if (season == null) continue;
 
-                var plots = await _unitOfWork.Repository<Plot>()
-                    .ListAsync(p => p.GroupId == group.Id);
+                var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken);
 
                 var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
                     .ListAsync(pp => pp.GroupId == group.Id);

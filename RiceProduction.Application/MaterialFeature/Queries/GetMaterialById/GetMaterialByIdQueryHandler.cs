@@ -35,7 +35,7 @@ public class GetMaterialByIdQueryHandler : IRequestHandler<GetMaterialByIdQuery,
                 return Result<MaterialResponseForList>.Failure($"Material with ID {request.MaterialId} not found or is inactive.", "MaterialNotFound");
             }
 
-            var currentDate = DateTime.Now;
+            var currentDate = DateTime.UtcNow;
             var materialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
                 filter: p => p.MaterialId == request.MaterialId &&
                            (p.ValidFrom.CompareTo(currentDate) <= 0) &&
@@ -58,7 +58,8 @@ public class GetMaterialByIdQueryHandler : IRequestHandler<GetMaterialByIdQuery,
                 Description = material.Description,
                 ImgUrls = material.imgUrls,
                 Manufacturer = material.Manufacturer,
-                IsActive = material.IsActive
+                IsActive = material.IsActive,
+                IsPartition = material.IsPartition
             };
 
             _logger.LogInformation("Successfully retrieved material with ID: {MaterialId}", request.MaterialId);

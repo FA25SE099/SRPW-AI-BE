@@ -175,8 +175,9 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             var planWithGroup = await _unitOfWork.Repository<ProductionPlan>()
                 .GetQueryable()
                 .Include(p => p.Group)
-                    .ThenInclude(g => g!.Plots)
-                        .ThenInclude(p => p.PlotCultivations)
+                    .ThenInclude(g => g!.GroupPlots)
+                        .ThenInclude(gp => gp.Plot)
+                            .ThenInclude(p => p.PlotCultivations)
                 .FirstOrDefaultAsync(p => p.Id == plan.Id, cancellationToken);
 
             if (planWithGroup?.Group == null)
@@ -186,7 +187,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                     "GroupNotFound");
             }
 
-            var groupPlotIds = planWithGroup.Group.Plots.Select(p => p.Id).ToHashSet();
+            var groupPlotIds = planWithGroup.Group.GroupPlots.Select(gp => gp.PlotId).ToHashSet();
 
             // Validate that all requested plots are in the group
             var invalidPlotIds = request.PlotIds.Except(groupPlotIds).ToList();

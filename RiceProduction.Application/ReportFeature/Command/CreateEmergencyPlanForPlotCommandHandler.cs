@@ -80,7 +80,8 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
             }
 
             // Optional: validate plot belongs to the plan's group
-            if (plan.Group == null || !plan.Group.Plots.Any(p => p.Id == plot.Id))
+            var groupPlots = plan.Group?.GroupPlots?.Select(gp => gp.Plot).ToList() ?? new List<Plot>();
+            if (plan.Group == null || !groupPlots.Any(p => p.Id == plot.Id))
             {
                 _logger.LogWarning("Plot {PlotId} does not belong to Production Plan {PlanId} group, but continuing for emergency.", plot.Id, plan.Id);
             }
@@ -246,6 +247,9 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
         }
     }
 }
+
+
+
 
 
 

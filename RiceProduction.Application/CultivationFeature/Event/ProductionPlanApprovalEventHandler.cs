@@ -51,7 +51,8 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 return;
             }
             //Populate plotcultivation Lookup
-            var plotCultivations = plan.Group!.Plots.SelectMany(pl => pl.PlotCultivations).ToList();
+            var plots = plan.Group!.GroupPlots.Select(gp => gp.Plot).ToList();
+            var plotCultivations = plots.SelectMany(pl => pl.PlotCultivations).ToList();
             if (!plotCultivations.Any())
             {
                 _logger.LogWarning("No plot cultivations found for plan {PlanId}", notification.PlanId);
@@ -107,7 +108,8 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                       .ThenInclude(s => s.ProductionPlanTasks)
                       .ThenInclude(t => t.ProductionPlanTaskMaterials)
                       .Include(p => p.Group)
-                      .ThenInclude(g => g.Plots)
+                      .ThenInclude(g => g.GroupPlots)
+                      .ThenInclude(gp => gp.Plot)
                       .ThenInclude(pl => pl.PlotCultivations);
 
             var plans = await _planRepo.ListAsync(

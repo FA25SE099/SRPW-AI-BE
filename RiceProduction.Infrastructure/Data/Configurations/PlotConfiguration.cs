@@ -23,7 +23,6 @@ public class PlotConfiguration : IEntityTypeConfiguration<Plot>
 
         // Indexes
         builder.HasIndex(p => p.FarmerId);
-        builder.HasIndex(p => p.GroupId);
         builder.HasIndex(p => p.Boundary)
             .HasMethod("GIST");
         builder.HasIndex(p => p.Coordinate)
@@ -36,10 +35,5 @@ public class PlotConfiguration : IEntityTypeConfiguration<Plot>
             .WithMany(f => f.OwnedPlots)
             .HasForeignKey(p => p.FarmerId)
             .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasOne(p => p.Group)
-            .WithMany(g => g.Plots)
-            .HasForeignKey(p => p.GroupId)
-            .OnDelete(DeleteBehavior.SetNull);
     }
 }

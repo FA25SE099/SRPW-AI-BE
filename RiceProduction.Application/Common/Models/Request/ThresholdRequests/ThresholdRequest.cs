@@ -48,7 +48,6 @@ public class ThresholdRequest
     [MaxLength(50)]
     public string? WeatherMeasurementUnit { get; set; }
 
-    [MaxLength(10)]
     public string? WeatherThresholdOperator { get; set; }
 
     public int? WeatherDurationDaysThreshold { get; set; }

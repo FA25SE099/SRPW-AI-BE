@@ -280,7 +280,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         FarmerName = farmer?.FullName ?? string.Empty,
                         SoilType = plot.SoilType,
                         Status = plot.Status,
-                        GroupId = plot.GroupId
+                        GroupId = plot.GroupPlots.FirstOrDefault()?.GroupId
                     });
                 }
 

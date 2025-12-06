@@ -62,7 +62,8 @@ public class GetAllMaterialByTypeQueryHandler : IRequestHandler<GetAllMaterialBy
                     Description = m.Description,
                     ImgUrls = m.imgUrls,
                     Manufacturer = m.Manufacturer,
-                    IsActive = m.IsActive
+                    IsActive = m.IsActive,
+                    IsPartition = m.IsPartition
                 })
                 .ToList();
 

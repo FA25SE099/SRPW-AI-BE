@@ -108,8 +108,10 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 var plot = plotsList.FirstOrDefault(p => p.Id == cultivation.PlotId);
                 if (plot == null) continue;
 
-                // Skip already grouped plots
-                if (plot.GroupId.HasValue)
+                // Skip plots already grouped for THIS SEASON
+                // Business rule: A plot can belong to multiple groups, but only one group per season
+                var isAlreadyGroupedForSeason = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
+                if (isAlreadyGroupedForSeason)
                     continue;
 
                 var coordinate = plot.Coordinate ?? (plot.Boundary != null ? plot.Boundary.Centroid : null);
@@ -129,7 +131,7 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
             {
                 return Result<FormGroupsResponse>.Failure(
                     "No eligible plots found for grouping. " +
-                    "Ensure plots have coordinates/boundaries and aren't already grouped.");
+                    "Ensure plots have coordinates/boundaries and aren't already grouped for this season.");
             }
 
             // Run grouping algorithm
@@ -199,10 +201,15 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 await _unitOfWork.Repository<Group>().AddAsync(group);
                 createdGroups.Add(group);
 
-                // Assign plots to group
+                // Assign plots to group using many-to-many relationship
                 foreach (var plotInfo in proposedGroup.Plots)
                 {
-                    plotInfo.Plot.GroupId = group.Id;
+                    var groupPlot = new GroupPlot
+                    {
+                        GroupId = group.Id,
+                        PlotId = plotInfo.Plot.Id
+                    };
+                    await _unitOfWork.Repository<GroupPlot>().AddAsync(groupPlot);
                 }
             }
 
@@ -234,7 +241,7 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 SeasonId = request.SeasonId,
                 Year = request.Year,
                 GroupsCreated = createdGroups.Count,
-                PlotsGrouped = createdGroups.Sum(g => g.Plots.Count),
+                PlotsGrouped = createdGroups.Sum(g => g.GroupPlots.Count),
                 UngroupedPlots = ungroupedPlots.Count,
                 Groups = createdGroups.Select(g => new CreatedGroupDto
                 {
@@ -247,10 +254,10 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                     PlantingWindowStart = g.PlantingDate!.Value, // TODO: store actual window
                     PlantingWindowEnd = g.PlantingDate!.Value,
                     Status = g.Status.ToString(),
-                    PlotCount = g.Plots.Count,
+                    PlotCount = g.GroupPlots.Count,
                     TotalArea = g.TotalArea!.Value,
                     GroupBoundaryWkt = g.Area != null ? _wktWriter.Write(g.Area) : null,
-                    PlotIds = g.Plots.Select(p => p.Id).ToList()
+                    PlotIds = g.GroupPlots.Select(gp => gp.PlotId).ToList()
                 }).ToList(),
                 UngroupedPlotIds = ungroupedPlots.Select(u => u.Plot.Plot.Id).ToList(),
                 Warnings = warnings

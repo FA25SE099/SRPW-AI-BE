@@ -85,8 +85,7 @@ public class ViewGroupBySeasonQueryHandler
 
             foreach (var group in groups)
             {
-                var plots = await _unitOfWork.Repository<Plot>()
-                    .ListAsync(p => p.GroupId == group.Id);
+                var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken);
                 var plotsList = plots.ToList();
 
                 var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
@@ -158,7 +157,7 @@ public class ViewGroupBySeasonQueryHandler
                         : null,
                     
                     Economics = (isPastSeason || currentState == GroupState.Completed) && plansList.Any()
-                        ? await CalculateEconomicOverview(group.Id, activePlan ?? plansList.First())
+                        ? await CalculateEconomicOverview(group.Id, activePlan ?? plansList.First(), cancellationToken)
                         : null
                 };
 
@@ -679,12 +678,14 @@ public class ViewGroupBySeasonQueryHandler
 
     #region Economic Overview (Lightweight)
 
-    private async Task<EconomicOverview> CalculateEconomicOverview(Guid groupId, ProductionPlan plan)
+    private async Task<EconomicOverview> CalculateEconomicOverview(Guid groupId, ProductionPlan plan, CancellationToken cancellationToken)
     {
-        // Load plot cultivations for this group
+        // Load plot cultivations for this group using many-to-many relationship
+        var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(groupId, cancellationToken);
+        var plotIds = plots.Select(p => p.Id).ToList();
         var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
             .ListAsync(
-                pc => pc.Plot.GroupId == groupId,
+                pc => plotIds.Contains(pc.PlotId),
                 includeProperties: q => q
                     .Include(pc => pc.CultivationTasks)
                     .Include(pc => pc.Plot));

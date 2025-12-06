@@ -72,8 +72,7 @@ public class GetMyGroupThisSeasonQueryHandler
                     $"No group assigned to this supervisor for season '{targetSeason.SeasonName}'");
             }
 
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => p.GroupId == group.Id);
+            var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken);
 
             var plotsList = plots.ToList();
 

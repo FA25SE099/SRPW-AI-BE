@@ -34,7 +34,7 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
             var group = await _unitOfWork.Repository<Group>()
                 .FindAsync(
                     match: g => g.Id == request.GroupId, // ĐÃ SỬA LỖI: filter -> match
-                    includeProperties: q => q.Include(g => g.Plots).ThenInclude(p => p.PlotCultivations)
+                    includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.PlotCultivations)
                 );
 
             if (group == null)
@@ -42,7 +42,7 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                 return Result<List<UavPlotReadinessResponse>>.Failure("Group not found.", "GroupNotFound");
             }
             
-            var allPlotsInGroup = group.Plots.ToList();
+            var allPlotsInGroup = group.GroupPlots.Select(gp => gp.Plot).ToList();
             var allPlotIdsInGroup = allPlotsInGroup.Select(p => p.Id).ToList();
 
             // Lấy PlotCultivation IDs đang hoạt động trong Group này

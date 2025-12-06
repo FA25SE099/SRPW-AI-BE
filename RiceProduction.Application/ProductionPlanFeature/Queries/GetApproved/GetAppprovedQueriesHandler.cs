@@ -31,7 +31,7 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved
                 _logger.LogInformation("Starting to retrieve approved production plans with filters: GroupId={GroupId}, SupervisorId={SupervisorId}, FromDate={FromDate}, ToDate={ToDate}",
                      request.GroupId, request.SupervisorId, request.FromDate, request.ToDate);
                 var query = _unitOfWork.Repository<ProductionPlan>().GetQueryable()
-                     .Include(g => g.Group).ThenInclude(p => p.Plots)
+                     .Include(g => g.Group).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Plot)
                      .Include(g => g.Group).ThenInclude(r => r.RiceVariety)
                      .Include(g => g.Group).ThenInclude(c => c.Cluster)
                      .Include(g => g.Group).ThenInclude(s => s.Supervisor)
