@@ -25,14 +25,12 @@ public class ThresholdConfiguration : IEntityTypeConfiguration<Threshold>
         builder.Property(e => e.PestSeverityLevel)
             .HasMaxLength(50);
 
-        builder.Property(e => e.PestAreaThresholdPercent)
-            .HasColumnType("decimal(5,2)");
+        builder.Property(e => e.PestAreaThresholdPercent);
 
         builder.Property(e => e.PestPopulationThreshold)
             .HasMaxLength(200);
 
-        builder.Property(e => e.PestDamageThresholdPercent)
-            .HasColumnType("decimal(5,2)");
+        builder.Property(e => e.PestDamageThresholdPercent);
 
         builder.Property(e => e.PestGrowthStage)
             .HasMaxLength(100);
@@ -48,14 +46,13 @@ public class ThresholdConfiguration : IEntityTypeConfiguration<Threshold>
         builder.Property(e => e.WeatherIntensityLevel)
             .HasMaxLength(50);
 
-        builder.Property(e => e.WeatherMeasurementThreshold)
-            .HasColumnType("decimal(10,2)");
+        builder.Property(e => e.WeatherMeasurementThreshold);
 
         builder.Property(e => e.WeatherMeasurementUnit)
             .HasMaxLength(50);
 
         builder.Property(e => e.WeatherThresholdOperator)
-            .HasMaxLength(10);
+            .HasMaxLength(100);
 
         builder.Property(e => e.WeatherDurationDaysThreshold);
 

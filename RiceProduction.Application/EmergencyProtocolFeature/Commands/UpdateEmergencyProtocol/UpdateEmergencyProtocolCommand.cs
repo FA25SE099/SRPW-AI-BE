@@ -18,13 +18,11 @@ public class UpdateEmergencyProtocolCommand : IRequest<Result<Guid>>
     [Required]
     public Guid CategoryId { get; set; }
 
-    [Required]
     [MaxLength(255)]
     public string PlanName { get; set; } = string.Empty;
 
     public string? Description { get; set; }
 
-    [Required]
     public int TotalDurationDays { get; set; }
 
     public bool IsActive { get; set; } = true;

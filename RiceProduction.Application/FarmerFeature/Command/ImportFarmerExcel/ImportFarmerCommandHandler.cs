@@ -11,7 +11,11 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
         private readonly IFarmerExcel _farmerExcel;
         private readonly ILogger<ImportFarmerCommandHandler> _logger;
         private readonly IMediator _mediator;
-        public ImportFarmerCommandHandler(IFarmerExcel farmerExcel, ILogger<ImportFarmerCommandHandler> logger, IMediator mediator)
+        
+        public ImportFarmerCommandHandler(
+            IFarmerExcel farmerExcel, 
+            ILogger<ImportFarmerCommandHandler> logger, 
+            IMediator mediator)
         {
             _farmerExcel = farmerExcel;
             _logger = logger;
@@ -48,6 +52,19 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
                 result.SuccessCount,
                 result.FailureCount
             );
+            
+            // Publish event for async email sending (non-blocking)
+            if (result.SuccessCount > 0 && result.ImportedFarmers.Any())
+            {
+                await _mediator.Publish(new FarmersImportedEvent
+                {
+                    ImportedFarmers = result.ImportedFarmers,
+                    ImportedAt = DateTime.UtcNow
+                }, cancellationToken);
+                
+                var emailCount = result.ImportedFarmers.Count(f => !string.IsNullOrWhiteSpace(f.Email));
+                _logger.LogInformation("Published farmer import event for {EmailCount} email notifications", emailCount);
+            }
             
             // Note: Plots are now imported separately using the plot import template
             // No need to publish event for polygon assignment here

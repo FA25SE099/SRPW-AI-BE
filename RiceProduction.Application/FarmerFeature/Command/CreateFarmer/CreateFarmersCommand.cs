@@ -25,6 +25,9 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
         [StringLength(50, ErrorMessage = "Farm code cannot exceed 50 characters")]
         public string? FarmCode { get; set; }
 
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string? Email { get; set; }
+        public Guid? ClusterManagerId { get; set; }
         public bool IsVerified { get; set; } = false;
     }
 }

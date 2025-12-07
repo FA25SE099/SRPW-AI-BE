@@ -5,15 +5,20 @@ using MiniExcelLibs;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
+using RiceProduction.Application.MaterialFeature.Commands.CreateMaterial;
+using RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial;
 using RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMaterialExcel;
-using RiceProduction.Application.MaterialFeature.Commands.CreateMaterial;
 using RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial;
-using RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial;
+using RiceProduction.Application.MaterialFeature.Queries.CalculateGroupMaterialCost;
+using RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
+using RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByPlotId;
+using RiceProduction.Application.MaterialFeature.Queries.CalculatePrice;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
+using RiceProduction.Application.MaterialFeature.Queries.GetMaterialById;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
@@ -32,19 +37,33 @@ public class MaterialController : ControllerBase
     }
 
     [HttpPost("get-all")]
-    public async Task<ActionResult<PagedResult<List<MaterialResponse>>>> AllMaterialPaging([FromForm] MaterialListRequest request)
+    public async Task<ActionResult<PagedResult<List<MaterialResponseForList>>>> AllMaterialPaging([FromForm] MaterialListRequest request)
     {
         var query = new GetAllMaterialByTypeQuery
         {
             CurrentPage = request.CurrentPage,
             PageSize = request.PageSize,
-            MaterialType = request.Type
+            MaterialType = request.Type,
+            PriceDateTime = request.PriceDateTime
         };
         var result = await _mediator.Send(query);
         if (!result.Succeeded)
         {
             return BadRequest(result);
         }
+        return Ok(result);
+    }
+    [HttpGet("by-id")]
+    public async Task<IActionResult> GetMaterialById([FromQuery] Guid id)
+    {
+        var query = new GetMaterialByIdQuery { MaterialId = id };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
         return Ok(result);
     }
     [HttpPost("download-excel")]
@@ -156,5 +175,53 @@ public class MaterialController : ControllerBase
         }
         return Ok(result);
     }
+    
+    [HttpGet("calculate-price")]
+    public async Task<IActionResult> CalculatePrice([FromQuery] CalculateMaterialPriceQuery query)
+    {
+        var result = await _mediator.Send(query);
 
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    [HttpPost("calculate-group-material-cost")]
+    public async Task<IActionResult> CalculateGroupMaterialCost([FromBody] CalculateGroupMaterialCostQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    [HttpPost("calculate-materials-cost-by-area")]
+    public async Task<IActionResult> CalculateMaterialsCostByArea([FromBody] CalculateMaterialsCostByAreaQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    [HttpPost("calculate-materials-cost-by-plot-id")]
+    public async Task<IActionResult> CalculateMaterialsCostByPlotId([FromBody] CalculateMaterialsCostByPlotIdQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
 }

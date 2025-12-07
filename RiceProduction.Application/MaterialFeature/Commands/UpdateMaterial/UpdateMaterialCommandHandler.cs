@@ -38,8 +38,10 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
                 material.AmmountPerMaterial = request.AmmountPerMaterial;
                 material.Unit = request.Unit;
                 material.Description = request.Description;
+                material.imgUrls = request.imgUrls;
                 material.Manufacturer = request.Manufacturer;
                 material.IsActive = request.IsActive;
+                material.IsPartition = request.IsPartition;
 
                 materialRepo.Update(material);
 
@@ -95,4 +97,3 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
         }
     }
 }
-

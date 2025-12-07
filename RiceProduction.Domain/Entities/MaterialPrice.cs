@@ -1,5 +1,6 @@
 ﻿namespace RiceProduction.Domain.Entities;
-
+//status: về mặt ngữ nghĩa flow thì giá có đang có hiệu lực hay
+//không tùy thuộc vào khoảng thời gian ValidFrom và ValidTo
 public class MaterialPrice : BaseAuditableEntity
 {
     [Required]

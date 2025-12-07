@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Is Active: true false, về mặt thời gian: xét theo thời gian thì có active hay không
 public class Material : BaseAuditableEntity
 {
     [Required]
@@ -16,11 +16,13 @@ public class Material : BaseAuditableEntity
     [MaxLength(50)]
     public string Unit { get; set; } = string.Empty;//don vi tinh vd: ml, kg
     public string? Description { get; set; }
-
+    public List<string>? imgUrls { get; set; }
     [MaxLength(255)]
     public string? Manufacturer { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsPartition { get; set; } = false;
 
     // Navigation properties
     public ICollection<MaterialPrice> MaterialPrices { get; set; } = new List<MaterialPrice>();

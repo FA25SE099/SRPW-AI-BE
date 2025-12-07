@@ -1,5 +1,5 @@
-namespace RiceProduction.Domain.Entities;
-
+﻿namespace RiceProduction.Domain.Entities;
+//status: không có trạng thái
 public class StandardPlanTaskMaterial : BaseAuditableEntity
 {
     [Required]

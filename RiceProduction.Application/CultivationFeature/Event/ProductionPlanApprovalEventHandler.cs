@@ -58,14 +58,12 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 return;
             }
             
-            //Populate active version lookup for each PlotCultivation
             var plotCultivationIds = plotCultivations.Select(pc => pc.Id).ToList();
             var activeVersions = await _versionRepo.ListAsync(
                 filter: v => plotCultivationIds.Contains(v.PlotCultivationId) && v.IsActive
             );
             var versionLookup = activeVersions.ToDictionary(v => v.PlotCultivationId, v => v.Id);
             
-            //Begin build
             var cultivationTasks = new List<CultivationTask>();
             var cultivationTaskMaterials = new List<CultivationTaskMaterial>();
 
@@ -81,7 +79,6 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                             continue;
                         }
 
-                        // Get the active version for this PlotCultivation
                         versionLookup.TryGetValue(plotCultivation.Id, out var versionId);
                         
                         if (versionId == Guid.Empty)
@@ -151,7 +148,6 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                            && (!mp.ValidTo.HasValue || mp.ValidTo > now),
                 orderBy: q => q.OrderByDescending(mp => mp.ValidFrom)
                 );
-            //After order price by older, get the first for the current available prices
             var priceDict = currentPrices
                 .GroupBy(p => p.MaterialId)
                 .ToDictionary(g => g.Key, g => g.First()); 
@@ -173,7 +169,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             Description = planTask.Description,
             TaskType = planTask.TaskType,
             ScheduledEndDate = planTask.ScheduledEndDate,
-            Status = TaskStatus.InProgress,
+            Status = TaskStatus.Approved,
             ExecutionOrder = planTask.SequenceOrder,
             IsContingency = false,
             ActualMaterialCost = 0,
@@ -233,7 +229,11 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             {
                 await _materialTaskRepo.AddRangeAsync(materials);
             }
-            await _taskRepo.SaveChangesAsync();
+        if (tasks.FirstOrDefault() is CultivationTask firstTask)
+        {
+            firstTask.Status = TaskStatus.InProgress; 
+        }
+        await _taskRepo.SaveChangesAsync();
         }
     }
 

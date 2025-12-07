@@ -73,25 +73,20 @@ public class GeneratePlanDraftQueryHandler :
 
             var priceReferenceDate = DateTime.SpecifyKind(request.BasePlantingDate.Date, DateTimeKind.Utc);
 
-            // Fetch all potential prices valid up to the reference date
             var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
                 filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate
             );
 
-            // Group by MaterialId and select the price with the latest ValidFrom date
             var materialPriceMap = potentialPrices
                 .GroupBy(p => p.MaterialId)
                 .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
                 .ToDictionary(p => p.MaterialId, p => new { p.PricePerMaterial, p.ValidFrom });
-
-            // Fetch Material Details (AmmountPerMaterial) separately to map them correctly in the loop
-            // FIX: Dùng Distinct() trên Material object trước khi tạo Dictionary để tránh trùng khóa.
             var materialDetailsMap = standardPlan.StandardPlanStages
                 .SelectMany(s => s.StandardPlanTasks)
                 .SelectMany(t => t.StandardPlanTaskMaterials)
-                .Select(m => m.Material) // Lấy Material object
-                .Distinct() // Chỉ lấy các Material duy nhất
-                .ToDictionary(m => m.Id, m => m); // Key là MaterialId, Value là Material Entity
+                .Select(m => m.Material) 
+                .Distinct()
+                .ToDictionary(m => m.Id, m => m); 
             
             // --- 4. Build the Draft Response Structure and Calculate Costs ---
             
@@ -115,7 +110,6 @@ public class GeneratePlanDraftQueryHandler :
             {
                 var stageResponse = new ProductionStageResponse
                 {
-                    // Lấy PlanName từ StandardPlan gốc (PlanName)
                     StageName = standardPlan.PlanName, 
                     SequenceOrder = standardStage.SequenceOrder,
                     Description = standardStage.Notes,
@@ -124,7 +118,6 @@ public class GeneratePlanDraftQueryHandler :
                 
                 var tasksResponse = new List<ProductionPlanTaskResponse>();
 
-                // Loop through Standard Tasks
                 foreach (var standardTask in standardStage.StandardPlanTasks.OrderBy(t => t.DaysAfter))
                 {
                     decimal taskTotalEstimatedCost = 0;
@@ -163,7 +156,7 @@ public class GeneratePlanDraftQueryHandler :
                         if (unitPrice == 0M || priceValidFrom == null)
                         {
                             materialPriceWarning = $"No price available for '{materialDetail.Name}'";
-                            priceWarnings.Add($"⚠️ {materialDetail.Name}: No price data available for planting date {request.BasePlantingDate:yyyy-MM-dd}");
+                            priceWarnings.Add($" {materialDetail.Name}: No price data available for planting date {request.BasePlantingDate:yyyy-MM-dd}");
                             _logger.LogWarning("Price not found for Material ID {MId} on date {Date}.", standardMaterial.MaterialId, priceReferenceDate.ToShortDateString());
                         }
                         else
@@ -173,21 +166,20 @@ public class GeneratePlanDraftQueryHandler :
                             if (priceAge > 90)
                             {
                                 materialPriceWarning = $"Price is {priceAge} days old (from {priceValidFrom.Value:yyyy-MM-dd})";
-                                priceWarnings.Add($"⚠️ {materialDetail.Name}: Price is outdated ({priceAge} days old, last updated {priceValidFrom.Value:yyyy-MM-dd})");
+                                priceWarnings.Add($" {materialDetail.Name}: Price is outdated ({priceAge} days old, last updated {priceValidFrom.Value:yyyy-MM-dd})");
                                 _logger.LogWarning("Price for Material '{Material}' is {Days} days old", materialDetail.Name, priceAge);
                             }
                             // Check if price is for a future date (shouldn't happen, but good to check)
                             else if (priceValidFrom.Value > priceReferenceDate)
                             {
                                 materialPriceWarning = $"Price date is in the future ({priceValidFrom.Value:yyyy-MM-dd})";
-                                priceWarnings.Add($"⚠️ {materialDetail.Name}: Price valid from date is in the future");
+                                priceWarnings.Add($" {materialDetail.Name}: Price valid from date is in the future");
                             }
                         }
 
                         // Tính toán chi phí:
                         decimal amountPerUnit = materialDetail.AmmountPerMaterial.GetValueOrDefault(1M);
-                        
-                        // PricePerHa = (QuantityPerHa / AmmountPerMaterial) * PricePerMaterial
+
                         decimal pricePerHa = Math.Ceiling(standardMaterial.QuantityPerHa / amountPerUnit) * unitPrice;
                         
                         decimal estimatedAmount = pricePerHa * effectiveTotalArea;

@@ -29,6 +29,7 @@ public class AuthController : ControllerBase
         var command = new LoginCommand
         {
             Email = request.Email,
+            PhoneNumber = request.PhoneNumber,
             Password = request.Password,
             RememberMe = request.RememberMe ?? true
         };

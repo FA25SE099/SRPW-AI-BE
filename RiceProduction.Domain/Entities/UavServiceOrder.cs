@@ -1,7 +1,8 @@
-using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
+﻿using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Status: Draft
+//trạng thái kiểu khác là bắt đầu khi nào và kết thúc khi nào bởi ai
 public class UavServiceOrder : BaseAuditableEntity
 {
     [Required]
@@ -62,7 +63,8 @@ public class UavServiceOrder : BaseAuditableEntity
     public UavVendor? UavVendor { get; set; }
 
     [ForeignKey("CreatedBy")]
-    public Supervisor? Creator { get; set; }
+    public ClusterManager? Creator { get; set; }
+    public ICollection<UavOrderPlotAssignment> PlotAssignments { get; set; } = new List<UavOrderPlotAssignment>();
 
     public ICollection<UavInvoice> UavInvoices { get; set; } = new List<UavInvoice>();
 }

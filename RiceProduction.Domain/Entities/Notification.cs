@@ -1,7 +1,7 @@
 using RiceProduction.Domain.Common;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Is Unread: true false
 public class Notification : BaseAuditableEntity
 {
     public string RecipientId { get; set; } = string.Empty;

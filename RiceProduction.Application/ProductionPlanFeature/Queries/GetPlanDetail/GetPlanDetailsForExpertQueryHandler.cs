@@ -26,13 +26,12 @@ public class GetPlanDetailsForExpertQueryHandler :
     {
         try
         {
-            // Load Plan with all required relationships (deep includes)
             var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
                 match: p => p.Id == request.PlanId,
                 includeProperties: q => q
                     .Include(p => p.Group).ThenInclude(g => g!.Cluster)
-                    .Include(p => p.Group).ThenInclude(g => g!.Plots) // Load Plots
-                        .ThenInclude(plot => plot.Farmer) // Include Farmer for Plot detail
+                    .Include(p => p.Group).ThenInclude(g => g!.Plots) 
+                        .ThenInclude(plot => plot.Farmer)
                     .Include(p => p.CurrentProductionStages)
                         .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
                             .ThenInclude(t => t.ProductionPlanTaskMaterials)
@@ -86,7 +85,22 @@ public class GetPlanDetailsForExpertQueryHandler :
                             EstimatedAmount = m.EstimatedAmount.GetValueOrDefault(0M)
                         }).ToList();
 
-                        estimatedTotalPlanCost += t.EstimatedMaterialCost;
+                        // Calculate material cost from detail to verify stored value
+                        decimal calculatedMaterialCost = t.ProductionPlanTaskMaterials
+                            .Sum(m => m.EstimatedAmount.GetValueOrDefault(0M));
+
+                        // Verify stored cost matches calculated cost
+                        if (Math.Abs(t.EstimatedMaterialCost - calculatedMaterialCost) > 0.01M)
+                        {
+                            _logger.LogWarning(
+                                "Material cost mismatch for task {TaskId} '{TaskName}': " +
+                                "Stored={StoredCost:C}, Calculated={CalculatedCost:C}",
+                                t.Id, t.TaskName, t.EstimatedMaterialCost, calculatedMaterialCost);
+                        }
+
+                        // Use stored value with null safety
+                        decimal taskMaterialCost = t.EstimatedMaterialCost;
+                        estimatedTotalPlanCost += taskMaterialCost;
 
                         return new ExpertPlanTaskResponse
                         {
@@ -97,7 +111,7 @@ public class GetPlanDetailsForExpertQueryHandler :
                             ScheduledDate = t.ScheduledDate,
                             Priority = t.Priority,
                             SequenceOrder = t.SequenceOrder,
-                            EstimatedMaterialCost = t.EstimatedMaterialCost,
+                            EstimatedMaterialCost = taskMaterialCost,
                             Materials = materialsResponse
                         };
                     }).ToList();
@@ -112,6 +126,12 @@ public class GetPlanDetailsForExpertQueryHandler :
                         Tasks = tasksResponse
                     };
                 }).ToList();
+
+            // Log cost calculation summary
+            _logger.LogInformation(
+                "Plan {PlanId} cost calculation: Total={TotalCost:C}, Area={Area}ha, Stages={StageCount}, Tasks={TaskCount}",
+                plan.Id, estimatedTotalPlanCost, plan.TotalArea, 
+                stagesResponse.Count, stagesResponse.Sum(s => s.Tasks.Count));
 
             var response = new ExpertPlanDetailResponse
             {

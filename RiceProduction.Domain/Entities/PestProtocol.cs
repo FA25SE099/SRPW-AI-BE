@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Is Active: true false
 public class PestProtocol : BaseAuditableEntity
 {
     [Required]

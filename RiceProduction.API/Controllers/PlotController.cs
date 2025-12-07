@@ -5,6 +5,8 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequests;
 using RiceProduction.Application.Common.Models.Response.PlotResponse;
+using RiceProduction.Application.PlotFeature.Commands.CreatePlot;
+using RiceProduction.Application.PlotFeature.Commands.CreatePlots;
 using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
@@ -17,6 +19,7 @@ using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
 using RiceProduction.Application.PlotFeature.Queries.GetById;
 using RiceProduction.Application.PlotFeature.Queries.GetDetail;
 using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
+using RiceProduction.Application.PlotFeature.Queries.GetPlotsAwaitingPolygon;
 using RiceProduction.Domain.Entities;
 using static RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate.UpdateCoordinateCommand;
 
@@ -71,13 +74,15 @@ namespace RiceProduction.API.Controllers
         public async Task<ActionResult<PagedResult<PlotDTO>>> GetAllPlots(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 10,
-            [FromQuery] string? searchTerm = null)
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] Guid? clusterManagerId = null)
         {
             var query = new GetAllPlotQueries
             {
                 PageNumber = pageNumber,
                 PageSize = pageSize,
-                SearchTerm = searchTerm
+                SearchTerm = searchTerm,
+                ClusterManagerId = clusterManagerId
             };
             var result = await _mediator.Send(query);
 
@@ -88,6 +93,68 @@ namespace RiceProduction.API.Controllers
             return Ok(result);
         }
         
+        [HttpPost]
+        [ProducesResponseType(typeof(Result<PlotResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreatePlot([FromBody] CreatePlotCommand command)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Create plot request received for farmer {FarmerId}: SoThua={SoThua}, SoTo={SoTo}",
+                    command.FarmerId, command.SoThua, command.SoTo);
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to create plot: {Errors}", 
+                        string.Join(", ", result.Errors ?? new string[0]));
+                    return BadRequest(result);
+                }
+
+                _logger.LogInformation("Plot created successfully: {PlotId}", result.Data?.PlotId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while creating plot");
+                return StatusCode(500, Result<PlotResponse>.Failure("An error occurred while processing your request"));
+            }
+        }
+
+        [HttpPost("bulk")]
+        [ProducesResponseType(typeof(Result<List<PlotResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CreatePlots([FromBody] CreatePlotsCommand command)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Bulk plot creation request received for {Count} plots",
+                    command.Plots?.Count ?? 0);
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to create plots in bulk: {Errors}", 
+                        string.Join(", ", result.Errors ?? new string[0]));
+                    return BadRequest(result);
+                }
+
+                _logger.LogInformation(
+                    "Bulk plot creation successful: {Count} plots created",
+                    result.Data?.Count ?? 0);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while creating plots in bulk");
+                return StatusCode(500, Result<List<PlotResponse>>.Failure("An error occurred while processing your request"));
+            }
+        }
+
         [HttpPut]
         public async Task<ActionResult<Result<UpdatePlotRequest>>> EditPlot([FromBody] UpdatePlotRequest input)
         {
@@ -147,6 +214,46 @@ namespace RiceProduction.API.Controllers
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to get plots out of season: {Message}", result.Message);
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        [HttpGet("awaiting-polygon")]
+        [ProducesResponseType(typeof(PagedResult<IEnumerable<PlotAwaitingPolygonDto>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetPlotsAwaitingPolygon(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] Guid? clusterId = null,
+            [FromQuery] Guid? clusterManagerId = null,
+            [FromQuery] Guid? supervisorId = null,
+            [FromQuery] bool? hasActiveTask = null,
+            [FromQuery] string? taskStatus = null,
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] string? sortBy = "DaysWaiting",
+            [FromQuery] bool descending = true)
+        {
+            var query = new GetPlotsAwaitingPolygonQuery
+            {
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                ClusterId = clusterId,
+                ClusterManagerId = clusterManagerId,
+                SupervisorId = supervisorId,
+                HasActiveTask = hasActiveTask,
+                TaskStatus = taskStatus,
+                SearchTerm = searchTerm,
+                SortBy = sortBy,
+                Descending = descending
+            };
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to get plots awaiting polygon: {Message}", result.Message);
                 return BadRequest(result);
             }
 

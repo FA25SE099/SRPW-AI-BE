@@ -19,7 +19,26 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, Result<LoginRes
 
     public async Task<Result<LoginResponse>> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
-        var result = await _identityService.LoginAsync(request.Email, request.Password);
+        // Determine if using email or phone number
+        string identifier;
+        bool isEmail;
+        
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            identifier = request.Email;
+            isEmail = true;
+        }
+        else if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
+        {
+            identifier = request.PhoneNumber;
+            isEmail = false;
+        }
+        else
+        {
+            return Result<LoginResponse>.Failure(new[] { "Either email or phone number must be provided." }, "Login failed");
+        }
+        
+        var result = await _identityService.LoginAsync(identifier, request.Password, isEmail);
 
         if (!result.Succeeded)
         {

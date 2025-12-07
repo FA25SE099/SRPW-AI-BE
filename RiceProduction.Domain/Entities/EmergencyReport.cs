@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: theo alert status: Pending, Resolved
 public class EmergencyReport : BaseAuditableEntity
 {
     [Required]

@@ -12,6 +12,8 @@ using RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId;
 using RiceProduction.Application.GroupFeature.Queries.PreviewGroups;
 using RiceProduction.Application.GroupFeature.Commands.FormGroups;
 using RiceProduction.Application.GroupFeature.Commands.CreateGroupManually;
+using RiceProduction.Application.GroupFeature.Queries.GetGroupByClusterManager;
+using RiceProduction.Application.Common.Interfaces;
 
 namespace RiceProduction.API.Controllers;
 
@@ -20,10 +22,12 @@ namespace RiceProduction.API.Controllers;
 public class GroupController : Controller
 {
     private readonly IMediator _mediator;
+    private readonly IUser _currentUser;
 
-    public GroupController(IMediator mediator)
+    public GroupController(IMediator mediator, IUser currentUser)
     {
         _mediator = mediator;
+        _currentUser = currentUser;
     }
 
     [HttpPost()]
@@ -158,6 +162,26 @@ public class GroupController : Controller
         {
             return BadRequest(result);
         }
+        return Ok(result);
+    }
+    [HttpGet("my-groups")]
+    public async Task<IActionResult> GetManagedGroups([FromQuery] GetGroupsByManagerQuery query)
+    {
+        var managerId = _currentUser.Id;
+        if (managerId == null)
+        {
+            return Unauthorized(PagedResult<List<ClusterManagerGroupResponse>>.Failure("Cluster Manager authentication required.", "Unauthorized"));
+        }
+        
+        query.ClusterManagerId = managerId.Value;
+
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
         return Ok(result);
     }
 

@@ -1,5 +1,6 @@
 ﻿namespace RiceProduction.Domain.Entities;
-
+//status: về mặt ngữ nghĩa thì không có status, nhưng có được gửi bởi ai và được ai xác nhận,
+//gían tiếp trạng thái là đã được xác nhận hay chưa được xác nhận
 public class FarmLog : BaseAuditableEntity
 {
     [Required]

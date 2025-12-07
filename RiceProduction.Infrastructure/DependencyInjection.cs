@@ -19,6 +19,7 @@ using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
+using RiceProduction.Infrastructure.Implementation.NotificationImplementation.Infobip;
 using RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;
 using RiceProduction.Infrastructure.Implementation.StorageImplementation.Azure;
 using RiceProduction.Infrastructure.Implementation.Zalo;
@@ -108,5 +109,11 @@ public static class DependencyInjection
         builder.Services.AddSingleton<BlobServiceClient>(
     new BlobServiceClient(builder.Configuration["AzureStorage:ConnectionString"]));
         builder.Services.AddScoped<IStorageService, AzureStorageService>();
+        // Add this where services are registered
+        //builder.Services.AddSingleton<ISmSService>(sp =>
+        //    new SpeedSMSAPI("S-Kyl0ISrgtM7EArMd8Rfonn5hh-eKl8"));
+        builder.Services.AddSingleton<ISmSService>(sp =>
+    new InfobipSmsAPI("21767813b128cc6a42da45672e2926f9-76a6192c-c30d-462f-8a37-abd2797742ac", "https://2m6wzp.api.infobip.com"));
+
     }
 }

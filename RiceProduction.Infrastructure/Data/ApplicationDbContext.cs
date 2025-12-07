@@ -40,6 +40,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     // Material management
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<MaterialPrice> MaterialPrices => Set<MaterialPrice>();
+    public DbSet<UavOrderPlotAssignment> UavOrderPlotAssignments => Set<UavOrderPlotAssignment>();
 
     // Planning entities
     public DbSet<StandardPlan> StandardPlans => Set<StandardPlan>();
@@ -73,9 +74,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     
     // Assignments
     public DbSet<SupervisorFarmerAssignment> SupervisorFarmerAssignments => Set<SupervisorFarmerAssignment>();
+
+    // Emergencies
+    public DbSet<EmergencyProtocol> EmergencyProtocols => Set<EmergencyProtocol>();
+    public DbSet<PestProtocol> PestProtocols => Set<PestProtocol>();
+    public DbSet<WeatherProtocol> WeatherProtocols => Set<WeatherProtocol>();
+    public DbSet<Threshold> Thresholds => Set<Threshold>();
+    public DbSet<CultivationVersion> CultivationVersions => Set<CultivationVersion>();
+
     // Emails
     public DbSet<EmailRequest> EmailRequests => Set<EmailRequest>();
     public DbSet<EmailBatch> EmailBatches => Set<EmailBatch>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

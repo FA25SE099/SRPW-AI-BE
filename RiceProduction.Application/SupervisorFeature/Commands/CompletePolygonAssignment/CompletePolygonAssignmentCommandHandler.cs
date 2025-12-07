@@ -71,11 +71,35 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
 
                 // Set SRID to 4326 (WGS84)
                 polygon.SRID = 4326;
+
+                // Validate polygon geometry
+                if (!polygon.IsValid)
+                {
+                    return Result<bool>.Failure("Invalid polygon geometry. Polygon is not geometrically valid.");
+                }
+
+                if (polygon.IsEmpty)
+                {
+                    return Result<bool>.Failure("Invalid polygon geometry. Polygon is empty.");
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error parsing polygon GeoJSON");
                 return Result<bool>.Failure($"Invalid GeoJSON format: {ex.Message}");
+            }
+
+            // Server-side area validation with 10% tolerance
+            var drawnAreaHa = CalculateAreaInHectares(polygon);
+            var plotAreaHa = targetPlot.Area;
+            var difference = Math.Abs(drawnAreaHa - plotAreaHa);
+            var differencePercent = plotAreaHa > 0 ? (difference / plotAreaHa) * 100 : 0;
+            var tolerancePercent = 10; // 10% tolerance
+
+            if (differencePercent > tolerancePercent)
+            {
+                return Result<bool>.Failure(
+                    $"Polygon area validation failed. Drawn area ({Math.Round(drawnAreaHa, 2)} ha) differs by {Math.Round(differencePercent, 2)}% from registered plot area ({Math.Round(plotAreaHa, 2)} ha). Maximum allowed difference is {tolerancePercent}%.");
             }
 
             // Update the plot with the polygon boundary
@@ -114,6 +138,25 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
             _logger.LogError(ex, "Error completing polygon assignment for task {TaskId}", request.TaskId);
             return Result<bool>.Failure($"Error completing task: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Calculate area in hectares from a polygon with SRID 4326 (WGS84)
+    /// </summary>
+    private decimal CalculateAreaInHectares(Polygon polygon)
+    {
+        // For WGS84 (SRID 4326), the area is in square degrees
+        // We need to convert to square meters, then to hectares
+        // Using approximate conversion: 1 degree ≈ 111,319.9 meters at equator
+        var areaInSquareDegrees = polygon.Area;
+        
+        // Convert to square meters (approximation for small areas)
+        var areaInSquareMeters = areaInSquareDegrees * 111319.9 * 111319.9;
+        
+        // Convert to hectares (1 hectare = 10,000 square meters)
+        var areaInHectares = areaInSquareMeters / 10000;
+
+        return (decimal)areaInHectares;
     }
 }
 

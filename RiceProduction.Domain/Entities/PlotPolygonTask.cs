@@ -1,9 +1,11 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using RiceProduction.Domain.Common;
 
 namespace RiceProduction.Domain.Entities;
-
+// status: Pending, InProgress, Completed, Cancelled
+// status loại 2: đã được phân công cho supervisor
+// và cluster manager hay chưa dựa theo atribute được gán hay chưa
 /// <summary>
 /// Administrative task for supervisors to assign polygon boundaries to plots
 /// </summary>

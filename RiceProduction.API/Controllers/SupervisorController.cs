@@ -13,6 +13,7 @@ using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSeason;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPlanDetails;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorAvailableSeasons;
+using RiceProduction.Application.SupervisorFeature.Queries.ValidatePolygonArea;
 using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
 using System.Security.Claims;
@@ -98,6 +99,31 @@ public class SupervisorController : Controller
         {
             SupervisorId = supervisorId,
             Status = status
+        };
+
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Validate polygon area against plot's registered area
+    /// </summary>
+    [HttpPost("polygon/validate-area")]
+    [Authorize(Roles = "Supervisor")]
+    public async Task<ActionResult<Result<PolygonValidationResponse>>> ValidatePolygonArea(
+        [FromBody] ValidatePolygonAreaRequest request)
+    {
+        var query = new ValidatePolygonAreaQuery
+        {
+            PlotId = request.PlotId,
+            PolygonGeoJson = request.PolygonGeoJson,
+            TolerancePercent = request.TolerancePercent ?? 10 // Default 10%
         };
 
         var result = await _mediator.Send(query);
@@ -205,10 +231,6 @@ public class SupervisorController : Controller
         return Ok(result);
     }
 
-    /// <summary>
-    /// Get list of available seasons for dropdown selector
-    /// Returns all season+year combinations where supervisor has a group
-    /// </summary>
     [HttpGet("available-seasons")]
     [Authorize(Roles = "Supervisor")]
     public async Task<ActionResult<Result<List<AvailableSeasonYearDto>>>> GetAvailableSeasons()
@@ -234,10 +256,6 @@ public class SupervisorController : Controller
         return Ok(result);
     }
 
-    /// <summary>
-    /// [DEPRECATED] Use /group-by-season instead
-    /// Get current group information
-    /// </summary>
     [HttpGet("my-group")]
     [Authorize(Roles = "Supervisor")]
     [Obsolete("Use /group-by-season endpoint instead")]
@@ -298,6 +316,13 @@ public class SupervisorController : Controller
 
         return Ok(result);
     }
+}
+
+public class ValidatePolygonAreaRequest
+{
+    public Guid PlotId { get; set; }
+    public string PolygonGeoJson { get; set; } = string.Empty;
+    public decimal? TolerancePercent { get; set; } // Optional, defaults to 10%
 }
 
 public class CompletePolygonRequest

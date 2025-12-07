@@ -1,6 +1,8 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Services;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport;
@@ -18,7 +20,7 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
-using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerImportTemplate;
+using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.API.Controllers
 {
@@ -28,10 +30,12 @@ namespace RiceProduction.API.Controllers
     {
         private readonly IMediator _mediator;
         private readonly ILogger<FarmerController> _logger;
-        public FarmerController(IMediator mediator, ILogger<FarmerController> logger)
+        private readonly IUser _currentUser;
+        public FarmerController(IMediator mediator, ILogger<FarmerController> logger, IUser currentUser)
         {
             _mediator = mediator;
             _logger = logger;
+            _currentUser = currentUser;
         }
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(FarmerDTO), StatusCodes.Status200OK)]
@@ -95,13 +99,15 @@ namespace RiceProduction.API.Controllers
          public async Task<ActionResult<PagedResult<IEnumerable<FarmerDTO>>>> GetAllFarmers(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 10,
-            [FromQuery] string? searchTerm = null)
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] Guid? clusterManagerId = null)
          {
             var query = new GetAllFarmerQueries
             {
                 PageNumber = pageNumber,
                 PageSize = pageSize,
-                SearchTerm = searchTerm
+                SearchTerm = searchTerm,
+                ClusterManagerId = clusterManagerId
             };
 
             var result = await _mediator.Send(query);
@@ -173,26 +179,62 @@ namespace RiceProduction.API.Controllers
             }
             return result.Data;
         }
-        [HttpPost]
-        [ProducesResponseType(typeof(FarmerDTO), StatusCodes.Status201Created)]
-        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmersCommand command)
+
+        [HttpGet("download-import-template")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> DownloadFarmerImportTemplate()
         {
-            try { 
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
+            try
             {
-                return BadRequest(result);
-            }
+                var query = new DownloadFarmerImportTemplateQuery();
+                var result = await _mediator.Send(query);
 
-            return Ok(result);
+                if (!result.Succeeded || result.Data == null)
+                {
+                    _logger.LogWarning("Failed to generate farmer import template: {Message}", result.Message);
+                    return BadRequest(new { message = result.Message ?? "Failed to generate template" });
+                }
 
+                return result.Data;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while creating farmer");
-                return StatusCode(500, "An error occurred while processing your request");
+                _logger.LogError(ex, "Error generating farmer import template");
+                return StatusCode(500, new { message = "An error occurred while generating the template" });
+            }
+        }
+
+        [HttpPost]
+        [ProducesResponseType(typeof(FarmerDTO), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmersCommand command)
+        {
+            try
+            {
+                // Ensure user is authenticated and has a valid Guid ID
+                if (!_currentUser.Id.HasValue)
+                {
+                    return Unauthorized("User is not authenticated or has no valid ID.");
+                }
+
+                command.ClusterManagerId = _currentUser.Id;
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);     
+                    }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while creating farmer by user {UserId}", _currentUser.Id);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "An error occurred while processing your request.");
             }
         }
 
@@ -231,13 +273,14 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<Result<Guid>>> CreateReport([FromBody] CreateEmergencyReportCommand command)
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<Result<Guid>>> CreateReport([FromForm] CreateEmergencyReportCommand command)
         {
             try
             {
                 _logger.LogInformation(
                     "Create emergency report request received: Type={AlertType}, Title={Title}, Severity={Severity}, Images={ImageCount}",
-                    command.AlertType, command.Title, command.Severity, command.ImageUrls?.Count ?? 0);
+                    command.AlertType, command.Title, command.Severity, command.Images?.Count ?? 0);
 
                 var result = await _mediator.Send(command);
 

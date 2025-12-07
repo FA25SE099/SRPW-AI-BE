@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmLogFeature.Commands.CreateFarmLog;
+using RiceProduction.Application.FarmLogFeature.Queries.GetByCultivationPlot;
 namespace RiceProduction.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
@@ -29,6 +30,18 @@ public class FarmlogController : ControllerBase
         command.FarmerId = farmerId.Value;
 
         var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    [HttpGet("farm-logs/by-cultivation")]
+    public async Task<IActionResult> GetFarmLogsByCultivation([FromQuery] GetFarmLogsByCultivationQuery query)
+    {
+        var result = await _mediator.Send(query);
 
         if (!result.Succeeded)
         {

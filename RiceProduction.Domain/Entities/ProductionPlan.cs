@@ -2,6 +2,8 @@
 
 namespace RiceProduction.Domain.Entities;
 
+//stauts: Pending Approval, Approved, Cancelled, Completed
+//InProgress (về lý thuyết thì có, nhưng có vẻ chưa apply vào code
 public class ProductionPlan : BaseAuditableEntity
 {
     public Guid? GroupId { get; set; }
@@ -17,7 +19,7 @@ public class ProductionPlan : BaseAuditableEntity
     public DateTime BasePlantingDate { get; set; }
 
     public TaskStatus Status { get; set; } = TaskStatus.Draft;
-
+    
     [Column(TypeName = "decimal(10,2)")]
     public decimal? TotalArea { get; set; }
 

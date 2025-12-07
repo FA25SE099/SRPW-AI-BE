@@ -1,7 +1,8 @@
-using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
+﻿using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Domain.Entities;
-
+//status: Draft (not reccommend), completed
+//mặt khác có type như task loại bón phân, gieo sạ,...  v.v
 public class ProductionPlanTask : BaseAuditableEntity
 {
     [Required]

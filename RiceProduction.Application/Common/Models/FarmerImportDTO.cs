@@ -8,16 +8,20 @@ namespace RiceProduction.Application.Common.Models
 {
     public class FarmerImportDto
     {
-        public Guid? Id { get; set; }
-        public string FullName { get; set; }
-        public string PhoneNumber { get; set; }
-        public string Address { get; set; }
-        public string FarmCode { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public string? FarmCode { get; set; }
         
         /// <summary>
         /// Number of plots the farmer will have - used to generate plot import template
         /// </summary>
         public int? NumberOfPlots { get; set; }
+        
+        /// <summary>
+        /// Optional email address for sending account credentials
+        /// </summary>
+        public string? Email { get; set; }
     }
 
     public class ImportFarmerResult
@@ -43,5 +47,7 @@ namespace RiceProduction.Application.Common.Models
         public string? Address { get; set; }
         public string? FarmCode { get; set; }
         public int? NumberOfPlots { get; set; }
+        public string? Email { get; set; }
+        public string? TempPassword { get; set; }
     }
 }
