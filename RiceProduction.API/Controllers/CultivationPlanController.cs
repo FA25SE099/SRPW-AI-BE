@@ -2,6 +2,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationPlanFeature.Queries;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetByPlotId;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationPlanById;
@@ -36,6 +37,10 @@ public class CultivationPlanController : ControllerBase
     [HttpGet("by-plot/{plotId}")]
     public async Task<IActionResult> GetCultivationsByPlot(Guid plotId)
     {
+        if (_currentUser.Id == null)
+        {
+            return Unauthorized(Result<object>.Failure("User not authenticated", "AuthenticationRequired"));
+        }
         var query = new GetCultivationsForPlotQuery { PlotId = plotId, FarmerId = (Guid)_currentUser.Id };
         var result = await _mediator.Send(query);
 

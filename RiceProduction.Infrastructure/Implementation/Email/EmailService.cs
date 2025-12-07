@@ -26,7 +26,6 @@ namespace RiceProduction.Infrastructure.Services
             _logger = logger;
             _unitOfWork = unitOfWork;
 
-            // Configure SMTP client for Firebase/Gmail
             _smtpClient = new SmtpClient("smtp.gmail.com")
             {
                 Port = 587,
