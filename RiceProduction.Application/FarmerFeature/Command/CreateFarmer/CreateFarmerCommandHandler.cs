@@ -150,7 +150,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                         FarmerName = farmer.FullName,
                         SoilType = p.SoilType,
                         Status = p.Status,
-                        GroupId = p.GroupId
+                        GroupId = p.GroupPlots.FirstOrDefault()?.GroupId
                     }).ToList();
 
                     await _mediator.Publish(new PlotImportedEvent

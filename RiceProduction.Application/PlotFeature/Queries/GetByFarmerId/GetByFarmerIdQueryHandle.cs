@@ -28,13 +28,14 @@ public class GetByFarmerIdQueryHandler : IRequestHandler<GetByFarmerIdQuery, Pag
                 p.FarmerId == request.FarmerId &&
                 (!request.Status.HasValue || p.Status == request.Status.Value) &&
                 (!request.IsUnassigned.HasValue ||
-                    (request.IsUnassigned.Value && p.GroupId == null) || // Lọc thửa CHƯA gán
-                    (!request.IsUnassigned.Value && p.GroupId != null)); // Lọc thửa ĐÃ gán
+                    (request.IsUnassigned.Value && !p.GroupPlots.Any()) || // Lọc thửa CHƯA gán
+                    (!request.IsUnassigned.Value && p.GroupPlots.Any())); // Lọc thửa ĐÃ gán
 
             // 2. Định nghĩa các Includes
             Func<IQueryable<Plot>, IIncludableQueryable<Plot, object>> includes =
-                q => q.Include(p => p.Group)
-                        .ThenInclude(g => g.Cluster) // Cần để lấy tên Cluster (GroupName)
+                q => q.Include(p => p.GroupPlots)
+                        .ThenInclude(gp => gp.Group)
+                            .ThenInclude(g => g.Cluster) // Cần để lấy tên Cluster (GroupName)
                       .Include(p => p.Alerts) // Cần để đếm ActiveAlerts
                       .Include(p => p.PlotCultivations); // Cần để đếm ActiveCultivations
 
@@ -64,8 +65,8 @@ public class GetByFarmerIdQueryHandler : IRequestHandler<GetByFarmerIdQuery, Pag
                 Status = p.Status,
                 Boundary = p.Boundary != null ? p.Boundary.AsText() : null,
                 Coordinate = p.Coordinate != null ? p.Coordinate.AsText() : null,
-                GroupId = p.GroupId,
-                GroupName = p.Group?.Cluster?.ClusterName, // Lấy tên Cluster làm tên Group
+                GroupId = p.GroupPlots.FirstOrDefault()?.GroupId, // Get first group if any
+                GroupName = p.GroupPlots.FirstOrDefault()?.Group?.Cluster?.ClusterName, // Lấy tên Cluster làm tên Group
                 ActiveAlerts = p.Alerts.Count(a => a.Status == AlertStatus.Pending || a.Status == AlertStatus.UnderReview),
                 ActiveCultivations = p.PlotCultivations.Count(pc => pc.Status == CultivationStatus.Planned || pc.Status == CultivationStatus.InProgress)
             }).ToList();

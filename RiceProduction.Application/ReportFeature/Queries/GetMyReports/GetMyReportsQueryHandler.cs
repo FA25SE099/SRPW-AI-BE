@@ -34,8 +34,9 @@ public class GetMyReportsQueryHandler : IRequestHandler<GetMyReportsQuery, Paged
                         .ThenInclude(p => p.Farmer)
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
-                        .ThenInclude(p => p.Group)
-                            .ThenInclude(g => g.Cluster)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+                                .ThenInclude(g => g.Cluster)
                 .Include(r => r.Reporter)
                 .Include(r => r.Resolver)
                 .Include(r => r.Group)
@@ -112,7 +113,7 @@ public class GetMyReportsQueryHandler : IRequestHandler<GetMyReportsQuery, Paged
                 ResolvedAt = r.ResolvedAt,
                 ResolutionNotes = r.ResolutionNotes,
                 FarmerName = r.PlotCultivation?.Plot?.Farmer?.FullName,
-                ClusterName = r.PlotCultivation?.Plot?.Group?.Cluster?.ClusterName
+                ClusterName = r.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group?.Cluster?.ClusterName
                     ?? r.Group?.Cluster?.ClusterName
                     ?? r.Cluster?.ClusterName
             }).ToList();

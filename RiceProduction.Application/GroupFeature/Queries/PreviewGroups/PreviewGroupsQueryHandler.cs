@@ -76,7 +76,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
 
             // Get plot cultivations for this season
             var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .ListAsync(pc => plotIds.Contains(pc.PlotId) && 
+                .ListAsync(pc => plotIds.Contains(pc.PlotId) &&
                                 pc.SeasonId == request.SeasonId);
             var cultivationsList = plotCultivations.ToList();
 
@@ -87,11 +87,17 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                     "Farmers must select rice varieties before forming groups.");
             }
 
-            // Check for plots that are already grouped
-            var alreadyGroupedPlots = plotsList
-                .Where(p => p.GroupId.HasValue)
-                .Select(p => p.Id)
-                .ToHashSet();
+            // Check for plots that are already grouped for THIS SEASON
+            // Business rule: A plot can belong to multiple groups, but only one group per season
+            var alreadyGroupedPlots = new HashSet<Guid>();
+            foreach (var plot in plotsList)
+            {
+                var isGroupedForSeason = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
+                if (isGroupedForSeason)
+                {
+                    alreadyGroupedPlots.Add(plot.Id);
+                }
+            }
 
             // Build PlotClusterInfo list
             var plotClusterInfos = new List<PlotClusterInfo>();
@@ -101,7 +107,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                 var plot = plotsList.FirstOrDefault(p => p.Id == cultivation.PlotId);
                 if (plot == null) continue;
 
-                // Skip already grouped plots
+                // Skip plots already grouped for THIS SEASON
                 if (alreadyGroupedPlots.Contains(plot.Id))
                     continue;
 
@@ -212,7 +218,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
 
             _logger.LogInformation(
                 "Preview groups for cluster {ClusterId}, season {SeasonId}: {GroupCount} groups, {PlotCount} plots grouped, {UngroupedCount} ungrouped",
-                request.ClusterId, request.SeasonId, response.PreviewGroups.Count, 
+                request.ClusterId, request.SeasonId, response.PreviewGroups.Count,
                 response.Summary.PlotsGrouped, response.Summary.UngroupedPlots);
 
             return Result<PreviewGroupsResponse>.Success(response);

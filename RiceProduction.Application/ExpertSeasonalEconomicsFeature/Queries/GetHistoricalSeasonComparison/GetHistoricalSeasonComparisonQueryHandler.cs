@@ -59,10 +59,11 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
                 {
                     var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                         filter: pc => pc.SeasonId == season.Id &&
-                                      (request.ClusterId == null || pc.Plot.Group!.ClusterId == request.ClusterId),
+                                      (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)),
                         includeProperties: q => q
                             .Include(pc => pc.Plot)
-                                .ThenInclude(p => p.Group)
+                                .ThenInclude(p => p.GroupPlots)
+                                    .ThenInclude(gp => gp.Group)
                             .Include(pc => pc.RiceVariety)
                             .Include(pc => pc.CultivationTasks));
 

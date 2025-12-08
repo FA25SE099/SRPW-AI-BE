@@ -1,5 +1,6 @@
-using NetTopologySuite.Geometries;
+﻿using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Union;
+using NetTopologySuite.Index.Strtree;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
@@ -16,13 +17,12 @@ public class GroupFormationService
 
     public class GroupingParameters
     {
-        // FIXED: Changed default from 2000m to 1000m (more realistic)
         public double ProximityThreshold { get; set; } = 100; // meters
         public int PlantingDateTolerance { get; set; } = 2; // days
-        public decimal MinGroupArea { get; set; } = 5.0m; // hectares (was 15, too high)
+        public decimal MinGroupArea { get; set; } = 5.0m; // hectares
         public decimal MaxGroupArea { get; set; } = 50.0m; // hectares
-        public int MinPlotsPerGroup { get; set; } = 3; // (was 5, too high)
-        public int MaxPlotsPerGroup { get; set; } = 10; // (was 15, reduced)
+        public int MinPlotsPerGroup { get; set; } = 3;
+        public int MaxPlotsPerGroup { get; set; } = 10;
         public double BorderBuffer { get; set; } = 10; // meters
     }
 
@@ -75,7 +75,7 @@ public class GroupFormationService
     }
 
     /// <summary>
-    /// Form groups using spatial and temporal clustering
+    /// Form groups using DBSCAN spatial clustering
     /// </summary>
     public (List<ProposedGroup> groups, List<UngroupedPlotInfo> ungrouped) FormGroups(
         List<PlotClusterInfo> eligiblePlots,
@@ -107,11 +107,35 @@ public class GroupFormationService
         {
             var plotsToCluster = varietyGroup.ToList();
 
-            // FIXED: New spatial clustering with coherence check
-            var spatialClusters = SpatialClusteringWithCoherence(plotsToCluster, parameters.ProximityThreshold);
+            // Use DBSCAN clustering
+            var spatialClusters = SpatialClusteringDBSCAN(
+                plotsToCluster,
+                parameters.ProximityThreshold,
+                parameters.MinPlotsPerGroup
+            );
 
             foreach (var spatialCluster in spatialClusters)
             {
+                // Filter out clusters that don't meet minimum
+                if (spatialCluster.Count < parameters.MinPlotsPerGroup)
+                {
+                    foreach (var plot in spatialCluster)
+                    {
+                        ungroupedPlots.Add(new UngroupedPlotInfo
+                        {
+                            Plot = plot,
+                            Reason = UngroupReason.TooFewPlots,
+                            ReasonDescription = $"Only {spatialCluster.Count} plots in spatial cluster (minimum {parameters.MinPlotsPerGroup} required)",
+                            Suggestions = new List<string>
+                            {
+                                "Assign to nearby group manually",
+                                "Reduce minimum plots per group parameter"
+                            }
+                        });
+                    }
+                    continue;
+                }
+
                 // Within each spatial cluster, cluster by planting date
                 var dateClusters = TemporalClustering(spatialCluster, parameters.PlantingDateTolerance);
 
@@ -123,19 +147,17 @@ public class GroupFormationService
                     // Check constraints
                     if (plotCount < parameters.MinPlotsPerGroup)
                     {
-                        // Too few plots
                         foreach (var plot in dateCluster)
                         {
                             ungroupedPlots.Add(new UngroupedPlotInfo
                             {
                                 Plot = plot,
-                                Reason = UngroupReason.TooFewPlots,
-                                ReasonDescription = $"Only {plotCount} plots in cluster (minimum {parameters.MinPlotsPerGroup} required)",
+                                Reason = UngroupReason.PlantingDateMismatch,
+                                ReasonDescription = $"Planting date differs too much from cluster median (only {plotCount} plots remain)",
                                 Suggestions = new List<string>
                                 {
-                                    "Assign to nearby group manually",
-                                    "Reduce minimum plots per group parameter",
-                                    "Create exception group"
+                                    "Increase planting date tolerance",
+                                    "Assign to nearby group manually"
                                 }
                             });
                         }
@@ -144,14 +166,13 @@ public class GroupFormationService
 
                     if (totalArea < parameters.MinGroupArea)
                     {
-                        // Insufficient area
                         foreach (var plot in dateCluster)
                         {
                             ungroupedPlots.Add(new UngroupedPlotInfo
                             {
                                 Plot = plot,
                                 Reason = UngroupReason.InsufficientArea,
-                                ReasonDescription = $"Total area {totalArea:F2} ha is below minimum {parameters.MinGroupArea} ha",
+                                ReasonDescription = $"Total area {totalArea:F2} ha below minimum {parameters.MinGroupArea} ha",
                                 Suggestions = new List<string>
                                 {
                                     "Merge with nearby group manually",
@@ -189,62 +210,69 @@ public class GroupFormationService
     }
 
     /// <summary>
-    /// FIXED: Spatial clustering with coherence check to prevent chain groups
+    /// DBSCAN clustering using NetTopologySuite's STRtree
     /// </summary>
-    private List<List<PlotClusterInfo>> SpatialClusteringWithCoherence(
+    private List<List<PlotClusterInfo>> SpatialClusteringDBSCAN(
         List<PlotClusterInfo> plots,
-        double maxDistance)
+        double eps,
+        int minPoints)
     {
-        var clusters = new List<List<PlotClusterInfo>>();
+        if (plots.Count == 0)
+            return new List<List<PlotClusterInfo>>();
+
+        // Convert eps to degrees for spatial index envelope
+        var epsInDegrees = eps / 111000.0;
+
+        // Build spatial index for efficient neighbor queries
+        var spatialIndex = new STRtree<PlotClusterInfo>();
+        foreach (var plot in plots)
+        {
+            var envelope = new Envelope(
+                plot.Coordinate.X - epsInDegrees,
+                plot.Coordinate.X + epsInDegrees,
+                plot.Coordinate.Y - epsInDegrees,
+                plot.Coordinate.Y + epsInDegrees
+            );
+            spatialIndex.Insert(envelope, plot);
+        }
+        spatialIndex.Build();
+
+        // DBSCAN state
         var visited = new HashSet<PlotClusterInfo>();
+        var clustered = new HashSet<PlotClusterInfo>();
+        var clusters = new List<List<PlotClusterInfo>>();
 
         foreach (var plot in plots)
         {
             if (visited.Contains(plot))
                 continue;
 
-            var cluster = new List<PlotClusterInfo> { plot };
             visited.Add(plot);
 
-            // Find all plots within maxDistance using BFS
-            var queue = new Queue<PlotClusterInfo>();
-            queue.Enqueue(plot);
+            // Find neighbors within eps distance
+            var neighbors = GetNeighbors(plot, plots, spatialIndex, eps);
 
-            while (queue.Count > 0)
+            if (neighbors.Count < minPoints)
             {
-                var current = queue.Dequeue();
-
-                foreach (var neighbor in plots)
-                {
-                    if (visited.Contains(neighbor))
-                        continue;
-
-                    var distance = current.Coordinate.Distance(neighbor.Coordinate);
-
-                    if (distance <= maxDistance)
-                    {
-                        // CRITICAL FIX: Check if adding this plot maintains cluster coherence
-                        // The new plot must be within 2x maxDistance of ALL existing plots
-                        if (IsPlotCoherentWithCluster(neighbor, cluster, maxDistance))
-                        {
-                            cluster.Add(neighbor);
-                            visited.Add(neighbor);
-                            queue.Enqueue(neighbor);
-                        }
-                        // If not coherent, it will be picked up in next iteration
-                    }
-                }
+                // Mark as noise (will be ungrouped later)
+                continue;
             }
 
-            // Final validation: ensure cluster diameter doesn't exceed 2x threshold
-            if (IsClusterSpatiallyCoherent(cluster, maxDistance))
+            // Start a new cluster
+            var cluster = new List<PlotClusterInfo>();
+            ExpandCluster(plot, neighbors, cluster, visited, clustered, spatialIndex, plots, eps, minPoints);
+
+            // Validate cluster coherence (diameter check)
+            if (IsClusterSpatiallyCoherent(cluster, eps))
             {
                 clusters.Add(cluster);
             }
             else
             {
-                // Split incoherent cluster into multiple smaller clusters
-                var subClusters = SplitIncoherentCluster(cluster, maxDistance);
+                // Split incoherent cluster
+                Console.WriteLine($"🔧 Splitting incoherent cluster of {cluster.Count} plots");
+                var subClusters = SplitByDiameter(cluster, eps);
+                Console.WriteLine($"   → Created {subClusters.Count} sub-clusters");
                 clusters.AddRange(subClusters);
             }
         }
@@ -253,98 +281,221 @@ public class GroupFormationService
     }
 
     /// <summary>
-    /// NEW: Check if a plot is coherent with existing cluster
+    /// Get neighbors within eps distance using spatial index
     /// </summary>
-    private bool IsPlotCoherentWithCluster(
-        PlotClusterInfo newPlot,
-        List<PlotClusterInfo> cluster,
-        double threshold)
+    private List<PlotClusterInfo> GetNeighbors(
+        PlotClusterInfo plot,
+        List<PlotClusterInfo> allPlots,
+        STRtree<PlotClusterInfo> spatialIndex,
+        double eps)
     {
-        // Check distance to all existing plots in cluster
-        // Maximum distance to any plot should not exceed 2x threshold
-        foreach (var existingPlot in cluster)
+        // Convert eps from meters to degrees (approximate for envelope)
+        // At Vietnam's latitude (~10-20°), 1 degree ≈ 111 km
+        var epsInDegrees = eps / 111000.0;
+
+        var envelope = new Envelope(
+            plot.Coordinate.X - epsInDegrees,
+            plot.Coordinate.X + epsInDegrees,
+            plot.Coordinate.Y - epsInDegrees,
+            plot.Coordinate.Y + epsInDegrees
+        );
+
+        var candidates = spatialIndex.Query(envelope).Cast<PlotClusterInfo>();
+        var neighbors = new List<PlotClusterInfo>();
+
+        foreach (var candidate in candidates)
         {
-            var distance = newPlot.Coordinate.Distance(existingPlot.Coordinate);
-            if (distance > threshold * 2)
+            if (candidate == plot)
+                continue;
+
+            // Use geodesic distance (accurate for lat/lon)
+            var distance = CalculateDistanceInMeters(plot.Coordinate, candidate.Coordinate);
+            if (distance <= eps)
             {
-                return false; // Too far from at least one plot
+                neighbors.Add(candidate);
             }
         }
-        return true;
+
+        return neighbors;
     }
 
     /// <summary>
-    /// NEW: Validate cluster spatial coherence (diameter check)
+    /// Calculate geodesic distance between two points in meters
+    /// Uses Haversine formula for lat/lon coordinates
     /// </summary>
-    private bool IsClusterSpatiallyCoherent(
+    private double CalculateDistanceInMeters(Point point1, Point point2)
+    {
+        const double EarthRadiusMeters = 6371000.0;
+
+        var lat1 = point1.Y * Math.PI / 180.0;
+        var lat2 = point2.Y * Math.PI / 180.0;
+        var deltaLat = (point2.Y - point1.Y) * Math.PI / 180.0;
+        var deltaLon = (point2.X - point1.X) * Math.PI / 180.0;
+
+        var a = Math.Sin(deltaLat / 2) * Math.Sin(deltaLat / 2) +
+                Math.Cos(lat1) * Math.Cos(lat2) *
+                Math.Sin(deltaLon / 2) * Math.Sin(deltaLon / 2);
+
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+        return EarthRadiusMeters * c;
+    }
+
+    /// <summary>
+    /// Expand cluster using DBSCAN algorithm
+    /// </summary>
+    private void ExpandCluster(
+        PlotClusterInfo plot,
+        List<PlotClusterInfo> neighbors,
         List<PlotClusterInfo> cluster,
-        double threshold)
+        HashSet<PlotClusterInfo> visited,
+        HashSet<PlotClusterInfo> clustered,
+        STRtree<PlotClusterInfo> spatialIndex,
+        List<PlotClusterInfo> allPlots,
+        double eps,
+        int minPoints)
+    {
+        cluster.Add(plot);
+        clustered.Add(plot);
+
+        var queue = new Queue<PlotClusterInfo>(neighbors);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+
+            if (!visited.Contains(current))
+            {
+                visited.Add(current);
+                var currentNeighbors = GetNeighbors(current, allPlots, spatialIndex, eps);
+
+                if (currentNeighbors.Count >= minPoints)
+                {
+                    foreach (var neighbor in currentNeighbors)
+                    {
+                        if (!visited.Contains(neighbor))
+                        {
+                            queue.Enqueue(neighbor);
+                        }
+                    }
+                }
+            }
+
+            if (!clustered.Contains(current))
+            {
+                cluster.Add(current);
+                clustered.Add(current);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Validate cluster diameter (matches PostGIS logic)
+    /// </summary>
+    private bool IsClusterSpatiallyCoherent(List<PlotClusterInfo> cluster, double eps)
     {
         if (cluster.Count <= 1)
             return true;
 
-        // Find maximum distance between any two plots
-        double maxDistance = 0;
+        double maxDiameter = 0;
         for (int i = 0; i < cluster.Count; i++)
         {
             for (int j = i + 1; j < cluster.Count; j++)
             {
-                var distance = cluster[i].Coordinate.Distance(cluster[j].Coordinate);
-                if (distance > maxDistance)
-                    maxDistance = distance;
+                // Use geodesic distance in meters
+                var distance = CalculateDistanceInMeters(cluster[i].Coordinate, cluster[j].Coordinate);
+                maxDiameter = Math.Max(maxDiameter, distance);
             }
         }
 
-        // Cluster diameter should not exceed 2x proximity threshold
-        return maxDistance <= (threshold * 2);
+        // Cluster diameter must not exceed 2x threshold
+        var isCoherent = maxDiameter <= (eps * 2);
+
+        if (!isCoherent)
+        {
+            Console.WriteLine($"⚠️ Cluster incoherent: {cluster.Count} plots, diameter {maxDiameter:F1}m > {eps * 2}m");
+        }
+
+        return isCoherent;
     }
 
     /// <summary>
-    /// NEW: Split incoherent cluster into smaller coherent sub-clusters
+    /// Split incoherent cluster into smaller valid sub-clusters
     /// </summary>
-    private List<List<PlotClusterInfo>> SplitIncoherentCluster(
-        List<PlotClusterInfo> cluster,
-        double threshold)
+    private List<List<PlotClusterInfo>> SplitByDiameter(List<PlotClusterInfo> cluster, double eps)
     {
         var subClusters = new List<List<PlotClusterInfo>>();
-        var remaining = new List<PlotClusterInfo>(cluster);
+        var remaining = new HashSet<PlotClusterInfo>(cluster);
 
         while (remaining.Any())
         {
-            var seed = remaining.First();
+            var seed = remaining
+                .Select(p => new
+                {
+                    Plot = p,
+                    NeighborCount = remaining.Count(other =>
+                        CalculateDistanceInMeters(p.Coordinate, other.Coordinate) <= eps)
+                })
+                .OrderByDescending(x => x.NeighborCount)
+                .First()
+                .Plot;
+
             var subCluster = new List<PlotClusterInfo> { seed };
             remaining.Remove(seed);
 
-            // Add plots that maintain coherence
-            var added = true;
+            bool added = true;
             while (added)
             {
                 added = false;
-                var toAdd = new List<PlotClusterInfo>();
+                var candidates = remaining
+                    .Where(p => {
+                        // Check if adding this plot keeps ALL pairwise distances <= 2*eps
+                        foreach (var existing in subCluster)
+                        {
+                            var dist = CalculateDistanceInMeters(existing.Coordinate, p.Coordinate);
+                            if (dist > eps * 2)
+                                return false;
+                        }
+                        return true;
+                    })
+                    .OrderBy(p => {
+                        var centroid = CalculateCentroid(subCluster);
+                        return CalculateDistanceInMeters(p.Coordinate, centroid);
+                    })
+                    .ToList();
 
-                foreach (var plot in remaining)
+                if (candidates.Any())
                 {
-                    if (IsPlotCoherentWithCluster(plot, subCluster, threshold))
-                    {
-                        toAdd.Add(plot);
-                        added = true;
-                    }
-                }
-
-                foreach (var plot in toAdd)
-                {
-                    subCluster.Add(plot);
-                    remaining.Remove(plot);
+                    var toAdd = candidates.First();
+                    subCluster.Add(toAdd);
+                    remaining.Remove(toAdd);
+                    added = true;
                 }
             }
 
-            if (subCluster.Count >= 1) // Keep even single plots for later ungrouping
+            if (IsClusterSpatiallyCoherent(subCluster, eps))
             {
                 subClusters.Add(subCluster);
             }
         }
 
         return subClusters;
+    }
+
+    /// <summary>
+    /// Calculate centroid of cluster
+    /// </summary>
+    private Point CalculateCentroid(List<PlotClusterInfo> cluster)
+    {
+        if (cluster.Count == 0)
+            return null!;
+
+        if (cluster.Count == 1)
+            return cluster[0].Coordinate;
+
+        var avgX = cluster.Average(p => p.Coordinate.X);
+        var avgY = cluster.Average(p => p.Coordinate.Y);
+        return new Point(avgX, avgY) { SRID = 4326 };
     }
 
     /// <summary>
@@ -355,8 +506,6 @@ public class GroupFormationService
         int toleranceDays)
     {
         var clusters = new List<List<PlotClusterInfo>>();
-
-        // Sort by planting date
         var sortedPlots = plots.OrderBy(p => p.PlantingDate).ToList();
 
         var currentCluster = new List<PlotClusterInfo>();
@@ -366,7 +515,6 @@ public class GroupFormationService
         {
             if (clusterStartDate == null)
             {
-                // Start new cluster
                 clusterStartDate = plot.PlantingDate;
                 currentCluster.Add(plot);
             }
@@ -376,12 +524,10 @@ public class GroupFormationService
 
                 if (Math.Abs(daysDiff) <= toleranceDays)
                 {
-                    // Add to current cluster
                     currentCluster.Add(plot);
                 }
                 else
                 {
-                    // Start new cluster
                     if (currentCluster.Any())
                     {
                         clusters.Add(currentCluster);
@@ -392,7 +538,6 @@ public class GroupFormationService
             }
         }
 
-        // Add last cluster
         if (currentCluster.Any())
         {
             clusters.Add(currentCluster);
@@ -404,39 +549,67 @@ public class GroupFormationService
     /// <summary>
     /// Split large cluster into multiple groups
     /// </summary>
+    /// <summary>
+    /// Split large cluster while maintaining spatial coherence
+    /// </summary>
     private List<List<PlotClusterInfo>> SplitLargeCluster(
         List<PlotClusterInfo> cluster,
         GroupingParameters parameters)
     {
         var result = new List<List<PlotClusterInfo>>();
 
-        // Simple split by area target
-        var targetGroupArea = (parameters.MinGroupArea + parameters.MaxGroupArea) / 2;
+        // Create a working list we can remove from
+        var remainingPlots = new List<PlotClusterInfo>(cluster);
 
-        var currentGroup = new List<PlotClusterInfo>();
-        var currentArea = 0m;
-
-        foreach (var plot in cluster.OrderByDescending(p => p.Plot.Area))
+        while (remainingPlots.Any())
         {
-            if (currentArea + plot.Plot.Area <= parameters.MaxGroupArea &&
-                currentGroup.Count < parameters.MaxPlotsPerGroup)
+            var currentGroup = new List<PlotClusterInfo>();
+            var currentArea = 0m;
+
+            // 1. Pick a "Seed" plot to start the new group.
+            // We pick the plot that is furthest West (Min X) or North (Max Y) 
+            // to start 'eating' the cluster from one edge, rather than the middle.
+            var seed = remainingPlots.OrderBy(p => p.Coordinate.X).First();
+
+            currentGroup.Add(seed);
+            currentArea += seed.Plot.Area;
+            remainingPlots.Remove(seed);
+
+            // 2. Grow the group by adding the nearest available neighbors
+            bool groupIsFull = false;
+
+            while (!groupIsFull && remainingPlots.Any())
             {
-                currentGroup.Add(plot);
-                currentArea += plot.Plot.Area;
-            }
-            else
-            {
-                if (currentGroup.Any())
+                // Find the centroid of the current growing group
+                var groupCentroid = CalculateCentroid(currentGroup);
+
+                // Find the nearest ungrouped plot to this centroid
+                var nearestNeighbor = remainingPlots
+                    .Select(p => new {
+                        Plot = p,
+                        Distance = CalculateDistanceInMeters(p.Coordinate, groupCentroid)
+                    })
+                    .OrderBy(x => x.Distance)
+                    .First()
+                    .Plot;
+
+                // Check constraints
+                bool fitsArea = (currentArea + nearestNeighbor.Plot.Area) <= parameters.MaxGroupArea;
+                bool fitsCount = currentGroup.Count < parameters.MaxPlotsPerGroup;
+
+                if (fitsArea && fitsCount)
                 {
-                    result.Add(currentGroup);
+                    currentGroup.Add(nearestNeighbor);
+                    currentArea += nearestNeighbor.Plot.Area;
+                    remainingPlots.Remove(nearestNeighbor);
                 }
-                currentGroup = new List<PlotClusterInfo> { plot };
-                currentArea = plot.Plot.Area;
+                else
+                {
+                    // Group is full (either by area or count)
+                    groupIsFull = true;
+                }
             }
-        }
 
-        if (currentGroup.Any())
-        {
             result.Add(currentGroup);
         }
 
@@ -458,7 +631,6 @@ public class GroupFormationService
             }
             else if (plot.Coordinate != null)
             {
-                // Create small buffer around point coordinate (5 meters)
                 var point = _geometryFactory.CreatePoint(plot.Coordinate.Coordinate);
                 geometries.Add(point.Buffer(5));
             }
@@ -469,34 +641,25 @@ public class GroupFormationService
 
         try
         {
-            // Union all plot geometries
             var union = UnaryUnionOp.Union(geometries);
-
-            // Add buffer for padding and create smooth boundary
             var buffered = union.Buffer(bufferDistance);
-
-            // Apply small negative buffer to smooth sharp corners
             var smoothed = buffered.Buffer(-bufferDistance * 0.3);
 
-            // Convert to Polygon
             if (smoothed is Polygon polygon)
             {
                 return polygon;
             }
             else if (smoothed is MultiPolygon multiPolygon)
             {
-                // Take convex hull to create single polygon
                 return (Polygon)multiPolygon.ConvexHull();
             }
             else
             {
-                // Fallback to convex hull
                 return (Polygon)union.ConvexHull();
             }
         }
-        catch (Exception)
+        catch
         {
-            // Fallback to simple union and convex hull
             try
             {
                 var union = UnaryUnionOp.Union(geometries);
@@ -525,10 +688,8 @@ public class GroupFormationService
         var maxDate = plantingDates.Last();
         var medianDate = plantingDates[plantingDates.Count / 2];
 
-        // Calculate group boundary with smooth borders
         var groupBoundary = CalculateGroupBoundary(plots, borderBuffer);
 
-        // Calculate centroid from boundary if available, otherwise from coordinates
         Point centroid;
         if (groupBoundary != null)
         {
@@ -537,7 +698,6 @@ public class GroupFormationService
         }
         else
         {
-            // Fallback: calculate from plot coordinates
             var coordinates = plots.Select(p => p.Coordinate).Where(c => c != null).ToArray();
             if (coordinates.Any())
             {
@@ -577,7 +737,6 @@ public class GroupFormationService
             if (ungrouped.Plot.Coordinate == null)
                 continue;
 
-            // Find nearest group with same variety
             var sameVarietyGroups = groups
                 .Where(g => g.RiceVarietyId == ungrouped.Plot.RiceVarietyId)
                 .ToList();
@@ -588,7 +747,7 @@ public class GroupFormationService
                     .Select(g => new
                     {
                         Group = g,
-                        Distance = ungrouped.Plot.Coordinate.Distance(g.Centroid)
+                        Distance = CalculateDistanceInMeters(ungrouped.Plot.Coordinate, g.Centroid)
                     })
                     .OrderBy(x => x.Distance)
                     .First();
@@ -596,16 +755,15 @@ public class GroupFormationService
                 ungrouped.DistanceToNearestGroup = nearestGroup.Distance;
                 ungrouped.NearestGroupNumber = nearestGroup.Group.GroupNumber;
 
-                if (nearestGroup.Distance < 5000) // Within 5km
+                if (nearestGroup.Distance < 5000)
                 {
                     ungrouped.Suggestions.Add(
-                        $"Assign to Group {nearestGroup.Group.GroupNumber} manually ({nearestGroup.Distance / 1000:F2}km away)"
+                        $"Assign to Group {nearestGroup.Group.GroupNumber} manually ({nearestGroup.Distance:F0}m away)"
                     );
                 }
             }
 
-            // Add generic suggestions based on reason
-            if (ungrouped.Reason == UngroupReason.IsolatedLocation)
+            if (ungrouped.Reason == UngroupReason.IsolatedLocation || ungrouped.Reason == UngroupReason.TooFewPlots)
             {
                 ungrouped.Suggestions.Add("Create exception group if multiple isolated plots exist nearby");
                 ungrouped.Suggestions.Add("Consider adjusting proximity threshold parameter");

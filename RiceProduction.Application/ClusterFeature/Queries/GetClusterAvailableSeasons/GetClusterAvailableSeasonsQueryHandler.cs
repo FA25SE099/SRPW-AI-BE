@@ -187,10 +187,10 @@ public class GetClusterAvailableSeasonsQueryHandler
             return 0;
 
         var groupIds = groups.Select(g => g.Id).ToList();
-        var plots = await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => p.GroupId.HasValue && groupIds.Contains(p.GroupId.Value));
+        var groupPlots = await _unitOfWork.Repository<GroupPlot>()
+            .ListAsync(gp => groupIds.Contains(gp.GroupId));
 
-        return plots.Count();
+        return groupPlots.Count();
     }
 
     private bool IsSeasonPast(Season season, Season? currentSeason)

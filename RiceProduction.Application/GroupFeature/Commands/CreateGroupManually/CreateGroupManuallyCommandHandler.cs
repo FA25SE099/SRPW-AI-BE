@@ -86,13 +86,22 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
                 return Result<Guid>.Failure("One or more plots not found");
             }
 
-            // Check if any plot is already in a group for this season
-            var alreadyGrouped = plotsList.Where(p => p.GroupId.HasValue).ToList();
+            // Check if any plot is already in a group for THIS SEASON
+            // Business rule: A plot can belong to multiple groups, but only one group per season
+            var alreadyGrouped = new List<Plot>();
+            foreach (var plot in plotsList)
+            {
+                var isGroupedForSeason = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
+                if (isGroupedForSeason)
+                {
+                    alreadyGrouped.Add(plot);
+                }
+            }
             if (alreadyGrouped.Any())
             {
                 return Result<Guid>.Failure(
-                    $"{alreadyGrouped.Count} plot(s) are already assigned to a group. " +
-                    "Remove them from existing groups first.");
+                    $"{alreadyGrouped.Count} plot(s) are already assigned to a group for this season. " +
+                    "A plot can only belong to one group per season. Remove them from existing groups for this season first.");
             }
 
             // Calculate total area and union of boundaries
@@ -140,10 +149,15 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
 
             await _unitOfWork.Repository<Group>().AddAsync(group);
 
-            // Assign plots to group
+            // Assign plots to group using many-to-many relationship
             foreach (var plot in plotsList)
             {
-                plot.GroupId = group.Id;
+                var groupPlot = new GroupPlot
+                {
+                    GroupId = group.Id,
+                    PlotId = plot.Id
+                };
+                await _unitOfWork.Repository<GroupPlot>().AddAsync(groupPlot);
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);

@@ -29,7 +29,7 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
             // --- 1. Tải Group và Plots ---
             var group = await _unitOfWork.Repository<Group>().FindAsync(
                 match: g => g.Id == request.GroupId,
-                includeProperties: q => q.Include(g => g.Plots)
+                includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot)
             );
 
             if (group == null)
@@ -82,7 +82,9 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
             var materialAggregation = new Dictionary<Guid, (decimal TotalQuantity, decimal TotalPackages, decimal TotalCost)>();
 
             // --- 4a. Tính chi phí cho TỪNG PLOT ---
-            foreach (var plot in group.Plots)
+            foreach (var groupPlot in group.GroupPlots)
+            {
+                var plot = groupPlot.Plot;
             {
                 var plotArea = plot.Area;
                 if (plotArea <= 0) continue;
@@ -141,6 +143,7 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
                 
                 // Cộng vào tổng chi phí group
                 totalGroupCost += plotTotalCost;
+            }
             }
             
             // --- 4b. Tạo MaterialCostDetails từ dữ liệu đã tổng hợp ---

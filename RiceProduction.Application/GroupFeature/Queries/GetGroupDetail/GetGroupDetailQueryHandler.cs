@@ -33,7 +33,7 @@ public class GetGroupDetailQueryHandler :
                     .Include(g => g.Cluster)
                     .Include(g => g.Supervisor)
                     .Include(g => g.RiceVariety)
-                    .Include(g => g.Plots).ThenInclude(p => p.Farmer) // Plots và Farmer
+                    .Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.Farmer) // Plots và Farmer
                     .Include(g => g.ProductionPlans).ThenInclude(pp => pp.StandardPlan) // Plans và Standard Plan
                     .Include(g => g.UavServiceOrders).ThenInclude(uav => uav.UavVendor) // UAV Orders và Vendor
                     .Include(g => g.Alerts)
@@ -45,7 +45,7 @@ public class GetGroupDetailQueryHandler :
             }
 
             // --- Ánh xạ Plots ---
-            var plotsResponse = group.Plots.Select(p => new GroupPlotResponse
+            var plotsResponse = group.GroupPlots.Select(gp => gp.Plot).Select(p => new GroupPlotResponse
             {
                 Id = p.Id,
                 Area = p.Area,

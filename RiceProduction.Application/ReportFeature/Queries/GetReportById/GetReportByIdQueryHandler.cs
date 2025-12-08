@@ -33,8 +33,9 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                         .ThenInclude(p => p.Farmer)
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
-                        .ThenInclude(p => p.Group)
-                            .ThenInclude(g => g.Cluster)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+                                .ThenInclude(g => g.Cluster)
                 .Include(r => r.Reporter)
                 .Include(r => r.Resolver)
                 .Include(r => r.Group)
@@ -73,7 +74,7 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 ResolvedAt = report.ResolvedAt,
                 ResolutionNotes = report.ResolutionNotes,
                 FarmerName = report.PlotCultivation?.Plot?.Farmer?.FullName,
-                ClusterName = report.PlotCultivation?.Plot?.Group?.Cluster?.ClusterName
+                ClusterName = report.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group?.Cluster?.ClusterName
                     ?? report.Group?.Cluster?.ClusterName
                     ?? report.Cluster?.ClusterName
             };

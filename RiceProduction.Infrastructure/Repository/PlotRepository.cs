@@ -5,7 +5,9 @@ using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace RiceProduction.Infrastructure.Repository
 {
@@ -38,8 +40,9 @@ namespace RiceProduction.Infrastructure.Repository
         {
             return await _plots
                 .Include (p => p.Farmer)
-                .Include (p => p.Group)
-                .ThenInclude(p => p.RiceVariety)
+                .Include (p => p.GroupPlots)
+                    .ThenInclude(gp => gp.Group)
+                        .ThenInclude(g => g.RiceVariety)
                 .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         }
 
@@ -47,8 +50,9 @@ namespace RiceProduction.Infrastructure.Repository
         {
             var query = _plots
         .Include(p => p.Farmer)
-        .Include(p => p.Group)
-        .ThenInclude(g => g.RiceVariety)
+        .Include(p => p.GroupPlots)
+            .ThenInclude(gp => gp.Group)
+                .ThenInclude(g => g.RiceVariety)
         .Include(p => p.PlotCultivations)
         .ThenInclude(pc => pc.RiceVariety)
         .Include(p => p.PlotCultivations)
@@ -71,8 +75,9 @@ namespace RiceProduction.Infrastructure.Repository
         {
             return await _plots
                 .Include(p => p.Farmer)
-                .Include(p => p.Group)
-                .ThenInclude(p => p.RiceVariety)
+                .Include(p => p.GroupPlots)
+                    .ThenInclude(gp => gp.Group)
+                        .ThenInclude(g => g.RiceVariety)
                 .Where (p => p.Farmer.Id == farmerId && p.Status == PlotStatus.Active )
                 .OrderByDescending(p => p.SoThua)
                 .ToListAsync(cancellationToken);             
@@ -80,14 +85,40 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<IEnumerable<Plot?>> GetPlotsByGroupIdAsync(Guid groupId, CancellationToken cancellationToken = default)
         {
-            return await _plots
-                .Include (p => p.Farmer)
-                .Include (p => p.Group)
-                .ThenInclude(p => p.RiceVariety)
-                .Where(p => p.GroupId == groupId && p.Status == PlotStatus.Active )
-                .OrderByDescending (p => p.SoThua)
-                .ToListAsync(cancellationToken);          
+            return await GetPlotsForGroupAsync(groupId, cancellationToken);
+        }
 
+        public async Task<IEnumerable<Plot>> GetPlotsForGroupAsync(Guid groupId, CancellationToken cancellationToken = default)
+        {
+            return await _plots
+                .Include(p => p.Farmer)
+                .Include(p => p.GroupPlots)
+                    .ThenInclude(gp => gp.Group)
+                        .ThenInclude(g => g.RiceVariety)
+                .Where(p => p.GroupPlots.Any(gp => gp.GroupId == groupId) && p.Status == PlotStatus.Active)
+                .OrderByDescending(p => p.SoThua)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<bool> IsPlotAssignedToGroupAsync(Guid plotId, Guid? groupId = null, CancellationToken cancellationToken = default)
+        {
+            if (groupId.HasValue)
+            {
+                return await _context.Set<GroupPlot>()
+                    .AnyAsync(gp => gp.PlotId == plotId && gp.GroupId == groupId.Value, cancellationToken);
+            }
+            else
+            {
+                return await _context.Set<GroupPlot>()
+                    .AnyAsync(gp => gp.PlotId == plotId, cancellationToken);
+            }
+        }
+
+        public async Task<bool> IsPlotAssignedToGroupForSeasonAsync(Guid plotId, Guid seasonId, CancellationToken cancellationToken = default)
+        {
+            return await _context.Set<GroupPlot>()
+                .Include(gp => gp.Group)
+                .AnyAsync(gp => gp.PlotId == plotId && gp.Group.SeasonId == seasonId, cancellationToken);
         }
 
         public IQueryable<Plot> PlotQueryable()
