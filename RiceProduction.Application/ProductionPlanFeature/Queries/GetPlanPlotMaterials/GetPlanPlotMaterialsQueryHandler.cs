@@ -26,7 +26,7 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
             var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
                 match: p => p.Id == request.PlanId,
                 includeProperties: q => q
-                    .Include(p => p.Group).ThenInclude(g => g!.Plots)
+                    .Include(p => p.Group).ThenInclude(g => g!.GroupPlots).ThenInclude(gp => gp.Plot)
                         .ThenInclude(plot => plot.Farmer)
                     .Include(p => p.CurrentProductionStages)
                         .ThenInclude(s => s.ProductionPlanTasks)
@@ -40,7 +40,8 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
                 return Result<PlanPlotMaterialsResponse>.Failure($"Plan with ID {request.PlanId} not found.", "PlanNotFound");
             }
 
-            if (plan.Group?.Plots == null || !plan.Group.Plots.Any())
+            var plots = plan.Group?.GroupPlots?.Select(gp => gp.Plot).ToList() ?? new List<Plot>();
+            if (plots == null || !plots.Any())
             {
                 return Result<PlanPlotMaterialsResponse>.Failure("No plots found for this plan.", "NoPlotsFound");
             }
@@ -48,7 +49,7 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
             var currentDate = DateTime.UtcNow;
             var plotMaterialDetails = new List<PlotMaterialDetailResponse>();
 
-            foreach (var plot in plan.Group.Plots)
+            foreach (var plot in plots)
             {
                 var materialDictionary = new Dictionary<Guid, PlotMaterialItemResponse>();
 

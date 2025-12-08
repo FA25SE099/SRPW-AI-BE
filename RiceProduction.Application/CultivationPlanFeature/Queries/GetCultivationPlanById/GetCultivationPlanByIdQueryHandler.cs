@@ -29,8 +29,9 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                 .Include(pc => pc.Plot)
                     .ThenInclude(p => p.Farmer)
                 .Include(pc => pc.Plot)
-                    .ThenInclude(p => p.Group)
-                        .ThenInclude(g => g.Cluster)
+                    .ThenInclude(p => p.GroupPlots)
+                        .ThenInclude(gp => gp.Group)
+                            .ThenInclude(g => g.Cluster)
                 .Include(pc => pc.RiceVariety)
                 .Include(pc => pc.CultivationVersions)
                 .FirstOrDefaultAsync(pc => pc.Id == request.PlanId, cancellationToken);
@@ -124,7 +125,7 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                 Status = plotCultivation.Status.ToString(),
                 EstimatedTotalCost = 0,
                 FarmerName = plotCultivation.Plot.Farmer?.FullName,
-                ClusterName = plotCultivation.Plot.Group?.Cluster?.ClusterName,
+                ClusterName = plotCultivation.Plot.GroupPlots.FirstOrDefault()?.Group?.Cluster?.ClusterName,
                 Stages = stagesMap.Values.OrderBy(s => s.SequenceOrder).ToList()
             };
 

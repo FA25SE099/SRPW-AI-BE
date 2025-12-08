@@ -34,8 +34,9 @@ public class GetPlanDetailsQueryHandler
                 match: p => p.Id == request.ProductionPlanId,
                 includeProperties: q => q
                     .Include(p => p.Group)
-                        .ThenInclude(g => g!.Plots)
-                            .ThenInclude(plot => plot.Farmer)
+                        .ThenInclude(g => g!.GroupPlots)
+                            .ThenInclude(gp => gp.Plot)
+                                .ThenInclude(plot => plot.Farmer)
                     .Include(p => p.CurrentProductionStages.OrderBy(s => s.SequenceOrder))
                         .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
                             .ThenInclude(t => t.ProductionPlanTaskMaterials)
@@ -298,7 +299,8 @@ public class GetPlanDetailsQueryHandler
             }
 
             // 6. Calculate plot-level progress
-            var plotProgressList = await CalculatePlotProgress(plan, plan.Group.Plots.ToList());
+            var plots = plan.Group?.GroupPlots?.Select(gp => gp.Plot).ToList() ?? new List<Plot>();
+            var plotProgressList = await CalculatePlotProgress(plan, plots);
 
             // 7. Build response
             var response = new PlanDetailsResponse

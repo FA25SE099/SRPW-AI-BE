@@ -35,16 +35,25 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     return Result<SeasonalEconomicOverviewResponse>.Failure("Season not found");
                 }
 
+                // First get plot IDs for the group if GroupId is specified
+                var plotIds = new List<Guid>();
+                if (request.GroupId.HasValue)
+                {
+                    var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken);
+                    plotIds = plots.Select(p => p.Id).ToList();
+                }
+
                 var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                     filter: pc => pc.SeasonId == request.SeasonId &&
-                                  (request.GroupId == null || pc.Plot.GroupId == request.GroupId) &&
-                                  (request.ClusterId == null || pc.Plot.Group!.ClusterId == request.ClusterId),
+                                  (request.GroupId == null || plotIds.Contains(pc.PlotId)) &&
+                                  (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)),
                     includeProperties: q => q
                         .Include(pc => pc.Plot)
                             .ThenInclude(p => p.Farmer)
                         .Include(pc => pc.Plot)
-                            .ThenInclude(p => p.Group!)
-                                .ThenInclude(g => g.Cluster)
+                            .ThenInclude(p => p.GroupPlots)
+                                .ThenInclude(gp => gp.Group)
+                                    .ThenInclude(g => g.Cluster)
                         .Include(pc => pc.RiceVariety)
                         .Include(pc => pc.CultivationTasks)
                             .ThenInclude(ct => ct.CultivationTaskMaterials)
@@ -64,8 +73,11 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
 
                 var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
                 var uniqueFarmers = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().Count();
-                var uniqueGroups = plotCultivations.Where(pc => pc.Plot.GroupId.HasValue)
-                    .Select(pc => pc.Plot.GroupId!.Value).Distinct().Count();
+                var uniqueGroups = plotCultivations
+                    .SelectMany(pc => pc.Plot.GroupPlots)
+                    .Select(gp => gp.GroupId)
+                    .Distinct()
+                    .Count();
 
                 var allTasks = plotCultivations.SelectMany(pc => pc.CultivationTasks).ToList();
                 var totalTasks = allTasks.Count;

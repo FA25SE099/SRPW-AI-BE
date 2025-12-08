@@ -6,8 +6,6 @@ public class Plot : BaseAuditableEntity
     [Required]
     public Guid FarmerId { get; set; }
 
-    public Guid? GroupId { get; set; }
-
     /// <summary>
     /// Polygon boundary - can be null when plot is first created, supervisor will assign later
     /// </summary>
@@ -34,9 +32,7 @@ public class Plot : BaseAuditableEntity
     [ForeignKey("FarmerId")]
     public Farmer Farmer { get; set; } = null!;
 
-    [ForeignKey("GroupId")]
-    public Group? Group { get; set; }
-
+    public ICollection<GroupPlot> GroupPlots { get; set; } = new List<GroupPlot>();
     public ICollection<PlotCultivation> PlotCultivations { get; set; } = new List<PlotCultivation>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();
 }

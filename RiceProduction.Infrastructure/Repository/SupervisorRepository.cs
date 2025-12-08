@@ -33,7 +33,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<IEnumerable<Supervisor>> FindAsync(Expression<Func<Supervisor, bool>> predicate, CancellationToken cancellationToken = default)
         {
             return await _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -44,7 +44,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<IEnumerable<Supervisor?>> GetAllSupervisorAsync(CancellationToken cancellationToken = default)
         {
             return await _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -55,7 +55,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<IEnumerable<Supervisor?>> GetAllSupervisorByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default)
         {
             var query = _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -84,7 +84,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<(IEnumerable<Supervisor?>, int totalCount)> GetAllSupervisorByNameOrEmailAndPhoneNumberAndByGroupOrClusterOrFarmerOrPlotOrNamePagingAsync(int pageNumber, int pageSize, string? search, string? groupSearch, string? phoneNumber, CancellationToken cancellationToken = default)
         {
             var query = _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -110,7 +110,7 @@ namespace RiceProduction.Infrastructure.Repository
                     || 
                     (f.AssignedTasks != null
                         && (f.AssignedTasks.Any(sv => sv.PlotCultivation != null && sv.PlotCultivation.Plot.Id.ToString().ToLower().Contains(groupSearch))
-                        || f.AssignedTasks.Any(sv => sv.PlotCultivation.Plot.Group != null && sv.PlotCultivation.Plot.Group.Id.ToString().ToLower().Contains(groupSearch))))
+                        || f.AssignedTasks.Any(sv => sv.PlotCultivation.Plot.GroupPlots.Any(gp => gp.Group != null && gp.Group.Id.ToString().ToLower().Contains(groupSearch)))))
                     || 
                     (f.SupervisorAssignments != null
                         && (f.SupervisorAssignments.Any(sv => sv.Farmer.Id.ToString().ToLower().Contains(groupSearch))
@@ -135,7 +135,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<Supervisor?> GetSupervisorByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
             return await _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -147,7 +147,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<Supervisor?> GetSupervisorByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default)
         {
             return await _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -158,7 +158,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<Supervisor?> GetSupervisorByNameOrEmail(string search, CancellationToken cancellationToken = default)
         {
             return await _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -170,7 +170,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<Supervisor?> GetSupervisorByPlotId(Guid plotId, CancellationToken cancellationToken = default)
         {
             return await _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
@@ -182,7 +182,7 @@ namespace RiceProduction.Infrastructure.Repository
         public async Task<(IEnumerable<Supervisor> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<Supervisor, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
             var query = _supervisor
-                .Include(s => s.SupervisedGroups).ThenInclude(s => s.Plots)
+                .Include(s => s.SupervisedGroups).ThenInclude(s => s.GroupPlots).ThenInclude(gp => gp.Plot)
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)

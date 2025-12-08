@@ -29,7 +29,8 @@ namespace RiceProduction.Application.Common.Mappings
             .ForMember(dest => dest.Plots, opt => opt.MapFrom(src => src.OwnedPlots))
             .ForMember(dest => dest.Groups, opt => opt.MapFrom(src =>
             src.OwnedPlots
-            .Select(p => p.Group)
+            .SelectMany(p => p.GroupPlots)
+            .Select(gp => gp.Group)
             .Where(g => g != null)
             .Distinct()
             ));

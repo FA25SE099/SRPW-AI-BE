@@ -96,11 +96,12 @@ public class GetClusterHistoryQueryHandler
                     continue;
                 }
 
-                // Get plots for these groups
+                // Get plots for these groups using many-to-many relationship
                 var groupIds = groupsList.Select(g => g.Id).ToList();
-                var plots = await _unitOfWork.Repository<Plot>()
-                    .ListAsync(p => p.GroupId.HasValue && groupIds.Contains(p.GroupId.Value));
-                var plotsList = plots.ToList();
+                var groupPlots = await _unitOfWork.Repository<GroupPlot>()
+                    .ListAsync(gp => groupIds.Contains(gp.GroupId),
+                        includeProperties: q => q.Include(gp => gp.Plot));
+                var plotsList = groupPlots.Select(gp => gp.Plot).ToList();
 
                 // Get farmers (user entity - use specialized repository)
                 var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
@@ -149,8 +150,7 @@ public class GetClusterHistoryQueryHandler
                         RiceVarietyId = g.Key,
                         RiceVarietyName = varietyDict.GetValueOrDefault(g.Key)?.VarietyName ?? "Unknown",
                         GroupCount = g.Count(),
-                        PlotCount = plotsList.Count(p => p.GroupId.HasValue && 
-                                                         g.Select(gr => gr.Id).Contains(p.GroupId.Value)),
+                        PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => g.Select(gr => gr.Id).Contains(gp.GroupId))),
                         TotalArea = g.Sum(gr => gr.TotalArea ?? 0)
                     })
                     .OrderByDescending(v => v.PlotCount)
@@ -179,7 +179,7 @@ public class GetClusterHistoryQueryHandler
                         : null,
                     PlantingDate = g.PlantingDate,
                     Status = g.Status.ToString(),
-                    PlotCount = plotsList.Count(p => p.GroupId == g.Id),
+                    PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => gp.GroupId == g.Id)),
                     TotalArea = g.TotalArea
                 }).ToList();
 

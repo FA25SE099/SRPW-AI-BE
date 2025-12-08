@@ -117,7 +117,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     FarmerName = farmer.FullName ?? string.Empty,
                     SoilType = newPlot.SoilType,
                     Status = newPlot.Status,
-                    GroupId = newPlot.GroupId
+                    GroupId = newPlot.GroupPlots.FirstOrDefault()?.GroupId
                 };
 
                 // Publish event for polygon assignment (non-blocking)

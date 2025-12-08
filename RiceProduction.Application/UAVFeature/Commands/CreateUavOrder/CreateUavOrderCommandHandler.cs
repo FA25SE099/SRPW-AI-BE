@@ -38,7 +38,7 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             // Tải Group cùng với Plots và PlotCultivations (để lấy Area)
             var group = await _unitOfWork.Repository<Group>().FindAsync(
                 g => g.Id == request.GroupId,
-                includeProperties: q => q.Include(g => g.Plots).ThenInclude(p => p.PlotCultivations)
+                includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.PlotCultivations)
             );
             var vendor = await _unitOfWork.UavVendorRepository.GetUavVendorByIdAsync(request.UavVendorId);
 
@@ -50,7 +50,7 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             }
             
             // --- 2. Tải và Xác định CultivationTask đang hoạt động cho các Plots đã chọn ---
-            var selectedPlots = group.Plots.Where(p => request.SelectedPlotIds.Contains(p.Id)).ToList();
+            var selectedPlots = group.GroupPlots.Select(gp => gp.Plot).Where(p => request.SelectedPlotIds.Contains(p.Id)).ToList();
             // Lấy tất cả PlotCultivation ID của các Plot đã chọn
             var selectedPlotCultivationIds = selectedPlots
                 .SelectMany(p => p.PlotCultivations)
@@ -130,7 +130,7 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             {
                 var plotId = groupOfTasks.Key;
                 var singleTask = groupOfTasks.First(); // Lấy một Task để đại diện cho Plot
-                var plot = group.Plots.First(p => p.Id == plotId);
+                var plot = group.GroupPlots.Select(gp => gp.Plot).First(p => p.Id == plotId);
 
                 assignments.Add(new UavOrderPlotAssignment
                 {

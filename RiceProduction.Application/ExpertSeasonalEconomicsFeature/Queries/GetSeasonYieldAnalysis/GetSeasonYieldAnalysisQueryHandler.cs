@@ -34,13 +34,22 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     return Result<SeasonYieldAnalysisResponse>.Failure("Season not found");
                 }
 
+                // First get plot IDs for the group if GroupId is specified
+                var plotIds = new List<Guid>();
+                if (request.GroupId.HasValue)
+                {
+                    var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken);
+                    plotIds = plots.Select(p => p.Id).ToList();
+                }
+
                 var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                     filter: pc => pc.SeasonId == request.SeasonId &&
-                                  (request.GroupId == null || pc.Plot.GroupId == request.GroupId) &&
-                                  (request.ClusterId == null || pc.Plot.Group!.ClusterId == request.ClusterId),
+                                  (request.GroupId == null || plotIds.Contains(pc.PlotId)) &&
+                                  (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)),
                     includeProperties: q => q
                         .Include(pc => pc.Plot)
-                            .ThenInclude(p => p.Group)
+                            .ThenInclude(p => p.GroupPlots)
+                                .ThenInclude(gp => gp.Group)
                         .Include(pc => pc.RiceVariety)
                         .Include(pc => pc.CultivationTasks));
 
@@ -107,26 +116,27 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     .ToList();
 
                 var yieldByGroup = plotCultivations
-                    .Where(pc => pc.Plot.GroupId.HasValue)
-                    .GroupBy(pc => new { pc.Plot.GroupId, GroupName = pc.Plot.Group!.Id.ToString() })
+                    .Where(pc => pc.Plot.GroupPlots.Any())
+                    .SelectMany(pc => pc.Plot.GroupPlots.Select(gp => new { PlotCultivation = pc, GroupPlot = gp }))
+                    .GroupBy(x => new { GroupId = x.GroupPlot.GroupId, GroupName = x.GroupPlot.Group.Id.ToString() })
                     .Select(g =>
                     {
-                        var totalArea = g.Sum(pc => pc.Area ?? pc.Plot.Area);
-                        var harvestedInGroup = g.Where(pc => pc.Status == CultivationStatus.Completed).ToList();
-                        var totalActualYield = harvestedInGroup.Sum(pc => pc.ActualYield ?? 0);
-                        var totalExpectedYield = g.Sum(pc =>
+                        var totalArea = g.Sum(x => x.PlotCultivation.Area ?? x.PlotCultivation.Plot.Area);
+                        var harvestedInGroup = g.Where(x => x.PlotCultivation.Status == CultivationStatus.Completed).ToList();
+                        var totalActualYield = harvestedInGroup.Sum(x => x.PlotCultivation.ActualYield ?? 0);
+                        var totalExpectedYield = g.Sum(x =>
                         {
-                            var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == pc.RiceVarietyId);
+                            var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == x.PlotCultivation.RiceVarietyId);
                             var expectedYieldPerHa = varietySeason?.ExpectedYieldPerHectare ?? 0;
-                            var area = pc.Area ?? pc.Plot.Area;
+                            var area = x.PlotCultivation.Area ?? x.PlotCultivation.Plot.Area;
                             return expectedYieldPerHa * area;
                         });
 
                         return new GroupYieldDetail
                         {
-                            GroupId = g.Key.GroupId!.Value,
+                            GroupId = g.Key.GroupId,
                             GroupName = g.Key.GroupName,
-                            PlotCount = g.Count(),
+                            PlotCount = g.Select(x => x.PlotCultivation.PlotId).Distinct().Count(),
                             TotalArea = totalArea,
                             TotalExpectedYield = totalExpectedYield,
                             TotalActualYield = totalActualYield,

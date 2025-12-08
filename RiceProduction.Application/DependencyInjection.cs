@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Behaviours;
+using RiceProduction.Application.Common.Services;
 using YourApp.Application.Common.Behaviors;
 
 namespace RiceProduction.Application;
@@ -23,5 +24,8 @@ public static class DependencyInjection
             cfg.AddOpenBehavior(typeof(PerformanceBehaviour<,>));
             cfg.AddOpenBehavior(typeof(CachingBehavior<,>));
         });
+
+        // Register in-memory spatial group formation service
+        builder.Services.AddScoped<GroupFormationService>();
     }
 }

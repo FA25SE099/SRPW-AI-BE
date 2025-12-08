@@ -30,7 +30,7 @@ public class GetPlanDetailsForExpertQueryHandler :
                 match: p => p.Id == request.PlanId,
                 includeProperties: q => q
                     .Include(p => p.Group).ThenInclude(g => g!.Cluster)
-                    .Include(p => p.Group).ThenInclude(g => g!.Plots) 
+                    .Include(p => p.Group).ThenInclude(g => g!.GroupPlots).ThenInclude(gp => gp.Plot)
                         .ThenInclude(plot => plot.Farmer)
                     .Include(p => p.CurrentProductionStages)
                         .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
@@ -44,7 +44,7 @@ public class GetPlanDetailsForExpertQueryHandler :
             }
             
             // Map Plot Details
-            var plotsResponse = plan.Group?.Plots
+            var plotsResponse = plan.Group?.GroupPlots?.Select(gp => gp.Plot)
                 .Select(plot => new ExpertPlotResponse
                 {
                     Id = plot.Id,

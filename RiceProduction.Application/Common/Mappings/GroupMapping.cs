@@ -19,7 +19,7 @@ namespace RiceProduction.Application.Common.Mappings
                 .ForMember(dest => dest.Area, opt => opt.MapFrom(src => src.Area))
                 .ForMember(dest => dest.TotalArea, opt => opt.MapFrom(src => src.TotalArea));
             CreateMap<RiceProduction.Domain.Entities.Group, GroupDetailDTO>().IncludeBase<RiceProduction.Domain.Entities.Group, GroupDTO>()
-                .ForMember(dest => dest.Plots, opt => opt.MapFrom(src => src.Plots))
+                .ForMember(dest => dest.Plots, opt => opt.MapFrom(src => src.GroupPlots.Select(gp => gp.Plot)))
                 .ForMember(dest => dest.ProductionPlans, opt => opt.MapFrom(src => src.ProductionPlans));
         }
     }
