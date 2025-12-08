@@ -323,7 +323,7 @@ namespace RiceProduction.Infrastructure.Data
             var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
             if (farmer1 == null)
             {
-                _logger.LogError("Farmer not found for seeding reports");
+                _logger.LogWarning("Farmer1 not found for seeding emergency reports - skipping emergency report seeding");
                 return;
             }
 
@@ -333,7 +333,7 @@ namespace RiceProduction.Infrastructure.Data
 
             if (plotCultivation == null)
             {
-                _logger.LogError("No plot cultivation found for farmer");
+                _logger.LogWarning("No plot cultivation found for farmer1 - skipping emergency report seeding");
                 return;
             }
 
@@ -371,10 +371,10 @@ namespace RiceProduction.Infrastructure.Data
                 return;
             }
 
-            var clusterManager = await _userManager.FindByEmailAsync("clustermgr@ricepro.com") as ClusterManager;
+            var clusterManager = await _userManager.FindByEmailAsync("cluster1@ricepro.com") as ClusterManager;
             if (clusterManager == null)
             {
-                _logger.LogError("Cluster manager not found");
+                _logger.LogError("Cluster manager not found - looking for cluster1@ricepro.com");
                 return;
             }
 
@@ -447,15 +447,15 @@ namespace RiceProduction.Infrastructure.Data
             await _context.SaveChangesAsync();
 
             // Get farmers
-            var farmer1 = await _userManager.FindByEmailAsync("demo.farmer1@ricepro.com") as Farmer;
-            var farmer2 = await _userManager.FindByEmailAsync("demo.farmer2@ricepro.com") as Farmer;
-            var farmer3 = await _userManager.FindByEmailAsync("demo.farmer3@ricepro.com") as Farmer;
-            var farmer4 = await _userManager.FindByEmailAsync("demo.farmer4@ricepro.com") as Farmer;
-            var farmer5 = await _userManager.FindByEmailAsync("demo.farmer5@ricepro.com") as Farmer;
+            var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
+            var farmer2 = await _userManager.FindByEmailAsync("farmer2@ricepro.com") as Farmer;
+            var farmer3 = await _userManager.FindByEmailAsync("farmer3@ricepro.com") as Farmer;
+            var farmer4 = await _userManager.FindByEmailAsync("farmer4@ricepro.com") as Farmer;
+            var farmer5 = await _userManager.FindByEmailAsync("farmer5@ricepro.com") as Farmer;
 
             if (farmer1 == null || farmer2 == null || farmer3 == null || farmer4 == null || farmer5 == null)
             {
-                _logger.LogError("Some farmers not found");
+                _logger.LogError("Some farmers not found. Expected: farmer1-5@ricepro.com");
                 return;
             }
 
@@ -471,7 +471,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 1,
             Area = 2.5m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.881)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.881)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71498059235353 10.884914175930405, 106.71500634870534 10.88494494631992, 106.71505143418733 10.884921977418259, 106.71555851534043 10.88404830600929, 106.71551607799915 10.884048085817966, 106.7148021440646 10.884227751931704, 106.71480011622322 10.884263559457352, 106.71498059235353 10.884914175930405))")
         },
@@ -483,7 +483,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 1,
             Area = 2.0m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.881)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.881)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.884105936898294, 106.71071846252238 10.884055109694685, 106.71207612180888 10.883699319026704, 106.71213186148651 10.883738416923123, 106.71219556397517 10.88406683905012, 106.71216769413752 10.884105936898294, 106.71073438814449 10.884493005318205, 106.71068661127799 10.88444999774083, 106.71069457408902 10.884105936898294))")
         },
@@ -497,7 +497,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 2,
             Area = 2.6m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.713, 10.882)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.713, 10.882)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71070253690021 10.883026834407332, 106.71073438814449 10.882995556015928, 106.71176557217888 10.88272577975404, 106.71181733044978 10.88275314837145, 106.71194871683156 10.883136308751276, 106.71192880980504 10.883175406721506, 106.71073438814449 10.883496009884027, 106.71069059268234 10.883449092369588, 106.71070253690021 10.883026834407332))")
         },
@@ -509,7 +509,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 2,
             Area = 2.6m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.714, 10.882)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.714, 10.882)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71246520193125 10.884549962144803, 106.7124773433348 10.884470684363805, 106.71283314047417 10.884372696581664, 106.71286735397456 10.884412393761849, 106.71314217194521 10.885425479558137, 106.71311518277992 10.885474251051647, 106.7126604114211 10.885281875234625, 106.71246520193125 10.884549962144803))")
         },
@@ -523,7 +523,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 3,
             Area = 3.0m,
             SoilType = "Đất nông nghiệp",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.715, 10.883)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.715, 10.883)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71475993094629 10.884185857813065, 106.7147898575455 10.88420899070907, 106.71553304049667 10.884007850338875, 106.7155673615681 10.883981671719155, 106.71576933706774 10.883620934353317, 106.7157510766865 10.88360394426607, 106.71475220093299 10.883874493323304, 106.71469404169272 10.883939745415574, 106.71475993094629 10.884185857813065))")
         },
@@ -535,7 +535,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 3,
             Area = 3.0m,
             SoilType = "Đất nông nghiệp",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.716, 10.883)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.716, 10.883)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71291179093043 10.884394856084313, 106.71294090122916 10.884345214055259, 106.71412842547488 10.88403926673567, 106.71418326435332 10.884056329391782, 106.71425742751671 10.884306040529339, 106.7142414508669 10.884338972609328, 106.7130036923827 10.88465981337437, 106.71296966024477 10.884634018643936, 106.71291179093043 10.884394856084313))")
         },
@@ -549,7 +549,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 4,
             Area = 1.9m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.717, 10.884)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.717, 10.884)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.883589844890736, 106.71073438814449 10.883546837183019, 106.71192482839831 10.883230143871259, 106.71198853088697 10.883249692850825, 106.7120920474311 10.883566386141851, 106.71204427056455 10.883652401545447, 106.71071846252238 10.88400819226824, 106.71069059268234 10.883961274834505, 106.71069457408902 10.883589844890736))")
         },
@@ -561,7 +561,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 4,
             Area = 1.9m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.718, 10.884)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.718, 10.884)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.7145518044752 10.883408825499856, 106.71460057814164 10.883434939117606, 106.71613453708704 10.88302139060329, 106.71632233452652 10.882705425364477, 106.71630426939402 10.882656355947788, 106.7161268171239 10.882584475771338, 106.71607069260227 10.882588139470599, 106.71447202698675 10.883032314320317, 106.71445363139475 10.883083423087626, 106.7145518044752 10.883408825499856))")
         },
@@ -575,7 +575,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 5,
             Area = 2.75m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.885)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.885)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.71465576665639 10.883801812868853, 106.71467954706998 10.883825129275792, 106.71584935841179 10.88349513933052, 106.71590053930089 10.883456879875283, 106.71606663309001 10.883153403591834, 106.71605716856175 10.883100706802935, 106.71601578265847 10.883091484992235, 106.7146030776417 10.883487238839052, 106.71458712618221 10.883520643578692, 106.71458756737309 10.883560472932956, 106.71465576665639 10.883801812868853))")
         },
@@ -587,7 +587,7 @@ namespace RiceProduction.Infrastructure.Data
             SoTo = 5,
             Area = 2.75m,
             SoilType = "Đất phù sa",
-            Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.885)),
+            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.885)),
             Status = PlotStatus.Active,
             Boundary = CreatePolygonFromWkt("POLYGON((106.7107264253334 10.884543832447122, 106.7107264253334 10.88461420845745, 106.71102901215232 10.884782328858108, 106.71109271464098 10.884782328858108, 106.71226324787057 10.884469546640403, 106.7122950991149 10.884410899937805, 106.71224334084167 10.884180222795635, 106.71217565694866 10.88415285430932, 106.7107264253334 10.884543832447122))")
         }
