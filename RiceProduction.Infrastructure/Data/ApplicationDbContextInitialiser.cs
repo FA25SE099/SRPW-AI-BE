@@ -40,6 +40,8 @@ namespace RiceProduction.Infrastructure.Data
             public static readonly Guid DT9VuaVaoGao = new Guid("60061BBE-1DCA-48B1-B291-41497D3BAE76");
             public static readonly Guid TrangXanhWP = new Guid("DC92CDEE-7D8B-4C43-9586-8DE46B1BE8B5");
             public static readonly Guid DT6 = new Guid("11FB236B-AA4D-46F6-9461-FE4EB810E5CD");
+            // Lúa ST25
+            public static readonly Guid ST25 = new Guid("89C8EA8C-89A4-4B90-BF44-346E2FD86E09");
         }
 
         public ApplicationDbContextInitialiser(
@@ -1013,7 +1015,9 @@ namespace RiceProduction.Infrastructure.Data
                 new Material { Id = MaterialIds.DT9VuaVaoGao, Name = "DT9 Vua vào gạo_ 500ml", Type = MaterialType.Pesticide, AmmountPerMaterial = 500, Unit = "ml", Description = "Trỗ lẹt xẹt, 100ml/25 lít nước", Manufacturer = "DucThanh", IsActive = true },
                 new Material { Id = new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"), Name = "Amino Gold 15SL_500ml", Type = MaterialType.Pesticide, AmmountPerMaterial = 500, Unit = "ml", Description = "Trỗ lẹt xẹt, 50ml/25 lít nước", Manufacturer = "DucThanh", IsActive = true },
                 new Material { Id = MaterialIds.TrangXanhWP, Name = "Trắng xanh WP", Type = MaterialType.Pesticide, AmmountPerMaterial = 1000, Unit = "g", Description = "Trỗ lẹt xẹt, 100ml/25 lít nước", Manufacturer = "DucThanh", IsActive = true },
-                new Material { Id = MaterialIds.DT6, Name = "DT 6_ 100g", Type = MaterialType.Pesticide, AmmountPerMaterial = 100, Unit = "gr", Description = "Cong trái me, 100g/25 lít nước", Manufacturer = "DucThanh", IsActive = true }
+                new Material { Id = MaterialIds.DT6, Name = "DT 6_ 100g", Type = MaterialType.Pesticide, AmmountPerMaterial = 100, Unit = "gr", Description = "Cong trái me, 100g/25 lít nước", Manufacturer = "DucThanh", IsActive = true },
+                // Seed
+                new Material { Id = MaterialIds.ST25, Name = "ST25 (Hạt giống lúa ST25)", Type = MaterialType.Seed, AmmountPerMaterial = 1, Unit = "kg", Description = "Hạt giống lúa ST25", Manufacturer = "DucThanh", IsActive = true },
             };
 
             await _context.Set<Material>().AddRangeAsync(materials);
@@ -1049,7 +1053,9 @@ namespace RiceProduction.Infrastructure.Data
                 new MaterialPrice { MaterialId = new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"), PricePerMaterial = 219000, ValidFrom = currentDate },
                 new MaterialPrice { MaterialId = MaterialIds.TrangXanhWP, PricePerMaterial = 288000, ValidFrom = currentDate },
                 new MaterialPrice { MaterialId = MaterialIds.DAP, PricePerMaterial = 650000, ValidFrom = currentDate },
-                new MaterialPrice { MaterialId = MaterialIds.DT6, PricePerMaterial = 26000, ValidFrom = currentDate }
+                new MaterialPrice { MaterialId = MaterialIds.DT6, PricePerMaterial = 26000, ValidFrom = currentDate },
+                // Seed
+                new MaterialPrice { MaterialId = MaterialIds.ST25, PricePerMaterial = 26000, ValidFrom = currentDate },
 
             };
 
@@ -1247,6 +1253,7 @@ namespace RiceProduction.Infrastructure.Data
                 "Gieo để hạt giống đều và giữ độ ẩm phù hợp để cây mọc mầm",
                 0, 1, TaskType.Sowing, TaskPriority.High, 1);
             allTasks.Add(saTask);
+            allTaskMaterials.Add(CreateTaskMaterial(saTask.Id, MaterialIds.ST25, 60m));
 
             // ===== STAGE 3: Chăm sóc sau sạ =====
             var stage3 = stages[2];
