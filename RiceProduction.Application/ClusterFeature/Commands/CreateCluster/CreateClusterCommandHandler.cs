@@ -51,19 +51,73 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
                     ClusterManagerId = request.ClusterManagerId,
                     AgronomyExpertId = request.AgronomyExpertId
                 };
-                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetEntityByIdAsync(c => c.Id == request.ClusterManagerId);
-                if (clusterManager == null)
-                {
-                    _logger.LogInformation("Cannot find manager with this id: {}", request.ClusterManagerId);
-                }
                 
-                //newCluster.ClusterManager.AssignedDate = DateTime.UtcNow;
-                //newCluster.AgronomyExpert.AssignedDate = DateTime.UtcNow;
+                // Add the cluster first
                 await clusterRepo.AddAsync(newCluster);
-                clusterManager.ClusterId = newCluster.Id;
-                _unitOfWork.ClusterManagerRepository.Update(clusterManager);
+
+                // Update ClusterManager
+                if (request.ClusterManagerId.HasValue)
+                {
+                    var clusterManager = await _unitOfWork.ClusterManagerRepository.GetEntityByIdAsync(c => c.Id == request.ClusterManagerId);
+                    if (clusterManager != null)
+                    {
+                        clusterManager.ClusterId = newCluster.Id;
+                        clusterManager.AssignedDate = DateTime.UtcNow;
+                        _unitOfWork.ClusterManagerRepository.Update(clusterManager);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Cannot find cluster manager with id: {ClusterManagerId}", request.ClusterManagerId);
+                    }
+                }
+
+                // Update AgronomyExpert
+                if (request.AgronomyExpertId.HasValue)
+                {
+                    var agronomyExpert = await _unitOfWork.AgronomyExpertRepository.GetAgronomyExpertByIdAsync(request.AgronomyExpertId.Value, cancellationToken);
+                    if (agronomyExpert != null)
+                    {
+                        agronomyExpert.ClusterId = newCluster.Id;
+                        agronomyExpert.AssignedDate = DateTime.UtcNow;
+                        _unitOfWork.AgronomyExpertRepository.Update(agronomyExpert);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Cannot find agronomy expert with id: {AgronomyExpertId}", request.AgronomyExpertId);
+                    }
+                }
+
+                // Assign Supervisors to Cluster
+                if (request.SupervisorIds != null && request.SupervisorIds.Any())
+                {
+                    foreach (var supervisorId in request.SupervisorIds)
+                    {
+                        var supervisor = await _unitOfWork.SupervisorRepository.GetSupervisorByIdAsync(supervisorId, cancellationToken);
+                        if (supervisor != null)
+                        {
+                            // Check if supervisor is already assigned to another cluster
+                            if (supervisor.ClusterId.HasValue)
+                            {
+                                _logger.LogWarning("Supervisor {SupervisorId} is already assigned to cluster {ClusterId}", 
+                                    supervisorId, supervisor.ClusterId);
+                                continue;
+                            }
+
+                            supervisor.ClusterId = newCluster.Id;
+                            supervisor.AssignedDate = DateTime.UtcNow;
+                            _unitOfWork.SupervisorRepository.Update(supervisor);
+                            _logger.LogInformation("Assigned supervisor {SupervisorId} to cluster {ClusterId}", 
+                                supervisorId, newCluster.Id);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Cannot find supervisor with id: {SupervisorId}", supervisorId);
+                        }
+                    }
+                }
 
                 await _unitOfWork.CompleteAsync();
+                
                 if (await clusterRepo.ExistsAsync(c => c.Id == id)) { 
                     _logger.LogInformation("Created Cluster with ID: {ClusterId}", id);
                 }

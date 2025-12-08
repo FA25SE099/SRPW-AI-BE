@@ -52,7 +52,17 @@ namespace RiceProduction.Application.ClusterFeature.Queries.GetAllClustersPaging
                     AgronomyExpertName = c.AgronomyExpert != null ? c.AgronomyExpert.FullName : null,
                     AgronomyExpertPhoneNumber = c.AgronomyExpert != null ? c.AgronomyExpert.PhoneNumber : null,
                     AgronomyExpertEmail = c.AgronomyExpert != null ? c.AgronomyExpert.Email : null,
-                    Area = c.Area
+                    Area = c.Area,
+                    Supervisors = c.SupervisorsInCluster?.Select(s => new SupervisorSummary
+                    {
+                        SupervisorId = s.Id,
+                        FullName = s.FullName,
+                        PhoneNumber = s.PhoneNumber,
+                        Email = s.Email,
+                        CurrentFarmerCount = s.CurrentFarmerCount,
+                        MaxFarmerCapacity = s.MaxFarmerCapacity,
+                        AssignedDate = s.AssignedDate
+                    }).ToList()
                 }).ToList();
                 return PagedResult<List<ClusterResponse>>.Success(
                     clusterResponses,
