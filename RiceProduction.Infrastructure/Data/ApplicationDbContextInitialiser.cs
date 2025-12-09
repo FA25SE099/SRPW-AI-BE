@@ -387,6 +387,7 @@ namespace RiceProduction.Infrastructure.Data
                 return;
             }
 
+            var currentSeasonResult = GetCurrentSeasonAndYear();
             var currentYear = DateTime.UtcNow.Year;
             var currentMonth = DateTime.UtcNow.Month;
 
@@ -607,10 +608,10 @@ namespace RiceProduction.Infrastructure.Data
                     Id = Guid.NewGuid(),
                     PlotId = plot.Id,
                     RiceVarietyId = st25.Id,
-                    SeasonId = currentSeasonId, // Use detected current season
+                    SeasonId = currentSeasonId, 
                     PlantingDate = plantingDate,
                     Area = plot.Area,
-                    ExpectedYield = plot.Area * 6.0m, // 6 tons per hectare
+                    ExpectedYield = plot.Area * 6.0m,
                     Status = CultivationStatus.Planned,
                     CreatedAt = DateTime.UtcNow,
                     LastModified = DateTime.UtcNow
@@ -622,7 +623,7 @@ namespace RiceProduction.Infrastructure.Data
             await _context.Set<PlotCultivation>().AddRangeAsync(plotCultivations);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation($"Created {plotCultivations.Count} plot cultivations for season {currentSeasonName}");
+            _logger.LogInformation($"Created {plotCultivations.Count} plot cultivations for season {currentSeasonName} {currentYear}");
 
             // Update farmers with cluster
             farmer1.ClusterId = demoClusterId;
@@ -2483,6 +2484,65 @@ namespace RiceProduction.Infrastructure.Data
             }
 
             return (Polygon)geometry.ConvexHull();
+        }
+        private async Task<(Season? season, int year)> GetCurrentSeasonAndYear()
+        {
+            var today = DateTime.Now;
+            var currentMonth = today.Month;
+            var currentDay = today.Day;
+
+            var allSeasons = await _context.Seasons.ToListAsync();
+
+            foreach (var season in allSeasons)
+            {
+                if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
+                {
+                    var startParts = season.StartDate.Split('/');
+                    int startMonth = int.Parse(startParts[0]);
+
+                    int year = today.Year;
+                    if (currentMonth < startMonth && startMonth > 6)
+                    {
+                        year--;
+                    }
+
+                    return (season, year);
+                }
+            }
+
+            return (null, today.Year);
+        }
+
+        private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
+        {
+            try
+            {
+                var startParts = startDateStr.Split('/');
+                var endParts = endDateStr.Split('/');
+
+                int startMonth = int.Parse(startParts[0]);
+                int startDay = int.Parse(startParts[1]);
+                int endMonth = int.Parse(endParts[0]);
+                int endDay = int.Parse(endParts[1]);
+
+                int currentDate = month * 100 + day;
+                int seasonStart = startMonth * 100 + startDay;
+                int seasonEnd = endMonth * 100 + endDay;
+
+                // Handle cross-year seasons (e.g., Dec to Mar)
+                if (seasonStart > seasonEnd)
+                {
+                    return currentDate >= seasonStart || currentDate <= seasonEnd;
+                }
+                else
+                {
+                    return currentDate >= seasonStart && currentDate <= seasonEnd;
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
         #endregion
     }
