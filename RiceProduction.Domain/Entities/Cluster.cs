@@ -21,6 +21,7 @@ public class Cluster : BaseAuditableEntity
     [ForeignKey("AgronomyExpertId")]
     public AgronomyExpert? AgronomyExpert { get; set; }
     
+    public ICollection<Supervisor> SupervisorsInCluster { get; set; } = new List<Supervisor>();
     public ICollection<Group> Groups { get; set; } = new List<Group>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();
     public ICollection<FieldWeather> WeatherData { get; set; } = new List<FieldWeather>();

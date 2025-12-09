@@ -20,6 +20,12 @@ namespace RiceProduction.Infrastructure.Repository
             _context = context;
             _supervisor = context.Set<Supervisor>();
         }
+        
+        public void Update(Supervisor entity)
+        {
+            _context.Set<Supervisor>().Update(entity);
+        }
+        
         public void UpdateRange(IEnumerable<Supervisor> entities)
         {
             _context.Set<Supervisor>().UpdateRange(entities);

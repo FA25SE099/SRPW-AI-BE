@@ -1,4 +1,4 @@
-﻿
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
@@ -36,6 +36,8 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
 
         public async Task Handle(ProductionPlanApprovalEvent notification, CancellationToken cancellationToken)
         {
+            _logger.LogInformation("ProductionPlanApprovalEvent received for Plan ID: {PlanId}", notification.PlanId);
+            
             //Get all plan with include
             var plan = await FetchPlanWithRelationsAsync(notification.PlanId, cancellationToken);
             if (!IsValidForTaskCreation(plan))
@@ -43,6 +45,30 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 _logger.LogWarning("No stages found for approved plan {PlanId}", notification.PlanId);
                 return;
             }
+            
+            // FIX #1: Check if tasks already exist for this plan to prevent duplicate creation
+            // Get all ProductionPlanTask IDs from this plan
+            var planTaskIds = plan.CurrentProductionStages
+                .SelectMany(s => s.ProductionPlanTasks ?? Enumerable.Empty<ProductionPlanTask>())
+                .Select(t => t.Id)
+                .ToList();
+            
+            if (planTaskIds.Any())
+            {
+                // Check if any CultivationTasks already exist for these ProductionPlanTasks
+                var existingTasksCount = await _taskRepo.GetQueryable()
+                    .Where(ct => ct.ProductionPlanTaskId != null && planTaskIds.Contains(ct.ProductionPlanTaskId.Value))
+                    .CountAsync(cancellationToken);
+                
+                if (existingTasksCount > 0)
+                {
+                    _logger.LogWarning(
+                        "Tasks already exist for plan {PlanId} ({ExistingCount} tasks found). Skipping task creation to prevent duplicates.",
+                        notification.PlanId, existingTasksCount);
+                    return;
+                }
+            }
+            
             //Populate material Lookup
             var (materialDict, priceDict) = await LoadMaterialsAndPricesAsync(plan, cancellationToken);
             if (!materialDict.Any())
@@ -50,20 +76,55 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 _logger.LogInformation("No materials found for plan {PlanId}", notification.PlanId);
                 return;
             }
+            
             //Populate plotcultivation Lookup
             var plots = plan.Group!.GroupPlots.Select(gp => gp.Plot).ToList();
-            var plotCultivations = plots.SelectMany(pl => pl.PlotCultivations).ToList();
-            if (!plotCultivations.Any())
+            
+            // FIX #2: Get only plot cultivations for the current season to avoid duplicates
+            var seasonId = plan.Group.SeasonId;
+            
+            if (!seasonId.HasValue)
             {
-                _logger.LogWarning("No plot cultivations found for plan {PlanId}", notification.PlanId);
+                _logger.LogWarning("Group {GroupId} for plan {PlanId} has no season assigned", 
+                    plan.Group.Id, notification.PlanId);
                 return;
             }
             
+            var plotCultivations = plots
+                .SelectMany(pl => pl.PlotCultivations)
+                .Where(pc => pc.SeasonId == seasonId.Value) // Only current season
+                .GroupBy(pc => pc.PlotId) // Group by PlotId
+                .Select(g => g.OrderByDescending(pc => pc.CreatedAt).First()) // Take latest per plot
+                .ToList();
+            
+            if (!plotCultivations.Any())
+            {
+                _logger.LogWarning("No plot cultivations found for plan {PlanId} in season {SeasonId}", 
+                    notification.PlanId, seasonId.Value);
+                return;
+            }
+            
+            _logger.LogInformation(
+                "Processing {PlotCount} unique plots for plan {PlanId}", 
+                plotCultivations.Count, notification.PlanId);
+            
             var plotCultivationIds = plotCultivations.Select(pc => pc.Id).ToList();
-            var activeVersions = await _versionRepo.ListAsync(
-                filter: v => plotCultivationIds.Contains(v.PlotCultivationId) && v.IsActive
+            
+            // FIX #3: Get the latest version (highest VersionOrder) instead of IsActive
+            var allVersions = await _versionRepo.ListAsync(
+                filter: v => plotCultivationIds.Contains(v.PlotCultivationId)
             );
-            var versionLookup = activeVersions.ToDictionary(v => v.PlotCultivationId, v => v.Id);
+            
+            var versionLookup = allVersions
+                .GroupBy(v => v.PlotCultivationId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(v => v.VersionOrder).First().Id
+                );
+            
+            _logger.LogInformation(
+                "Found versions for {VersionCount} plot cultivations", 
+                versionLookup.Count);
             
             var cultivationTasks = new List<CultivationTask>();
             var cultivationTaskMaterials = new List<CultivationTaskMaterial>();
@@ -76,22 +137,31 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                     {
                         if (plotCultivation.Area <= 0)
                         {
-                            _logger.LogWarning("Skipping zero-area plot {PlotId} for task {TaskId}", plotCultivation.Id, planTask.Id);
+                            _logger.LogWarning("Skipping zero-area plot {PlotId} for task {TaskId}", 
+                                plotCultivation.PlotId, planTask.Id);
                             continue;
                         }
 
-                        versionLookup.TryGetValue(plotCultivation.Id, out var versionId);
-                        
-                        if (versionId == Guid.Empty)
+                        if (!versionLookup.TryGetValue(plotCultivation.Id, out var versionId))
                         {
-                            _logger.LogWarning("No active version found for PlotCultivation {PlotCultivationId}", plotCultivation.Id);
+                            _logger.LogWarning(
+                                "No version found for PlotCultivation {PlotCultivationId}. Task will be created without version.",
+                                plotCultivation.Id);
+                            versionId = Guid.Empty;
                         }
 
-                        var (task, taskMaterials) = CreateTaskForPlot(planTask, plotCultivation, versionId, priceDict, materialDict);
+                        var (task, taskMaterials) = CreateTaskForPlot(
+                            planTask, plotCultivation, versionId, priceDict, materialDict);
                         cultivationTasks.Add(task);
                         cultivationTaskMaterials.AddRange(taskMaterials);
                     }
                 }
+            }
+
+            if (!cultivationTasks.Any())
+            {
+                _logger.LogWarning("No cultivation tasks were created for plan {PlanId}", notification.PlanId);
+                return;
             }
 
             await SaveTasksAndMaterialsAsync(cultivationTasks, cultivationTaskMaterials, cancellationToken);
@@ -137,7 +207,6 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             if (!materialIds.Any()) return (new Dictionary<Guid, Material>(), new Dictionary<Guid, MaterialPrice>());
 
             var now = DateTime.UtcNow;
-
 
             var materials = await _materialRepo.ListAsync(
                 filter: m => materialIds.Contains(m.Id)

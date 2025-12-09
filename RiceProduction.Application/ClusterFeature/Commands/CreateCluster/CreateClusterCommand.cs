@@ -18,5 +18,10 @@ namespace RiceProduction.Application.ClusterFeature.Commands.CreateCluster
 
         public Guid? ClusterManagerId { get; set; }
         public Guid? AgronomyExpertId { get; set; }
+        
+        /// <summary>
+        /// List of Supervisor IDs to assign to this cluster
+        /// </summary>
+        public List<Guid>? SupervisorIds { get; set; }
     }
 }

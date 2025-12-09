@@ -22,5 +22,19 @@ namespace RiceProduction.Application.Common.Models.Response.ClusterResponses
         public string? AgronomyExpertEmail { get; set; }
         [Column(TypeName = "decimal(10,2)")]
         public decimal? Area { get; set; }
+        
+        // Supervisor information
+        public List<SupervisorSummary>? Supervisors { get; set; }
+    }
+
+    public class SupervisorSummary
+    {
+        public Guid SupervisorId { get; set; }
+        public string? FullName { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Email { get; set; }
+        public int CurrentFarmerCount { get; set; }
+        public int MaxFarmerCapacity { get; set; }
+        public DateTime? AssignedDate { get; set; }
     }
 }

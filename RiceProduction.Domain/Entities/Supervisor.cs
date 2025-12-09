@@ -11,6 +11,10 @@ public class Supervisor : ApplicationUser
     /// Current number of assigned farmers
     /// </summary>
     public int CurrentFarmerCount { get; set; } = 0;
+    public Guid? ClusterId { get; set; }
+    public DateTime? AssignedDate { get; set; }
+    [ForeignKey("ClusterId")]
+    public Cluster? ManagedCluster { get; set; }
     // Navigation properties
     public ICollection<Group> SupervisedGroups { get; set; } = new List<Group>();
     public ICollection<CultivationTask> AssignedTasks { get; set; } = new List<CultivationTask>();
