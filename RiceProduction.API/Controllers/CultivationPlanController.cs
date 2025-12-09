@@ -7,6 +7,7 @@ using RiceProduction.Application.CultivationPlanFeature.Queries;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetByPlotId;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationPlanById;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCurrentPlotCultivation;
+using RiceProduction.Application.CultivationPlanFeature.Queries.GetPlotCultivationByGroupAndPlot;
 
 [ApiController]
 [Route("api/cultivation-plan")]
@@ -70,6 +71,24 @@ public class CultivationPlanController : ControllerBase
     public async Task<IActionResult> GetCurrentPlotCultivation(Guid plotId)
     {
         var query = new GetCurrentPlotCultivationQuery { PlotId = plotId };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return NotFound(result);
+        }
+
+        return Ok(result);
+    }
+
+    [HttpPost("by-group-plot")]
+    public async Task<IActionResult> GetCurrentPlotCultivationByGroup([FromBody] GetPlotCultivationByGroupAndPlotQuery query)
+    {
+        //var query = new GetPlotCultivationByGroupAndPlotQuery
+        //{
+        //    PlotId = plotId,
+        //    GroupId = groupId
+        //};
         var result = await _mediator.Send(query);
 
         if (!result.Succeeded)

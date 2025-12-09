@@ -1,66 +1,84 @@
-using MediatR;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.CultivationPlanFeature.Queries.GetCurrentPlotCultivation;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 
-namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetCurrentPlotCultivation;
+namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetPlotCultivationByGroupAndPlot;
 
-public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentPlotCultivationQuery, Result<CurrentPlotCultivationDetailResponse>>
+public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetPlotCultivationByGroupAndPlotQuery, Result<CurrentPlotCultivationDetailResponse>>
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ILogger<GetCurrentPlotCultivationQueryHandler> _logger;
+    private readonly ILogger<GetPlotCultivationByGroupAndPlotQueryHandler> _logger;
 
-    public GetCurrentPlotCultivationQueryHandler(IUnitOfWork unitOfWork, ILogger<GetCurrentPlotCultivationQueryHandler> logger)
+    public GetPlotCultivationByGroupAndPlotQueryHandler(IUnitOfWork unitOfWork, ILogger<GetPlotCultivationByGroupAndPlotQueryHandler> logger)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
-    public async Task<Result<CurrentPlotCultivationDetailResponse>> Handle(GetCurrentPlotCultivationQuery request, CancellationToken cancellationToken)
+    public async Task<Result<CurrentPlotCultivationDetailResponse>> Handle(GetPlotCultivationByGroupAndPlotQuery request, CancellationToken cancellationToken)
     {
         try
         {
-            // Load plot with current cultivation
-            var plot = await _unitOfWork.Repository<Plot>().FindAsync(
-                match: p => p.Id == request.PlotId,
-                includeProperties: q => q
-                    .Include(p => p.PlotCultivations
-                        .Where(pc => pc.Status == CultivationStatus.InProgress || pc.Status == CultivationStatus.Planned))
-                        .ThenInclude(pc => pc.Season)
-                    .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.RiceVariety)
-                    .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.CultivationVersions)
+            // 1. Verify that the plot belongs to the group using GroupPlot
+            var groupPlot = await _unitOfWork.Repository<GroupPlot>().FindAsync(
+                match: gp => gp.PlotId == request.PlotId && gp.GroupId == request.GroupId
             );
 
-            if (plot == null)
+            if (groupPlot == null)
             {
-                return Result<CurrentPlotCultivationDetailResponse>.Failure($"Plot with ID {request.PlotId} not found.", "PlotNotFound");
+                return Result<CurrentPlotCultivationDetailResponse>.Failure(
+                    $"Plot with ID {request.PlotId} does not belong to Group with ID {request.GroupId}.",
+                    "PlotNotInGroup");
             }
 
-            // Get current active cultivation (InProgress or latest Planned)
-            var currentCultivation = plot.PlotCultivations
-                .OrderByDescending(pc => pc.Status == CultivationStatus.InProgress)
-                .ThenByDescending(pc => pc.PlantingDate)
-                .FirstOrDefault();
+            // 2. Load the Group to get the SeasonId
+            var group = await _unitOfWork.Repository<Group>().FindAsync(
+                match: g => g.Id == request.GroupId
+            );
 
-            if (currentCultivation == null)
+            if (group == null)
             {
-                return Result<CurrentPlotCultivationDetailResponse>.Failure($"No active cultivation found for plot {request.PlotId}.", "NoCultivationFound");
+                return Result<CurrentPlotCultivationDetailResponse>.Failure(
+                    $"Group with ID {request.GroupId} not found.",
+                    "GroupNotFound");
+            }
+
+            if (!group.SeasonId.HasValue)
+            {
+                return Result<CurrentPlotCultivationDetailResponse>.Failure(
+                    $"Group with ID {request.GroupId} does not have a season assigned.",
+                    "GroupSeasonNotAssigned");
+            }
+
+            // 3. Find PlotCultivation using PlotId and SeasonId
+            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
+                match: pc => pc.PlotId == request.PlotId && pc.SeasonId == group.SeasonId.Value,
+                includeProperties: q => q
+                    .Include(pc => pc.Plot)
+                    .Include(pc => pc.Season)
+                    .Include(pc => pc.RiceVariety)
+                    .Include(pc => pc.CultivationVersions)
+            );
+
+            if (plotCultivation == null)
+            {
+                return Result<CurrentPlotCultivationDetailResponse>.Failure(
+                    $"No cultivation found for Plot {request.PlotId} in Season {group.SeasonId.Value}.",
+                    "PlotCultivationNotFound");
             }
 
             // Get the latest version (highest VersionOrder)
-            var latestVersion = currentCultivation.CultivationVersions
+            var latestVersion = plotCultivation.CultivationVersions
                 .OrderByDescending(v => v.VersionOrder)
                 .FirstOrDefault();
 
-            // Load cultivation tasks with related data for the latest version
+            // 4. Load cultivation tasks with related data for the latest version
             Guid? versionId = latestVersion?.Id;
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.PlotCultivationId == currentCultivation.Id && ct.VersionId == versionId,
+                filter: ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId,
                 orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
 #pragma warning disable CS8602 // Dereference of a possibly null reference
                 includeProperties: q => q
@@ -79,7 +97,7 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 _logger.LogWarning(
                     "Found {DuplicateCount} duplicate tasks for PlotCultivation {PlotCultivationId} Version {VersionId}. " +
                     "This indicates a data integrity issue that should be investigated.",
-                    duplicateCount, currentCultivation.Id, versionId);
+                    duplicateCount, plotCultivation.Id, versionId);
             }
 
             // Deduplicate tasks by keeping only unique task IDs (taking the first occurrence)
@@ -88,11 +106,11 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 .Select(g => g.First())
                 .ToList();
 
-            // Get production plan info from first task
+            // 5. Get production plan info from first task
             var firstTask = uniqueTasks.FirstOrDefault();
             var productionPlan = firstTask?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
 
-            // Group tasks by stage and create nested structure
+            // 6. Group tasks by stage and create nested structure
             var stagesGroup = uniqueTasks
                 .GroupBy(task => new
                 {
@@ -137,14 +155,14 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 })
                 .ToList();
 
-            // Calculate progress (using unique tasks)
+            // 7. Calculate progress (using unique tasks)
             var totalTasks = uniqueTasks.Count;
             var completedTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Completed);
             var inProgressTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
             var pendingTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Draft || t.Status == Domain.Enums.TaskStatus.PendingApproval);
             var completionPercentage = totalTasks > 0 ? (decimal)completedTasks / totalTasks * 100 : 0;
-            var daysElapsed = (DateTime.UtcNow - currentCultivation.PlantingDate).Days;
-            
+            var daysElapsed = (DateTime.UtcNow - plotCultivation.PlantingDate).Days;
+
             // Estimate remaining days based on last task scheduled end date
             int? estimatedDaysRemaining = null;
             var lastTask = uniqueTasks.OrderByDescending(t => t.ScheduledEndDate).FirstOrDefault();
@@ -154,35 +172,36 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 if (estimatedDaysRemaining < 0) estimatedDaysRemaining = 0;
             }
 
+            // 8. Build response
             var response = new CurrentPlotCultivationDetailResponse
             {
-                PlotCultivationId = currentCultivation.Id,
-                PlotId = plot.Id,
-                PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
-                PlotArea = plot.Area,
-                
-                SeasonId = currentCultivation.SeasonId,
-                SeasonName = currentCultivation.Season.SeasonName,
-                SeasonStartDate = DateTime.Parse(currentCultivation.Season.StartDate),
-                SeasonEndDate = DateTime.Parse(currentCultivation.Season.EndDate),
-                
-                RiceVarietyId = currentCultivation.RiceVarietyId,
-                RiceVarietyName = currentCultivation.RiceVariety.VarietyName,
-                RiceVarietyDescription = currentCultivation.RiceVariety.Description,
-                
-                PlantingDate = currentCultivation.PlantingDate,
-                ExpectedYield = currentCultivation.ExpectedYield,
-                ActualYield = currentCultivation.ActualYield,
-                CultivationArea = currentCultivation.Area,
-                Status = currentCultivation.Status,
-                
+                PlotCultivationId = plotCultivation.Id,
+                PlotId = plotCultivation.Plot.Id,
+                PlotName = $"Thửa {plotCultivation.Plot.SoThua ?? 0}, Tờ {plotCultivation.Plot.SoTo ?? 0}",
+                PlotArea = plotCultivation.Plot.Area,
+
+                SeasonId = plotCultivation.SeasonId,
+                SeasonName = plotCultivation.Season.SeasonName,
+                SeasonStartDate = DateTime.Parse(plotCultivation.Season.StartDate),
+                SeasonEndDate = DateTime.Parse(plotCultivation.Season.EndDate),
+
+                RiceVarietyId = plotCultivation.RiceVarietyId,
+                RiceVarietyName = plotCultivation.RiceVariety.VarietyName,
+                RiceVarietyDescription = plotCultivation.RiceVariety.Description,
+
+                PlantingDate = plotCultivation.PlantingDate,
+                ExpectedYield = plotCultivation.ExpectedYield,
+                ActualYield = plotCultivation.ActualYield,
+                CultivationArea = plotCultivation.Area,
+                Status = plotCultivation.Status,
+
                 ProductionPlanId = productionPlan?.Id,
                 ProductionPlanName = productionPlan?.PlanName,
-                ProductionPlanDescription = null, // ProductionPlan doesn't have Description field
-                
+                ProductionPlanDescription = null,
+
                 ActiveVersionId = latestVersion?.Id,
                 ActiveVersionName = latestVersion?.VersionName,
-                
+
                 Stages = stagesGroup,
                 Progress = new CultivationProgress
                 {
@@ -197,16 +216,23 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
             };
 
             _logger.LogInformation(
-                "Successfully retrieved current cultivation plan for plot {PlotId} using latest version {VersionOrder}. " +
-                "Total unique tasks: {UniqueCount} (from {TotalCount} records)", 
-                request.PlotId, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
-            
-            return Result<CurrentPlotCultivationDetailResponse>.Success(response, "Successfully retrieved current cultivation plan.");
+                "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId} using latest version {VersionOrder}. " +
+                "Total unique tasks: {UniqueCount} (from {TotalCount} records)",
+                request.PlotId, request.GroupId, group.SeasonId.Value, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
+
+            return Result<CurrentPlotCultivationDetailResponse>.Success(
+                response,
+                "Successfully retrieved cultivation plan for plot in group.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving current cultivation plan for plot {PlotId}", request.PlotId);
-            return Result<CurrentPlotCultivationDetailResponse>.Failure("An error occurred while retrieving cultivation plan.", "RetrievalFailed");
+            _logger.LogError(ex,
+                "Error retrieving cultivation plan for Plot {PlotId} in Group {GroupId}",
+                request.PlotId, request.GroupId);
+
+            return Result<CurrentPlotCultivationDetailResponse>.Failure(
+                "An error occurred while retrieving cultivation plan.",
+                "RetrievalFailed");
         }
     }
 }

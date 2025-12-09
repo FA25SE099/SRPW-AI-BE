@@ -16,6 +16,7 @@ namespace RiceProduction.Infrastructure.Repository
         Task<(IEnumerable<AgronomyExpert?>, int totalCount)> GetAllAgronomyExpertByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default);
         Task<(IEnumerable<AgronomyExpert> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<AgronomyExpert, bool>>? predicate = null, CancellationToken cancellationToken = default);
         IQueryable<AgronomyExpert> GetQueryable();
+        void Update(AgronomyExpert entity);
         void UpdateRange(IEnumerable<AgronomyExpert> entities);
     }
 }

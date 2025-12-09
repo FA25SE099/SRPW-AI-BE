@@ -22,9 +22,9 @@ namespace RiceProduction.API.Controllers;
 public class ClusterController : Controller
 {
     private readonly IMediator _mediator;
-    private readonly ILogger<PlotController> _logger;
+    private readonly ILogger<ClusterController> _logger;
 
-    public ClusterController(IMediator mediator, ILogger<PlotController> logger)
+    public ClusterController(IMediator mediator, ILogger<ClusterController> logger)
     {
         _mediator = mediator;
         _logger = logger;

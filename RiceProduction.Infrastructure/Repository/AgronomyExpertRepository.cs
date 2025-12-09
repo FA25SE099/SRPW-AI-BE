@@ -20,6 +20,10 @@ namespace RiceProduction.Infrastructure.Repository
             _context = context;
             _agronomyExpert = context.Set<AgronomyExpert>();
         }
+        public void Update(AgronomyExpert entity)
+        {
+            _context.Set<AgronomyExpert>().Update(entity);
+        }
         public void UpdateRange(IEnumerable<AgronomyExpert> entities)
         {
             _context.Set<AgronomyExpert>().UpdateRange(entities);
