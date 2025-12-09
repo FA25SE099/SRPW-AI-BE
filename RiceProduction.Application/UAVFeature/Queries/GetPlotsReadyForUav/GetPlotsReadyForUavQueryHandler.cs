@@ -33,7 +33,7 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
             // 1. Tải Group và các Plots trực tiếp của nó
             var group = await _unitOfWork.Repository<Group>()
                 .FindAsync(
-                    match: g => g.Id == request.GroupId, // ĐÃ SỬA LỖI: filter -> match
+                    match: g => g.Id == request.GroupId,
                     includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.PlotCultivations)
                 );
 
@@ -43,6 +43,12 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
             }
             
             var allPlotsInGroup = group.GroupPlots.Select(gp => gp.Plot).ToList();
+            
+            if (!allPlotsInGroup.Any())
+            {
+                return Result<List<UavPlotReadinessResponse>>.Success(new List<UavPlotReadinessResponse>(), $"No plots found in Group {request.GroupId}.");
+            }
+            
             var allPlotIdsInGroup = allPlotsInGroup.Select(p => p.Id).ToList();
 
             // Lấy PlotCultivation IDs đang hoạt động trong Group này
@@ -51,23 +57,26 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                 .Select(pc => pc.Id)
                 .ToHashSet();
 
-
-            // 2. Lọc ra các Plot đang có Active UAV Order Assignment (Tránh tạo đơn hàng trùng lặp)
+            // 2. Lọc ra các CultivationTask đang có Active UAV Order Assignment (kiểm tra theo task cụ thể)
             var busyAssignments = await _unitOfWork.Repository<UavOrderPlotAssignment>()
                 .ListAsync(
                     filter: a => 
-                        // Lọc theo GroupId thông qua PlotId
                         allPlotIdsInGroup.Contains(a.PlotId) && 
-                        (a.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || a.Status == RiceProduction.Domain.Enums.TaskStatus.PendingApproval || a.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress)
+                        (a.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
+                         a.Status == RiceProduction.Domain.Enums.TaskStatus.PendingApproval || 
+                         a.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress)
                 );
+            // Track which specific cultivation tasks are already assigned (not just plots)
+            var busyTaskIdSet = busyAssignments
+                .Select(a => a.CultivationTaskId)
+                .ToHashSet();
+            
+            // Also track plots with active orders (for informational purposes)
             var busyPlotIdSet = busyAssignments.Select(a => a.PlotId).Distinct().ToHashSet();
-
 
             // 3. Tải tất cả CultivationTasks tiềm năng và các mối quan hệ liên quan
             Expression<Func<CultivationTask, bool>> taskFilter = ct =>
-                // Phải thuộc PlotCultivation đã xác định trong Group này
                 plotCultivationIdSet.Contains(ct.PlotCultivationId) && 
-                // Phải là Task Type phù hợp
                 (ct.TaskType == request.RequiredTaskType);
 
             var potentialTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
@@ -78,58 +87,141 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                         .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
             );
 
-            if (!potentialTasks.Any())
-            {
-                return Result<List<UavPlotReadinessResponse>>.Success(new List<UavPlotReadinessResponse>(), $"No pending UAV-suitable tasks found in Group {request.GroupId}.");
-            }
-            
-            // 4. Phân tích Điều kiện Sẵn sàng
-            var readyPlots = new List<UavPlotReadinessResponse>();
+            // 4. Build response for ALL plots in the group
+            var plotResponses = new List<UavPlotReadinessResponse>();
 
-            foreach (var task in potentialTasks)
+            foreach (var plot in allPlotsInGroup)
             {
-                var plot = task.PlotCultivation.Plot;
-                var plotArea = task.PlotCultivation.Area.GetValueOrDefault(0M);
+                var plotCultivation = plot.PlotCultivations.FirstOrDefault();
+                var plotArea = plotCultivation?.Area ?? 0M;
+                var hasActiveUavOrder = busyPlotIdSet.Contains(plot.Id);
                 
-                var isScheduledSoon = task.ProductionPlanTask.ScheduledDate.Date <= todayUtc.AddDays(7) &&
-                                      task.Status != RiceProduction.Domain.Enums.TaskStatus.Completed && 
-                                      task.Status != RiceProduction.Domain.Enums.TaskStatus.Cancelled;
+                // Find the most relevant task for this plot
+                var relevantTasks = potentialTasks
+                    .Where(t => t.PlotCultivation.PlotId == plot.Id)
+                    .Where(t => t.Status != RiceProduction.Domain.Enums.TaskStatus.Completed && 
+                               t.Status != RiceProduction.Domain.Enums.TaskStatus.Cancelled)
+                    .OrderBy(t => t.ProductionPlanTask.ScheduledDate)
+                    .ToList();
 
-                var hasNoActiveUavOrder = !busyPlotIdSet.Contains(plot.Id);
-                var dependenciesMet = true; // Giả sử các phụ thuộc đã được đáp ứng
-
-                if (isScheduledSoon && hasNoActiveUavOrder && dependenciesMet)
+                if (relevantTasks.Any())
                 {
-                    var estimatedMaterialCost = task.ProductionPlanTask.ProductionPlanTaskMaterials
-                        .Sum(pptm => pptm.EstimatedAmount.GetValueOrDefault(0M));
-                    
-                    readyPlots.Add(new UavPlotReadinessResponse
+                    // Group by unique task identifier to avoid duplicates
+                    var uniqueTasks = relevantTasks
+                        .GroupBy(t => new { 
+                            t.Id,
+                            t.PlotCultivationId, 
+                            ScheduledDate = t.ProductionPlanTask.ScheduledDate.Date,
+                            t.CultivationTaskName,
+                            t.TaskType
+                        })
+                        .Select(g => g.First())
+                        .ToList();
+
+                    foreach (var task in uniqueTasks)
+                    {
+                        var scheduledDate = task.ProductionPlanTask.ScheduledDate.Date;
+                        var isScheduledSoon = scheduledDate <= todayUtc.AddDays(request.DaysBeforeScheduled);
+                        
+                        // Check if THIS SPECIFIC TASK has an active UAV order (not just the plot)
+                        var hasActiveTaskOrder = busyTaskIdSet.Contains(task.Id);
+                        
+                        // Determine readiness status - task is ready if scheduled soon AND not already assigned
+                        bool isReady = isScheduledSoon && !hasActiveTaskOrder;
+                        string readyStatus = DetermineReadyStatus(isScheduledSoon, hasActiveTaskOrder, scheduledDate, todayUtc, hasActiveUavOrder);
+
+                        var estimatedMaterialCost = task.ProductionPlanTask.ProductionPlanTaskMaterials
+                            .Sum(pptm => pptm.EstimatedAmount.GetValueOrDefault(0M));
+                        
+                        plotResponses.Add(new UavPlotReadinessResponse
+                        {
+                            PlotId = plot.Id,
+                            PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
+                            PlotCultivationId = task.PlotCultivationId,
+                            CultivationTaskId = task.Id,
+                            PlotArea = plotArea,
+                            ReadyDate = scheduledDate,
+                            TaskType = task.TaskType,
+                            CultivationTaskName = task.CultivationTaskName ?? task.ProductionPlanTask.TaskName,
+                            EstimatedMaterialCost = estimatedMaterialCost,
+                            IsReady = isReady,
+                            ReadyStatus = readyStatus,
+                            HasActiveUavOrder = hasActiveTaskOrder // This task specifically has an order
+                        });
+                    }
+                }
+                else
+                {
+                    // Plot has no relevant tasks - add it anyway with "Not Ready" status
+                    plotResponses.Add(new UavPlotReadinessResponse
                     {
                         PlotId = plot.Id,
                         PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
-                        PlotCultivationId = task.PlotCultivationId,
+                        PlotCultivationId = plotCultivation?.Id,
+                        CultivationTaskId = null,
                         PlotArea = plotArea,
-                        ReadyDate = task.ProductionPlanTask.ScheduledDate.Date,
-                        TaskType = task.TaskType.GetValueOrDefault(TaskType.PestControl),
-                        CultivationTaskName = task.CultivationTaskName ?? task.ProductionPlanTask.TaskName,
-                        EstimatedMaterialCost = estimatedMaterialCost
+                        ReadyDate = null,
+                        TaskType = null,
+                        CultivationTaskName = string.Empty,
+                        EstimatedMaterialCost = 0,
+                        IsReady = false,
+                        ReadyStatus = hasActiveUavOrder 
+                            ? "Plot has active UAV order, no pending tasks" 
+                            : $"No pending {request.RequiredTaskType} tasks scheduled",
+                        HasActiveUavOrder = hasActiveUavOrder
                     });
                 }
             }
 
-            // Lọc các PlotId trùng lặp
-            var uniqueReadyPlots = readyPlots.GroupBy(p => p.PlotId)
-                                            .Select(g => g.First())
-                                            .ToList();
+            _logger.LogInformation("Retrieved {TotalCount} plot records from Group {GroupId}. {ReadyCount} plots are ready for UAV service.", 
+                plotResponses.Count, request.GroupId, plotResponses.Count(p => p.IsReady));
 
-            _logger.LogInformation("Found {Count} plots ready for UAV service in Group {GroupId}.", uniqueReadyPlots.Count, request.GroupId);
-
-            return Result<List<UavPlotReadinessResponse>>.Success(uniqueReadyPlots, "Successfully retrieved plots ready for UAV service.");
+            return Result<List<UavPlotReadinessResponse>>.Success(plotResponses, $"Successfully retrieved {plotResponses.Count} plots from group.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting ready plots for UAV in Group {GroupId}", request.GroupId);
             return Result<List<UavPlotReadinessResponse>>.Failure("Failed to retrieve ready plots.", "GetReadyPlotsFailed");
         }
+    }
+
+    private string DetermineReadyStatus(bool isScheduledSoon, bool hasActiveTaskOrder, DateTime scheduledDate, DateTime todayUtc, bool plotHasAnyActiveOrder)
+    {
+        if (hasActiveTaskOrder)
+        {
+            return "This task already has an active UAV order";
+        }
+
+        if (!isScheduledSoon)
+        {
+            var daysUntilScheduled = (scheduledDate - todayUtc).Days;
+            return $"Task scheduled in {daysUntilScheduled} days - not yet ready";
+        }
+
+        if (scheduledDate < todayUtc)
+        {
+            var daysOverdue = (todayUtc - scheduledDate).Days;
+            if (plotHasAnyActiveOrder)
+            {
+                return $"Ready - Task overdue by {daysOverdue} days (plot has other active orders)";
+            }
+            return $"Ready - Task overdue by {daysOverdue} days";
+        }
+
+        if (scheduledDate == todayUtc)
+        {
+            if (plotHasAnyActiveOrder)
+            {
+                return "Ready - Task scheduled for today (plot has other active orders)";
+            }
+            return "Ready - Task scheduled for today";
+        }
+
+        var daysUntil = (scheduledDate - todayUtc).Days;
+        if (plotHasAnyActiveOrder)
+        {
+            return $"Ready - Task scheduled in {daysUntil} days (plot has other active orders)";
+        }
+        return $"Ready - Task scheduled in {daysUntil} days";
     }
 }
