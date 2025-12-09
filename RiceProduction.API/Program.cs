@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -10,12 +11,13 @@ using RiceProduction.API.Middlewares;
 using RiceProduction.API.Services;
 using RiceProduction.Application;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Infrastructure;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
+using Serilog;
 using System.Text;
 using System.Text.Json.Serialization;
-using Serilog;
 
 
 
@@ -214,7 +216,49 @@ if (seedDatabase)
         logger.LogError(ex, "An error occurred creating the DB or seeding data.");
     }
 }
-    app.UseSwagger();
+app.MapPost("/api/rice/check-pest", async (
+    [FromForm] IFormFile file,
+    [FromServices] IRicePestDetectionService detectionService) =>
+{
+    if (file == null || file.Length == 0)
+    {
+        return Results.BadRequest(new { error = "No file uploaded" });
+    }
+
+    // Validate file type
+    var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
+    var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+
+    if (!allowedExtensions.Contains(extension))
+    {
+        return Results.BadRequest(new { error = "Only JPG, JPEG, and PNG files are allowed" });
+    }
+
+    // Validate file size (max 10MB)
+    if (file.Length > 10 * 1024 * 1024)
+    {
+        return Results.BadRequest(new { error = "File size must not exceed 10MB" });
+    }
+
+    try
+    {
+        var result = await detectionService.DetectPestAsync(file);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Error processing image"
+        );
+    }
+})
+.DisableAntiforgery()
+.WithName("CheckRicePest")
+.WithOpenApi();
+
+app.UseSwagger();
     app.UseSwaggerUI();
 
 app.UseCors("AllowFrontend");

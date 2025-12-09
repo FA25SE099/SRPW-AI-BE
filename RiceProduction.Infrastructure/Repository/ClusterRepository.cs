@@ -37,6 +37,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(p => p.Groups)
                 .Include(p => p.AgronomyExpert)
                 .Include(p => p.ClusterManager)
+                .Include(p => p.SupervisorsInCluster)
                 .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         }
 
@@ -58,6 +59,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(p => p.Groups)
                 .Include(p => p.AgronomyExpert)
                 .Include(p => p.ClusterManager)
+                .Include(p => p.SupervisorsInCluster)
                 .AsQueryable();
 
             var totalCount = await query.CountAsync(cancellationToken);
@@ -78,6 +80,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(p => p.Groups)
                 .Include(p => p.AgronomyExpert)
                 .Include(p => p.ClusterManager)
+                .Include(p => p.SupervisorsInCluster)
                 .AsQueryable();
             var totalCount = await query.CountAsync(cancellationToken);
             query = query
@@ -121,6 +124,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(p => p.Groups)
                 .Include(p => p.AgronomyExpert)
                 .Include(p => p.ClusterManager)
+                .Include(p => p.SupervisorsInCluster)
                 .Where(p => p.AgronomyExpert.Id == agronomyExpertId)
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync(cancellationToken);
@@ -137,6 +141,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(p => p.Groups)
                 .Include(p => p.AgronomyExpert)
                 .Include(p => p.ClusterManager)
+                .Include(p => p.SupervisorsInCluster)
                 .Where(p => p.ClusterManager.Id == clusterManagerId)
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync(cancellationToken);

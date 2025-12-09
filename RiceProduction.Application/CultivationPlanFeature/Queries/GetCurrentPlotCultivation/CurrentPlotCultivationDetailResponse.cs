@@ -31,8 +31,18 @@ public class CurrentPlotCultivationDetailResponse
     public Guid? ActiveVersionId { get; set; }
     public string? ActiveVersionName { get; set; }
     
-    public List<CultivationTaskSummary> Tasks { get; set; } = new List<CultivationTaskSummary>();
+    public List<CultivationStageSummary> Stages { get; set; } = new List<CultivationStageSummary>();
     public CultivationProgress Progress { get; set; } = new CultivationProgress();
+}
+
+public class CultivationStageSummary
+{
+    public Guid? StageId { get; set; }
+    public string StageName { get; set; } = string.Empty;
+    public int SequenceOrder { get; set; }
+    public string? Description { get; set; }
+    public int? TypicalDurationDays { get; set; }
+    public List<CultivationTaskSummary> Tasks { get; set; } = new List<CultivationTaskSummary>();
 }
 
 public class CultivationTaskSummary
@@ -48,7 +58,6 @@ public class CultivationTaskSummary
     public DateTime? ActualStartDate { get; set; }
     public DateTime? ActualEndDate { get; set; }
     public int? OrderIndex { get; set; }
-    public string StageName { get; set; } = string.Empty;
     public List<TaskMaterialSummary> Materials { get; set; } = new List<TaskMaterialSummary>();
 }
 

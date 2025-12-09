@@ -76,7 +76,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
 
             // Get plot cultivations for this season
             var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .ListAsync(pc => plotIds.Contains(pc.PlotId) && 
+                .ListAsync(pc => plotIds.Contains(pc.PlotId) &&
                                 pc.SeasonId == request.SeasonId);
             var cultivationsList = plotCultivations.ToList();
 
@@ -218,7 +218,7 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
 
             _logger.LogInformation(
                 "Preview groups for cluster {ClusterId}, season {SeasonId}: {GroupCount} groups, {PlotCount} plots grouped, {UngroupedCount} ungrouped",
-                request.ClusterId, request.SeasonId, response.PreviewGroups.Count, 
+                request.ClusterId, request.SeasonId, response.PreviewGroups.Count,
                 response.Summary.PlotsGrouped, response.Summary.UngroupedPlots);
 
             return Result<PreviewGroupsResponse>.Success(response);
