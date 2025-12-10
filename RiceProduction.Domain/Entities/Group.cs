@@ -52,4 +52,5 @@ public class Group : BaseAuditableEntity
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
     public ICollection<UavServiceOrder> UavServiceOrders { get; set; } = new List<UavServiceOrder>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();
+    public ICollection<LateFarmerRecord> LateFarmerRecords { get; set; } = new List<LateFarmerRecord>();
 }
