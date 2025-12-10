@@ -10,31 +10,54 @@ public class CreateEmergencyReportCommand : IRequest<Result<Guid>>
     public Guid? PlotCultivationId { get; set; }
     public Guid? GroupId { get; set; }
     public Guid? ClusterId { get; set; }
-
-    /// <summary>
-    /// Alert type: "Pest" or "Weather"
-    /// </summary>
     public string AlertType { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Brief title of the issue (e.g., "Suspicious insect damage", "Heavy rainfall damage")
-    /// </summary>
     public string Title { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Initial description from farmer/supervisor. 
-    /// Will be enhanced by AI analysis later if images are provided.
-    /// </summary>
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Severity as perceived by reporter
-    /// </summary>
     public AlertSeverity Severity { get; set; } = AlertSeverity.Medium;
 
-    /// <summary>
-    /// Optional: Images for AI analysis to determine pest type or weather damage.
-    /// Recommended for pest reports to enable AI identification.
-    /// </summary>
     public List<IFormFile>? Images { get; set; }
+
+    /// <summary>
+    /// AI-detected pest information (pre-analyzed before submission).
+    /// Optional: Only provided if user ran pest detection API first.
+    /// Frontend should call /api/rice/check-pest before creating report.
+    /// </summary>
+    public PestDetectionSummary? AiDetectionResult { get; set; }
+}
+
+/// <summary>
+/// Summary of AI pest detection results from /api/rice/check-pest endpoint
+/// </summary>
+public class PestDetectionSummary
+{
+    public bool HasPest { get; set; }
+    public int TotalDetections { get; set; }
+    public List<DetectedPestInfo> DetectedPests { get; set; } = new();
+    public double AverageConfidence { get; set; }
+    
+    /// <summary>
+    /// Image dimensions from AI analysis
+    /// </summary>
+    public ImageDimensions? ImageInfo { get; set; }
+}
+
+/// <summary>
+/// Individual pest detection information
+/// </summary>
+public class DetectedPestInfo
+{
+    public string PestName { get; set; } = string.Empty;
+    public double Confidence { get; set; }
+    public string ConfidenceLevel { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Image dimensions from AI analysis
+/// </summary>
+public class ImageDimensions
+{
+    public int Width { get; set; }
+    public int Height { get; set; }
 }

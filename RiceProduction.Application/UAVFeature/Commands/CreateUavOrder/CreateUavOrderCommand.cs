@@ -21,6 +21,9 @@ public class CreateUavOrderCommand : IRequest<Result<Guid>>
 
     [Required]
     public List<Guid> SelectedPlotIds { get; set; } = new();
+    
+    // New: Allow specifying specific cultivation tasks per plot
+    public List<Guid>? CultivationTaskIds { get; set; }
 
     [MaxLength(255)]
     public string? OrderNameOverride { get; set; }

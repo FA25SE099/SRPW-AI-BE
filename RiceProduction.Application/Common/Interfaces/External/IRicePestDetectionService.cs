@@ -8,8 +8,19 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Application.Common.Interfaces.External
 {
+    // Root response from AI API
+    public class AiApiRootResponse
+    {
+        [JsonPropertyName("results")]
+        public List<AiDetectionResponse> Results { get; set; } = new();
+    }
+
+    // Individual result for each image
     public class AiDetectionResponse
     {
+        [JsonPropertyName("filename")]
+        public string Filename { get; set; } = string.Empty;
+
         [JsonPropertyName("image_width")]
         public int ImageWidth { get; set; }
 

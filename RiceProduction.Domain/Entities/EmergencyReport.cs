@@ -46,6 +46,23 @@ public class EmergencyReport : BaseAuditableEntity
     public int? RecommendedUrgencyHours { get; set; }
 
     public List<string>? ImageUrls { get; set; }
+    
+    // AI Pest Detection Results (from pre-analysis via /api/rice/check-pest)
+    public bool HasAiAnalysis { get; set; } = false;
+    
+    public int AiDetectedPestCount { get; set; } = 0;
+    
+    public List<string>? AiDetectedPestNames { get; set; }
+    
+    public double? AiAverageConfidence { get; set; }
+    
+    /// <summary>
+    /// Full AI pest detection result stored as JSON
+    /// Contains detailed detection data including bounding boxes, confidence levels, etc.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public string? AiPestAnalysisRaw { get; set; }
+    
     public DateTime? NotificationSentAt { get; set; }
 
     public DateTime? NotificationAcknowledgeAt { get; set; }
