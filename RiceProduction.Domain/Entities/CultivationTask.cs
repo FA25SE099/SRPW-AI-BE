@@ -70,4 +70,5 @@ public class CultivationTask : BaseAuditableEntity
 
     public ICollection<CultivationTaskMaterial> CultivationTaskMaterials { get; set; } = new List<CultivationTaskMaterial>();
     public ICollection<FarmLog> FarmLogs { get; set; } = new List<FarmLog>();
+    public ICollection<LateFarmerRecord> LateFarmerRecords { get; set; } = new List<LateFarmerRecord>();
 }
