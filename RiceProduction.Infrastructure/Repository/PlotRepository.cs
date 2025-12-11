@@ -121,6 +121,13 @@ namespace RiceProduction.Infrastructure.Repository
                 .AnyAsync(gp => gp.PlotId == plotId && gp.Group.SeasonId == seasonId, cancellationToken);
         }
 
+        public async Task<bool> IsPlotAssignedToGroupForYearSeasonAsync(Guid plotId, Guid yearSeasonId, CancellationToken cancellationToken = default)
+        {
+            return await _context.Set<GroupPlot>()
+                .Include(gp => gp.Group)
+                .AnyAsync(gp => gp.PlotId == plotId && gp.Group.YearSeasonId == yearSeasonId, cancellationToken);
+        }
+
         public IQueryable<Plot> PlotQueryable()
         {
             return _plots.AsQueryable();

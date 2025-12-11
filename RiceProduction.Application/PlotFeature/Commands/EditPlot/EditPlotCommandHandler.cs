@@ -14,6 +14,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
 {
@@ -22,12 +23,14 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
         private readonly IUnitOfWork _unitOfWork;
         private readonly GeometryFactory _geometryFactory;
         private readonly WKTReader _wktReader;
+        private readonly ILogger<EditPlotCommandHandler> _logger;
 
-        public EditPlotCommandHandler(IUnitOfWork unitOfWork)
+        public EditPlotCommandHandler(IUnitOfWork unitOfWork, ILogger<EditPlotCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
             _geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
             _wktReader = new WKTReader(_geometryFactory);
+            _logger = logger;
         }
 
         public async Task<Result<UpdatePlotRequest>> Handle(EditPlotCommand request, CancellationToken cancellationToken)
@@ -45,6 +48,12 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
                 Polygon? polygonBoundary = null;
                 if (!string.IsNullOrWhiteSpace(request.Request.Boundary))
                 {
+                    var editabilityCheck = await CheckPlotPolygonEditabilityAsync(plot, cancellationToken);
+                    if (!editabilityCheck.isEditable)
+                    {
+                        return Result<UpdatePlotRequest>.Failure(editabilityCheck.reason);
+                    }
+
                     try
                     {
                         var geometry = _wktReader.Read(request.Request.Boundary);
@@ -157,6 +166,109 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
             catch (Exception ex)
             {
                 return Result<UpdatePlotRequest>.Failure($"An error occurred while updating plot: {ex.Message}");
+            }
+        }
+
+        private async Task<(bool isEditable, string reason)> CheckPlotPolygonEditabilityAsync(Plot plot, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(plot.FarmerId, cancellationToken);
+                if (farmer == null || !farmer.ClusterId.HasValue)
+                {
+                    return (true, "Farmer not assigned to cluster");
+                }
+
+                var (currentSeason, currentYear) = await GetCurrentSeasonAndYearAsync();
+                if (currentSeason == null)
+                {
+                    return (true, "No active season");
+                }
+
+                var yearSeasons = await _unitOfWork.Repository<YearSeason>()
+                    .ListAsync(ys => ys.ClusterId == farmer.ClusterId.Value 
+                              && ys.SeasonId == currentSeason.Id 
+                              && ys.Year == currentYear);
+
+                var yearSeason = yearSeasons.FirstOrDefault();
+                if (yearSeason == null)
+                {
+                    return (true, "No active year-season for cluster");
+                }
+
+                var isInGroup = await _unitOfWork.PlotRepository
+                    .IsPlotAssignedToGroupForYearSeasonAsync(plot.Id, yearSeason.Id, cancellationToken);
+
+                if (isInGroup)
+                {
+                    return (false, $"Cannot edit plot polygon. This plot is already assigned to a group in the current season ({currentSeason.SeasonName} {currentYear})");
+                }
+
+                return (true, "Plot is editable");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error checking plot editability for PlotId: {PlotId}. Allowing edit.", plot.Id);
+                return (true, "Editability check failed, allowing edit");
+            }
+        }
+
+        private async Task<(Season? season, int year)> GetCurrentSeasonAndYearAsync()
+        {
+            var today = DateTime.Now;
+            var currentMonth = today.Month;
+            var currentDay = today.Day;
+
+            var allSeasons = await _unitOfWork.Repository<Season>().ListAllAsync();
+
+            foreach (var season in allSeasons)
+            {
+                if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
+                {
+                    var startParts = season.StartDate.Split('/');
+                    int startMonth = int.Parse(startParts[0]);
+
+                    int year = today.Year;
+                    if (currentMonth < startMonth && startMonth > 6)
+                    {
+                        year--;
+                    }
+
+                    return (season, year);
+                }
+            }
+
+            return (null, today.Year);
+        }
+
+        private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
+        {
+            try
+            {
+                var startParts = startDateStr.Split('/');
+                var endParts = endDateStr.Split('/');
+
+                int startMonth = int.Parse(startParts[0]);
+                int startDay = int.Parse(startParts[1]);
+                int endMonth = int.Parse(endParts[0]);
+                int endDay = int.Parse(endParts[1]);
+
+                int currentDate = month * 100 + day;
+                int seasonStart = startMonth * 100 + startDay;
+                int seasonEnd = endMonth * 100 + endDay;
+
+                if (seasonStart > seasonEnd)
+                {
+                    return currentDate >= seasonStart || currentDate <= seasonEnd;
+                }
+                else
+                {
+                    return currentDate >= seasonStart && currentDate <= seasonEnd;
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
     }

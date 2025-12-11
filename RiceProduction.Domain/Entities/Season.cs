@@ -26,4 +26,5 @@ public class Season : BaseAuditableEntity
     // Navigation properties
     public ICollection<RiceVarietySeason> RiceVarietySeasons { get; set; } = new List<RiceVarietySeason>();
     public ICollection<PlotCultivation> PlotCultivations { get; set; } = new List<PlotCultivation>();
+    public ICollection<YearSeason> YearSeasons { get; set; } = new List<YearSeason>();
 }
