@@ -37,5 +37,11 @@ namespace RiceProduction.Application.Common.Interfaces
         /// This enforces the business rule: one plot can belong to multiple groups, but only one group per season.
         /// </summary>
         Task<bool> IsPlotAssignedToGroupForSeasonAsync(Guid plotId, Guid seasonId, CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// Checks if a plot is assigned to a group for a specific year-season combination.
+        /// This enforces the business rule: one plot can belong to multiple groups, but only one group per season.
+        /// </summary>
+        Task<bool> IsPlotAssignedToGroupForYearSeasonAsync(Guid plotId, Guid yearSeasonId, CancellationToken cancellationToken = default);
     }
 }

@@ -35,4 +35,5 @@ public class RiceVariety : BaseAuditableEntity
     public ICollection<RiceVarietySeason> RiceVarietySeasons { get; set; } = new List<RiceVarietySeason>();
     public ICollection<Group> Groups { get; set; } = new List<Group>();
     public ICollection<PlotCultivation> PlotCultivations { get; set; } = new List<PlotCultivation>();
+    public ICollection<YearSeason> YearSeasons { get; set; } = new List<YearSeason>();
 }

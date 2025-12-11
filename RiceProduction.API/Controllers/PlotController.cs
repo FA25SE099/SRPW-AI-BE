@@ -12,6 +12,7 @@ using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate;
 using RiceProduction.Application.PlotFeature.Queries;
+using RiceProduction.Application.PlotFeature.Queries.CheckPlotPolygonEditable;
 using RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 using RiceProduction.Application.PlotFeature.Queries.DownloadSample;
 using RiceProduction.Application.PlotFeature.Queries.GetAll;
@@ -545,6 +546,58 @@ namespace RiceProduction.API.Controllers
             }
         }
 
+        [HttpGet("check-polygon-editable")]
+        [ProducesResponseType(typeof(Result<CheckPlotPolygonEditableResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<Result<CheckPlotPolygonEditableResponse>>> CheckPlotPolygonEditable(
+            [FromQuery] Guid plotId,
+            [FromQuery] Guid yearSeasonId)
+        {
+            try
+            {
+                if (plotId == Guid.Empty)
+                {
+                    return BadRequest(Result<CheckPlotPolygonEditableResponse>.Failure("Invalid Plot ID"));
+                }
+
+                if (yearSeasonId == Guid.Empty)
+                {
+                    return BadRequest(Result<CheckPlotPolygonEditableResponse>.Failure("Invalid Year Season ID"));
+                }
+
+                var query = new CheckPlotPolygonEditableQuery
+                {
+                    PlotId = plotId,
+                    YearSeasonId = yearSeasonId
+                };
+
+                _logger.LogInformation(
+                    "Checking if plot polygon is editable for PlotId: {PlotId}, YearSeasonId: {YearSeasonId}",
+                    plotId,
+                    yearSeasonId);
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Failed to check plot polygon editability for PlotId: {PlotId}: {Message}",
+                        plotId,
+                        result.Message);
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error occurred while checking plot polygon editability for PlotId: {PlotId}",
+                    plotId);
+                return StatusCode(500, Result<CheckPlotPolygonEditableResponse>.Failure("An error occurred while processing your request"));
+            }
+        }
 
     }
 }
