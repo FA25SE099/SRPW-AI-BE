@@ -59,7 +59,7 @@ public class ValidationBehaviour<TRequest, TResponse>
                 // Optionally log as Error if you consider validation failures critical
                 // _logger.LogError(...);
 
-                throw new ValidationException(failures);
+                //throw new ValidationException(failures);
             }
         }
 

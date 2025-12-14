@@ -12,16 +12,20 @@ public class LoginCommandValidator : AbstractValidator<LoginCommand>
             .WithMessage("Either email or phone number must be provided.");
 
         // If email is provided, it must be valid
-        RuleFor(v => v.Email)
-            .EmailAddress()
-            .When(v => !string.IsNullOrWhiteSpace(v.Email))
-            .WithMessage("Email must be a valid email address.");
+        When(v => !string.IsNullOrWhiteSpace(v.Email), () =>
+        {
+            RuleFor(v => v.Email)
+                .EmailAddress()
+                .WithMessage("Email must be a valid email address.");
+        });
 
         // If phone number is provided, it should be validated (basic format check)
-        RuleFor(v => v.PhoneNumber)
-            .Matches(@"^\+?[1-9]\d{1,14}$")
-            .When(v => !string.IsNullOrWhiteSpace(v.PhoneNumber))
-            .WithMessage("Phone number must be in a valid format (E.164 format recommended).");
+        When(v => !string.IsNullOrWhiteSpace(v.PhoneNumber), () =>
+        {
+            RuleFor(v => v.PhoneNumber)
+                .Matches(@"^\+?[1-9]\d{1,14}$")
+                .WithMessage("Phone number must be in a valid format (E.164 format recommended).");
+        });
 
         RuleFor(v => v.Password)
             .NotEmpty()
