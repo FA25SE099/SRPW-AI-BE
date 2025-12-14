@@ -89,7 +89,12 @@ namespace RiceProduction.Infrastructure.Services
             AiApiRootResponse? rootResponse;
             try
             {
-                rootResponse = System.Text.Json.JsonSerializer.Deserialize<AiApiRootResponse>(responseContent);
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = false,
+                    PropertyNamingPolicy = null
+                };
+                rootResponse = System.Text.Json.JsonSerializer.Deserialize<AiApiRootResponse>(responseContent, options);
             }
             catch (Exception ex)
             {
@@ -131,10 +136,13 @@ namespace RiceProduction.Infrastructure.Services
             {
                 result.DetectedPests.Add(new PestInfo
                 {
+                    Id = detection.Id,
+                    ClassId = detection.ClassId,
                     PestName = FormatPestName(detection.ClassName),
                     Confidence = Math.Round(detection.Confidence * 100, 2),
                     ConfidenceLevel = GetConfidenceLevel(detection.Confidence),
-                    Location = detection.Box
+                    Location = detection.Box,
+                    Mask = detection.Mask
                 });
             }
 
