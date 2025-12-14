@@ -1,0 +1,425 @@
+using FluentAssertions;
+using Microsoft.Extensions.Logging;
+using Moq;
+using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
+using RiceProduction.Application.FarmLogFeature.Commands.CreateFarmLog;
+using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
+using RiceProduction.Tests.Fixtures;
+using System.Linq.Expressions;
+
+namespace RiceProduction.Tests.Unit.Application.FarmLogFeature;
+
+/// <summary>
+/// Tests for CreateFarmLogCommandHandler - Critical task progression logic
+/// Focus: UpdateNextTaskToInProgress() method that auto-advances tasks
+/// </summary>
+public class CreateFarmLogCommandHandlerTests
+{
+    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
+    private readonly Mock<IStorageService> _mockStorageService;
+    private readonly Mock<ILogger<CreateFarmLogCommandHandler>> _mockLogger;
+    private readonly Mock<IGenericRepository<CultivationTask>> _mockTaskRepo;
+    private readonly Mock<IGenericRepository<FarmLog>> _mockFarmLogRepo;
+    private readonly Mock<IGenericRepository<PlotCultivation>> _mockPlotCultivationRepo;
+    private readonly Mock<IGenericRepository<CultivationVersion>> _mockVersionRepo;
+    private readonly CreateFarmLogCommandHandler _handler;
+
+    public CreateFarmLogCommandHandlerTests()
+    {
+        _mockUnitOfWork = new Mock<IUnitOfWork>();
+        _mockStorageService = new Mock<IStorageService>();
+        _mockLogger = new Mock<ILogger<CreateFarmLogCommandHandler>>();
+        _mockTaskRepo = new Mock<IGenericRepository<CultivationTask>>();
+        _mockFarmLogRepo = new Mock<IGenericRepository<FarmLog>>();
+        _mockPlotCultivationRepo = new Mock<IGenericRepository<PlotCultivation>>();
+        _mockVersionRepo = new Mock<IGenericRepository<CultivationVersion>>();
+
+        _mockUnitOfWork.Setup(u => u.Repository<CultivationTask>()).Returns(_mockTaskRepo.Object);
+        _mockUnitOfWork.Setup(u => u.Repository<FarmLog>()).Returns(_mockFarmLogRepo.Object);
+        _mockUnitOfWork.Setup(u => u.Repository<PlotCultivation>()).Returns(_mockPlotCultivationRepo.Object);
+        _mockUnitOfWork.Setup(u => u.Repository<CultivationVersion>()).Returns(_mockVersionRepo.Object);
+
+        _handler = new CreateFarmLogCommandHandler(
+            _mockUnitOfWork.Object,
+            _mockStorageService.Object,
+            _mockLogger.Object
+        );
+    }
+
+    #region Test 1: Successful Task Completion with Next Task Progression
+
+    [Fact]
+    public async Task Handle_CompletesTask_AndUpdatesNextTaskToInProgress()
+    {
+        // Arrange
+        var plotCultivationId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var currentTaskId = Guid.NewGuid();
+        var nextTaskId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+
+        // Current task (ExecutionOrder = 1)
+        var currentTask = MockDataBuilder.CreateCultivationTask(
+            id: currentTaskId,
+            executionOrder: 1,
+            status: TaskStatus.InProgress,
+            plotCultivationId: plotCultivationId
+        );
+        currentTask.VersionId = versionId;
+
+        // Next task (ExecutionOrder = 2)
+        var nextTask = MockDataBuilder.CreateCultivationTask(
+            id: nextTaskId,
+            executionOrder: 2,
+            status: TaskStatus.Approved,
+            plotCultivationId: plotCultivationId
+        );
+        nextTask.VersionId = versionId;
+
+        // PlotCultivation with active version
+        var plotCultivation = MockDataBuilder.CreatePlotCultivation(
+            id: plotCultivationId
+        );
+        var activeVersion = new CultivationVersion
+        {
+            Id = versionId,
+            IsActive = true,
+            PlotCultivationId = plotCultivationId
+        };
+        plotCultivation.CultivationVersions = new List<CultivationVersion> { activeVersion };
+
+        var command = new CreateFarmLogCommand
+        {
+            CultivationTaskId = currentTaskId,
+            PlotCultivationId = plotCultivationId,
+            FarmerId = farmerId,
+            WorkDescription = "Completed fertilization",
+            ProofImages = new List<Microsoft.AspNetCore.Http.IFormFile>(),
+            Materials = new List<FarmLogMaterialInput>()
+        };
+
+        // Setup mocks
+        _mockTaskRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<CultivationTask, bool>>>()))
+            .ReturnsAsync(currentTask);
+
+        _mockPlotCultivationRepo.Setup(r => r.FindAsync(
+            It.IsAny<Expression<Func<PlotCultivation, bool>>>(),
+            It.IsAny<Func<IQueryable<PlotCultivation>, IQueryable<PlotCultivation>>>()))
+            .ReturnsAsync(plotCultivation);
+
+        _mockTaskRepo.Setup(r => r.ListAsync(
+            It.IsAny<Expression<Func<CultivationTask, bool>>>(),
+            It.IsAny<Func<IQueryable<CultivationTask>, IOrderedQueryable<CultivationTask>>>(),
+            null,
+            false))
+            .ReturnsAsync(new List<CultivationTask> { nextTask });
+
+        _mockFarmLogRepo.Setup(r => r.AddAsync(It.IsAny<FarmLog>()))
+            .Returns(Task.CompletedTask);
+
+        _mockFarmLogRepo.Setup(r => r.SaveChangesAsync())
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        
+        // Verify current task is completed
+        currentTask.Status.Should().Be(TaskStatus.Completed);
+        
+        // Verify next task is updated to InProgress
+        nextTask.Status.Should().Be(TaskStatus.InProgress);
+        nextTask.ActualStartDate.Should().NotBeNull();
+        nextTask.ActualStartDate.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        
+        // Verify repository calls
+        _mockTaskRepo.Verify(r => r.Update(currentTask), Times.Once);
+        _mockTaskRepo.Verify(r => r.Update(nextTask), Times.Once);
+        _mockFarmLogRepo.Verify(r => r.AddAsync(It.IsAny<FarmLog>()), Times.Once);
+    }
+
+    #endregion
+
+    #region Test 2: Last Task - No Next Task to Update
+
+    [Fact]
+    public async Task Handle_LastTask_CompletesWithoutUpdatingNextTask()
+    {
+        // Arrange
+        var plotCultivationId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var lastTaskId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+
+        // Last task (ExecutionOrder = 5, no tasks after this)
+        var lastTask = MockDataBuilder.CreateCultivationTask(
+            id: lastTaskId,
+            executionOrder: 5,
+            status: TaskStatus.InProgress,
+            plotCultivationId: plotCultivationId
+        );
+        lastTask.VersionId = versionId;
+
+        var plotCultivation = MockDataBuilder.CreatePlotCultivation(id: plotCultivationId);
+        var activeVersion = new CultivationVersion { Id = versionId, IsActive = true, PlotCultivationId = plotCultivationId };
+        plotCultivation.CultivationVersions = new List<CultivationVersion> { activeVersion };
+
+        var command = new CreateFarmLogCommand
+        {
+            CultivationTaskId = lastTaskId,
+            PlotCultivationId = plotCultivationId,
+            FarmerId = farmerId,
+            WorkDescription = "Final harvest completed",
+            ProofImages = new List<Microsoft.AspNetCore.Http.IFormFile>(),
+            Materials = new List<FarmLogMaterialInput>()
+        };
+
+        _mockTaskRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<CultivationTask, bool>>>()))
+            .ReturnsAsync(lastTask);
+
+        _mockPlotCultivationRepo.Setup(r => r.FindAsync(
+            It.IsAny<Expression<Func<PlotCultivation, bool>>>(),
+            It.IsAny<Func<IQueryable<PlotCultivation>, IQueryable<PlotCultivation>>>()))
+            .ReturnsAsync(plotCultivation);
+
+        // No next task found
+        _mockTaskRepo.Setup(r => r.ListAsync(
+            It.IsAny<Expression<Func<CultivationTask, bool>>>(),
+            It.IsAny<Func<IQueryable<CultivationTask>, IOrderedQueryable<CultivationTask>>>(),
+            null,
+            false))
+            .ReturnsAsync(new List<CultivationTask>());
+
+        _mockFarmLogRepo.Setup(r => r.AddAsync(It.IsAny<FarmLog>())).Returns(Task.CompletedTask);
+        _mockFarmLogRepo.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        lastTask.Status.Should().Be(TaskStatus.Completed);
+        
+        // Verify only one Update call (for current task, not for next task)
+        _mockTaskRepo.Verify(r => r.Update(lastTask), Times.Once);
+        _mockTaskRepo.Verify(r => r.Update(It.Is<CultivationTask>(t => t.Id != lastTaskId)), Times.Never);
+    }
+
+    #endregion
+
+    #region Test 3: Task with Null ExecutionOrder - Cannot Find Next Task
+
+    [Fact]
+    public async Task Handle_TaskWithNullExecutionOrder_CompletesWithoutProgressingNextTask()
+    {
+        // Arrange
+        var plotCultivationId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+
+        // Task without ExecutionOrder (legacy data or special case)
+        var task = MockDataBuilder.CreateCultivationTask(
+            id: taskId,
+            executionOrder: null, // NULL execution order
+            status: TaskStatus.InProgress,
+            plotCultivationId: plotCultivationId
+        );
+        task.VersionId = versionId;
+
+        var plotCultivation = MockDataBuilder.CreatePlotCultivation(id: plotCultivationId);
+        var activeVersion = new CultivationVersion { Id = versionId, IsActive = true, PlotCultivationId = plotCultivationId };
+        plotCultivation.CultivationVersions = new List<CultivationVersion> { activeVersion };
+
+        var command = new CreateFarmLogCommand
+        {
+            CultivationTaskId = taskId,
+            PlotCultivationId = plotCultivationId,
+            FarmerId = farmerId,
+            WorkDescription = "Emergency task completed",
+            ProofImages = new List<Microsoft.AspNetCore.Http.IFormFile>(),
+            Materials = new List<FarmLogMaterialInput>()
+        };
+
+        _mockTaskRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<CultivationTask, bool>>>()))
+            .ReturnsAsync(task);
+
+        _mockPlotCultivationRepo.Setup(r => r.FindAsync(
+            It.IsAny<Expression<Func<PlotCultivation, bool>>>(),
+            It.IsAny<Func<IQueryable<PlotCultivation>, IQueryable<PlotCultivation>>>()))
+            .ReturnsAsync(plotCultivation);
+
+        _mockFarmLogRepo.Setup(r => r.AddAsync(It.IsAny<FarmLog>())).Returns(Task.CompletedTask);
+        _mockFarmLogRepo.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        task.Status.Should().Be(TaskStatus.Completed);
+        
+        // Verify ListAsync was NEVER called (no attempt to find next task)
+        _mockTaskRepo.Verify(r => r.ListAsync(
+            It.IsAny<Expression<Func<CultivationTask, bool>>>(),
+            It.IsAny<Func<IQueryable<CultivationTask>, IOrderedQueryable<CultivationTask>>>(),
+            null,
+            false), Times.Never);
+    }
+
+    #endregion
+
+    #region Test 4: Multiple Eligible Tasks - Progresses Only First by ExecutionOrder
+
+    [Fact]
+    public async Task Handle_MultipleEligibleTasks_ProgressesOnlyLowestExecutionOrder()
+    {
+        // Arrange
+        var plotCultivationId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var currentTaskId = Guid.NewGuid();
+        var nextTask1Id = Guid.NewGuid();
+        var nextTask2Id = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+
+        var currentTask = MockDataBuilder.CreateCultivationTask(
+            id: currentTaskId,
+            executionOrder: 1,
+            status: TaskStatus.InProgress,
+            plotCultivationId: plotCultivationId
+        );
+        currentTask.VersionId = versionId;
+
+        // Two eligible next tasks
+        var nextTask1 = MockDataBuilder.CreateCultivationTask(
+            id: nextTask1Id,
+            executionOrder: 2,
+            status: TaskStatus.Approved,
+            plotCultivationId: plotCultivationId
+        );
+        nextTask1.VersionId = versionId;
+
+        var nextTask2 = MockDataBuilder.CreateCultivationTask(
+            id: nextTask2Id,
+            executionOrder: 3,
+            status: TaskStatus.Approved,
+            plotCultivationId: plotCultivationId
+        );
+        nextTask2.VersionId = versionId;
+
+        var plotCultivation = MockDataBuilder.CreatePlotCultivation(id: plotCultivationId);
+        var activeVersion = new CultivationVersion { Id = versionId, IsActive = true, PlotCultivationId = plotCultivationId };
+        plotCultivation.CultivationVersions = new List<CultivationVersion> { activeVersion };
+
+        var command = new CreateFarmLogCommand
+        {
+            CultivationTaskId = currentTaskId,
+            PlotCultivationId = plotCultivationId,
+            FarmerId = farmerId,
+            WorkDescription = "Completed task",
+            ProofImages = new List<Microsoft.AspNetCore.Http.IFormFile>(),
+            Materials = new List<FarmLogMaterialInput>()
+        };
+
+        _mockTaskRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<CultivationTask, bool>>>()))
+            .ReturnsAsync(currentTask);
+
+        _mockPlotCultivationRepo.Setup(r => r.FindAsync(
+            It.IsAny<Expression<Func<PlotCultivation, bool>>>(),
+            It.IsAny<Func<IQueryable<PlotCultivation>, IQueryable<PlotCultivation>>>()))
+            .ReturnsAsync(plotCultivation);
+
+        // Return both tasks (ordered by ExecutionOrder)
+        _mockTaskRepo.Setup(r => r.ListAsync(
+            It.IsAny<Expression<Func<CultivationTask, bool>>>(),
+            It.IsAny<Func<IQueryable<CultivationTask>, IOrderedQueryable<CultivationTask>>>(),
+            null,
+            false))
+            .ReturnsAsync(new List<CultivationTask> { nextTask1, nextTask2 });
+
+        _mockFarmLogRepo.Setup(r => r.AddAsync(It.IsAny<FarmLog>())).Returns(Task.CompletedTask);
+        _mockFarmLogRepo.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        
+        // Only first task (ExecutionOrder = 2) should be updated
+        nextTask1.Status.Should().Be(TaskStatus.InProgress);
+        nextTask1.ActualStartDate.Should().NotBeNull();
+        
+        // Second task (ExecutionOrder = 3) should remain Approved
+        nextTask2.Status.Should().Be(TaskStatus.Approved);
+        nextTask2.ActualStartDate.Should().BeNull();
+        
+        _mockTaskRepo.Verify(r => r.Update(nextTask1), Times.Once);
+        _mockTaskRepo.Verify(r => r.Update(nextTask2), Times.Never);
+    }
+
+    #endregion
+
+    #region Test 5: Version Conflict - Rejects Farm Log for Non-Active Version
+
+    [Fact]
+    public async Task Handle_TaskBelongsToInactiveVersion_ReturnsVersionConflictError()
+    {
+        // Arrange
+        var plotCultivationId = Guid.NewGuid();
+        var oldVersionId = Guid.NewGuid();
+        var newVersionId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+
+        // Task belongs to OLD version
+        var task = MockDataBuilder.CreateCultivationTask(
+            id: taskId,
+            executionOrder: 1,
+            status: TaskStatus.InProgress,
+            plotCultivationId: plotCultivationId
+        );
+        task.VersionId = oldVersionId;
+
+        // But active version is NEW
+        var plotCultivation = MockDataBuilder.CreatePlotCultivation(id: plotCultivationId);
+        var activeVersion = new CultivationVersion { Id = newVersionId, IsActive = true, PlotCultivationId = plotCultivationId };
+        plotCultivation.CultivationVersions = new List<CultivationVersion> { activeVersion };
+
+        var command = new CreateFarmLogCommand
+        {
+            CultivationTaskId = taskId,
+            PlotCultivationId = plotCultivationId,
+            FarmerId = farmerId,
+            WorkDescription = "Trying to log for old version",
+            ProofImages = new List<Microsoft.AspNetCore.Http.IFormFile>(),
+            Materials = new List<FarmLogMaterialInput>()
+        };
+
+        _mockTaskRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<CultivationTask, bool>>>()))
+            .ReturnsAsync(task);
+
+        _mockPlotCultivationRepo.Setup(r => r.FindAsync(
+            It.IsAny<Expression<Func<PlotCultivation, bool>>>(),
+            It.IsAny<Func<IQueryable<PlotCultivation>, IQueryable<PlotCultivation>>>()))
+            .ReturnsAsync(plotCultivation);
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("VersionConflict");
+        result.ErrorMessage.Should().Contain("does not belong to the active plan version");
+        
+        // Verify no updates or farm log creation
+        _mockTaskRepo.Verify(r => r.Update(It.IsAny<CultivationTask>()), Times.Never);
+        _mockFarmLogRepo.Verify(r => r.AddAsync(It.IsAny<FarmLog>()), Times.Never);
+    }
+
+    #endregion
+}
