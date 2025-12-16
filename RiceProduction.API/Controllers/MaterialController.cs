@@ -228,6 +228,40 @@ public class MaterialController : ControllerBase
     }
 
     /// <summary>
+    /// Calculate material costs using a StandardPlan for a specific area
+    /// </summary>
+    [HttpPost("calculate-cost-by-standard-plan-and-area")]
+    public async Task<IActionResult> CalculateCostByStandardPlanAndArea([FromBody] CalculateCostByStandardPlanAndAreaQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Calculate material costs for a plot using either a StandardPlan or manual input.
+    /// If StandardPlanId is provided, it will use tasks/materials from that plan.
+    /// If StandardPlanId is null, it will use the Tasks and SeedServices provided in the request.
+    /// </summary>
+    [HttpPost("calculate-cost-by-plot-and-standard-plan")]
+    public async Task<IActionResult> CalculateCostByPlotAndStandardPlan([FromBody] CalculateCostByPlotAndStandardPlanQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Calculate material costs from a Standard Plan
     /// </summary>
     /// <remarks>
