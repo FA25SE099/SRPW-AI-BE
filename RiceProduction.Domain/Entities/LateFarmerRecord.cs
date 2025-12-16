@@ -20,37 +20,7 @@ public class LateFarmerRecord : BaseAuditableEntity
     /// The cultivation task where the lateness was recorded
     /// </summary>
     [Required]
-    public Guid TaskId { get; set; }
-
-    /// <summary>
-    /// The plot where the lateness occurred
-    /// </summary>
-    [Required]
-    public Guid PlotId { get; set; }
-
-    /// <summary>
-    /// The plot cultivation associated with the lateness
-    /// </summary>
-    [Required]
-    public Guid PlotCultivationId { get; set; }
-
-    /// <summary>
-    /// The season during which the lateness occurred
-    /// </summary>
-    [Required]
-    public Guid SeasonId { get; set; }
-
-    /// <summary>
-    /// The group where the farmer is in late progress
-    /// </summary>
-    [Required]
-    public Guid GroupId { get; set; }
-
-    /// <summary>
-    /// The cluster where the lateness was recorded
-    /// </summary>
-    [Required]
-    public Guid ClusterId { get; set; }
+    public Guid CultivationTaskId { get; set; }
 
     /// <summary>
     /// The exact time when the lateness was recorded
@@ -68,21 +38,6 @@ public class LateFarmerRecord : BaseAuditableEntity
     [ForeignKey("FarmerId")]
     public Farmer Farmer { get; set; } = null!;
 
-    [ForeignKey("TaskId")]
-    public CultivationTask Task { get; set; } = null!;
-
-    [ForeignKey("PlotId")]
-    public Plot Plot { get; set; } = null!;
-
-    [ForeignKey("PlotCultivationId")]
-    public PlotCultivation PlotCultivation { get; set; } = null!;
-
-    [ForeignKey("SeasonId")]
-    public Season Season { get; set; } = null!;
-
-    [ForeignKey("GroupId")]
-    public Group Group { get; set; } = null!;
-
-    [ForeignKey("ClusterId")]
-    public Cluster Cluster { get; set; } = null!;
+    [ForeignKey("CultivationTaskId")]
+    public CultivationTask CultivationTask { get; set; } = null!;
 }

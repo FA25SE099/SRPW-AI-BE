@@ -15,6 +15,8 @@ using RiceProduction.Application.MaterialFeature.Queries.CalculateGroupMaterialC
 using RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
 using RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByPlotId;
 using RiceProduction.Application.MaterialFeature.Queries.CalculatePrice;
+using RiceProduction.Application.MaterialFeature.Queries.CalculateStandardPlanMaterialCost;
+using RiceProduction.Application.MaterialFeature.Queries.CalculateStandardPlanProfitAnalysis;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
@@ -214,6 +216,57 @@ public class MaterialController : ControllerBase
     }
     [HttpPost("calculate-materials-cost-by-plot-id")]
     public async Task<IActionResult> CalculateMaterialsCostByPlotId([FromBody] CalculateMaterialsCostByPlotIdQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Calculate material costs from a Standard Plan
+    /// </summary>
+    /// <remarks>
+    /// Calculates the total material costs based on a Standard Plan.
+    /// Either PlotId or Area must be provided.
+    /// If PlotId is provided, the actual area from the plot will be used.
+    /// If Area is provided, that value will be used for calculation.
+    /// The materials and their quantities are retrieved from the specified Standard Plan.
+    /// </remarks>
+    [HttpPost("calculate-standard-plan-material-cost")]
+    public async Task<IActionResult> CalculateStandardPlanMaterialCost([FromBody] CalculateStandardPlanMaterialCostQuery query)
+    {
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Calculate profit analysis from a Standard Plan
+    /// </summary>
+    /// <remarks>
+    /// Performs a comprehensive profit analysis based on a Standard Plan.
+    /// Calculates:
+    /// - Revenue per hectare (PricePerKgRice * ExpectedYieldPerHa)
+    /// - Material cost per hectare (from standard plan materials)
+    /// - Total cost per hectare (material cost + other service costs)
+    /// - Profit per hectare (revenue - total cost)
+    /// - All values scaled to the specified area
+    /// 
+    /// Either PlotId or Area must be provided.
+    /// If PlotId is provided, the actual area from the plot will be used.
+    /// </remarks>
+    [HttpPost("calculate-standard-plan-profit-analysis")]
+    public async Task<IActionResult> CalculateStandardPlanProfitAnalysis([FromBody] CalculateStandardPlanProfitAnalysisQuery query)
     {
         var result = await _mediator.Send(query);
 

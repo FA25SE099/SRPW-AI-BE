@@ -23,15 +23,11 @@ public class CreateLateFarmerRecordCommandHandler : IRequestHandler<CreateLateFa
         {
             _logger.LogInformation("Creating late farmer record for cultivation task {TaskId}", request.CultivationTaskId);
 
-            // 1. Get the cultivation task with all necessary navigation properties
+            // 1. Get the cultivation task with all necessary navigation properties for validation
             var cultivationTask = await _unitOfWork.Repository<CultivationTask>()
                 .GetQueryable()
                 .Include(ct => ct.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
-                        .ThenInclude(p => p.GroupPlots)
-                            .ThenInclude(gp => gp.Group)
-                .Include(ct => ct.PlotCultivation)
-                    .ThenInclude(pc => pc.Season)
                 .FirstOrDefaultAsync(ct => ct.Id == request.CultivationTaskId, cancellationToken);
 
             if (cultivationTask == null)
@@ -53,33 +49,16 @@ public class CreateLateFarmerRecordCommandHandler : IRequestHandler<CreateLateFa
 
             var plot = plotCultivation.Plot;
 
-            // 2. Get the most recent active group for this plot
-            var groupPlot = plot.GroupPlots?
-                .OrderByDescending(gp => gp.CreatedAt)
-                .FirstOrDefault();
-
-            if (groupPlot == null || groupPlot.Group == null)
-            {
-                return Result<Guid>.Failure($"No active group found for plot {plot.Id}");
-            }
-
-            var group = groupPlot.Group;
-
-            // 3. Create the late farmer record
+            // 2. Create the simplified late farmer record (only store FarmerId and CultivationTaskId)
             var lateFarmerRecord = new LateFarmerRecord
             {
                 FarmerId = plot.FarmerId,
-                TaskId = request.CultivationTaskId,
-                PlotId = plot.Id,
-                PlotCultivationId = plotCultivation.Id,
-                SeasonId = plotCultivation.SeasonId,
-                GroupId = group.Id,
-                ClusterId = group.ClusterId,
+                CultivationTaskId = request.CultivationTaskId,
                 RecordedAt = DateTime.UtcNow,
                 Notes = request.Notes
             };
 
-            // 4. Add and save
+            // 3. Add and save
             await _unitOfWork.LateFarmerRecordRepository.AddAsync(lateFarmerRecord, cancellationToken);
             await _unitOfWork.CompleteAsync();
 

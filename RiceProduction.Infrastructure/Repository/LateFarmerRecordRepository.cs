@@ -22,10 +22,13 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
     {
         return await _lateFarmerRecords
             .Include(l => l.Farmer)
-            .Include(l => l.Plot)
-            .Include(l => l.Task)
-            .Include(l => l.Group)
-            .Include(l => l.Season)
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+            .Include(l => l.CultivationTask.PlotCultivation.Season)
+            .Include(l => l.CultivationTask.PlotCultivation.Plot.GroupPlots)
+                .ThenInclude(gp => gp.Group)
+                    .ThenInclude(g => g.Cluster)
             .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
     }
 
@@ -33,8 +36,9 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
     {
         return await _lateFarmerRecords
             .Include(l => l.Farmer)
-            .Include(l => l.Plot)
-            .Include(l => l.Task)
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
             .ToListAsync(cancellationToken);
     }
 
@@ -47,18 +51,22 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
     public async Task<int> GetLateCountByPlotIdAsync(Guid plotId, CancellationToken cancellationToken = default)
     {
         return await _lateFarmerRecords
-            .CountAsync(l => l.PlotId == plotId, cancellationToken);
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.PlotCultivation)
+            .CountAsync(l => l.CultivationTask.PlotCultivation.PlotId == plotId, cancellationToken);
     }
 
     public async Task<IEnumerable<LateFarmerRecord>> GetLateRecordsByFarmerIdAsync(Guid farmerId, CancellationToken cancellationToken = default)
     {
         return await _lateFarmerRecords
             .Include(l => l.Farmer)
-            .Include(l => l.Plot)
-            .Include(l => l.Task)
-            .Include(l => l.Group)
-            .Include(l => l.Season)
-            .Include(l => l.PlotCultivation)
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+                                .ThenInclude(g => g.Cluster)
+            .Include(l => l.CultivationTask.PlotCultivation.Season)
             .Where(l => l.FarmerId == farmerId)
             .OrderByDescending(l => l.RecordedAt)
             .ToListAsync(cancellationToken);
@@ -68,11 +76,13 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
     {
         return await _lateFarmerRecords
             .Include(l => l.Farmer)
-            .Include(l => l.Plot)
-            .Include(l => l.Task)
-            .Include(l => l.Group)
-            .Include(l => l.Season)
-            .Where(l => l.PlotId == plotId)
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+            .Include(l => l.CultivationTask.PlotCultivation.Season)
+            .Where(l => l.CultivationTask.PlotCultivation.PlotId == plotId)
             .OrderByDescending(l => l.RecordedAt)
             .ToListAsync(cancellationToken);
     }
@@ -85,8 +95,9 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
     {
         var query = _lateFarmerRecords
             .Include(l => l.Farmer)
-            .Include(l => l.Plot)
-            .Include(l => l.Task)
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
             .AsQueryable();
 
         if (predicate != null)
