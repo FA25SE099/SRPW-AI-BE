@@ -235,6 +235,11 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                 if (cultivationsToCreate.Any())
                 {
                     message += $" with {cultivationsToCreate.Count} cultivation record(s)";
+                    if (versionsToCreate.Any())
+                    {
+                        message += $" and {versionsToCreate.Count} initial version(s)";
+                    }
+                    message += $" for {currentSeason?.SeasonName} {currentYear}";
                 }
                 if (skippedPlots.Any())
                 {
