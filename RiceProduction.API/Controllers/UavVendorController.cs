@@ -9,6 +9,7 @@ using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 using RiceProduction.Application.Common.Models.Response.UavVendorResponses;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
 using RiceProduction.Application.UavVendorFeature.Commands.UpdateUavVendor;
+using RiceProduction.Application.UavVendorFeature.Queries.GetAllUavVendor;
 using RiceProduction.Application.UavVendorFeature.Queries.GetUavVendorById;
 using RiceProduction.Application.UavVendorFeature.Queries.GetUavVendorList;
 
@@ -27,6 +28,17 @@ public class UavVendorController : Controller
         _logger = logger;
     }
 
+    [HttpGet]
+    public async Task<IActionResult> GetUavVendors()
+    {
+        var query = new GetAllUavVendorQuery();
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
     [HttpPost]
     public async Task<IActionResult> CreateUavVendor([FromBody] UavVendorRequest request)
     {
@@ -99,5 +111,6 @@ public class UavVendorController : Controller
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
+
 
 }

@@ -8,8 +8,19 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Application.Common.Interfaces.External
 {
+    // Root response from AI API
+    public class AiApiRootResponse
+    {
+        [JsonPropertyName("results")]
+        public List<AiDetectionResponse> Results { get; set; } = new();
+    }
+
+    // Individual result for each image
     public class AiDetectionResponse
     {
+        [JsonPropertyName("filename")]
+        public string Filename { get; set; } = string.Empty;
+
         [JsonPropertyName("image_width")]
         public int ImageWidth { get; set; }
 
@@ -37,8 +48,14 @@ namespace RiceProduction.Application.Common.Interfaces.External
         [JsonPropertyName("box")]
         public BoundingBox Box { get; set; } = new();
 
-        [JsonPropertyName("box_norm")]
-        public BoundingBox BoxNorm { get; set; } = new();
+        [JsonPropertyName("mask")]
+        public List<MaskPolygon>? Mask { get; set; }
+    }
+
+    public class MaskPolygon
+    {
+        [JsonPropertyName("points")]
+        public List<List<double>> Points { get; set; } = new();
     }
 
     public class BoundingBox
@@ -66,10 +83,13 @@ namespace RiceProduction.Application.Common.Interfaces.External
 
     public class PestInfo
     {
+        public int Id { get; set; }
+        public int ClassId { get; set; }
         public string PestName { get; set; } = string.Empty;
         public double Confidence { get; set; }
         public string ConfidenceLevel { get; set; } = string.Empty;
         public BoundingBox Location { get; set; } = new();
+        public List<MaskPolygon>? Mask { get; set; }
     }
 
     public class ImageInfo

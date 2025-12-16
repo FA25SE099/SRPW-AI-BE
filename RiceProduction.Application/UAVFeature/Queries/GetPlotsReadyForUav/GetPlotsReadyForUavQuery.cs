@@ -12,6 +12,7 @@ public class GetPlotsReadyForUavQuery : IRequest<Result<List<UavPlotReadinessRes
 {
     public Guid GroupId { get; set; }
     public TaskType? RequiredTaskType { get; set; } = TaskType.PestControl; // Mặc định là Phun xịt (PestControl)
+    public int DaysBeforeScheduled { get; set; } = 7; // Số ngày trước ngày lên lịch để xem xét sẵn sàng
 }
 
 public class GetPlotsReadyForUavQueryValidator : AbstractValidator<GetPlotsReadyForUavQuery>

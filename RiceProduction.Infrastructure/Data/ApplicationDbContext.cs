@@ -27,9 +27,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<AgronomyExpert> AgronomyExperts => Set<AgronomyExpert>();
     public DbSet<UavVendor> UavVendors => Set<UavVendor>();
 
-    // Core entities
     public DbSet<Cluster> Clusters => Set<Cluster>();
     public DbSet<Season> Seasons => Set<Season>();
+    public DbSet<YearSeason> YearSeasons => Set<YearSeason>();
     public DbSet<RiceVarietyCategory> RiceVarietyCategories => Set<RiceVarietyCategory>();
     public DbSet<RiceVariety> RiceVarieties => Set<RiceVariety>();
     public DbSet<RiceVarietySeason> RiceVarietySeasons => Set<RiceVarietySeason>();
@@ -91,7 +91,6 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     {
         base.OnModelCreating(builder);
 
-        // Configure PostgreSQL enums
         builder.HasPostgresEnum<UserRole>();
         builder.HasPostgresEnum<PlotStatus>();
         builder.HasPostgresEnum<GroupStatus>();
@@ -106,6 +105,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.HasPostgresEnum<CultivationStatus>();
         builder.HasPostgresEnum<RiskLevel>();
         builder.HasPostgresEnum<PriorityLevel>();
+        builder.HasPostgresEnum<SeasonStatus>();
         builder.HasPostgresExtension("postgis")
             .HasPostgresExtension("uuid-ossp");
 

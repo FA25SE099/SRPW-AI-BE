@@ -73,7 +73,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                     predicate = predicate.And(p =>
                         (p.SoThua.HasValue && p.SoThua.Value.ToString().Contains(search)) ||
                         (p.SoTo.HasValue && p.SoTo.Value.ToString().Contains(search)) ||
-                        (p.Farmer != null && p.Farmer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase))
+                        (p.Farmer != null && !string.IsNullOrEmpty(p.Farmer.FullName) && p.Farmer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase))
                     );
                 }
 
@@ -85,7 +85,9 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                         predicate: predicate,
                         cancellationToken: cancellationToken);
 
-                var plotDTOs = _mapper.Map<IEnumerable<PlotDTO>>(items);
+                var plotDTOs = _mapper.Map<List<PlotDTO>>(items);
+
+                await EnrichWithEditabilityAsync(plotDTOs, cancellationToken);
 
                 return PagedResult<IEnumerable<PlotDTO>>.Success(
                     data: plotDTOs,
@@ -100,6 +102,156 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                 return PagedResult<IEnumerable<PlotDTO>>.Failure(
                     error: "An error occurred while fetching plots.",
                     message: "Failed to retrieve plots");
+            }
+        }
+
+        private async Task EnrichWithEditabilityAsync(List<PlotDTO> plotDTOs, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var plotsWithPolygon = plotDTOs.Where(p => !string.IsNullOrEmpty(p.BoundaryGeoJson)).ToList();
+
+                if (!plotsWithPolygon.Any())
+                {
+                    foreach (var plot in plotDTOs)
+                    {
+                        plot.IsEditableInCurrentSeason = true;
+                        plot.EditabilityNote = "No polygon assigned yet";
+                    }
+                    return;
+                }
+
+                var farmerIds = plotDTOs.Select(p => p.FarmerId).Distinct().ToList();
+                var farmers = await _unitOfWork.FarmerRepository.FindAsync(f => farmerIds.Contains(f.Id), cancellationToken);
+                var farmerClusterMap = farmers.ToDictionary(f => f.Id, f => f.ClusterId);
+
+                var (currentSeason, currentYear) = await GetCurrentSeasonAndYearAsync();
+
+                if (currentSeason == null)
+                {
+                    foreach (var plot in plotDTOs)
+                    {
+                        plot.IsEditableInCurrentSeason = true;
+                        plot.EditabilityNote = "No active season";
+                    }
+                    return;
+                }
+
+                var clusterIds = farmerClusterMap.Values.Where(c => c.HasValue).Select(c => c!.Value).Distinct().ToList();
+                
+                if (!clusterIds.Any())
+                {
+                    foreach (var plot in plotDTOs)
+                    {
+                        plot.IsEditableInCurrentSeason = true;
+                        plot.EditabilityNote = "Farmer not assigned to cluster";
+                    }
+                    return;
+                }
+
+                var yearSeasons = await _unitOfWork.Repository<YearSeason>()
+                    .ListAsync(ys => clusterIds.Contains(ys.ClusterId) 
+                              && ys.SeasonId == currentSeason.Id 
+                              && ys.Year == currentYear);
+
+                var clusterYearSeasonMap = yearSeasons.ToDictionary(ys => ys.ClusterId, ys => ys.Id);
+
+                foreach (var plot in plotDTOs)
+                {
+                    if (string.IsNullOrEmpty(plot.BoundaryGeoJson))
+                    {
+                        plot.IsEditableInCurrentSeason = true;
+                        plot.EditabilityNote = "No polygon assigned yet";
+                        continue;
+                    }
+
+                    var clusterId = farmerClusterMap.GetValueOrDefault(plot.FarmerId);
+                    if (!clusterId.HasValue)
+                    {
+                        plot.IsEditableInCurrentSeason = true;
+                        plot.EditabilityNote = "Farmer not assigned to cluster";
+                        continue;
+                    }
+
+                    var yearSeasonId = clusterYearSeasonMap.GetValueOrDefault(clusterId.Value);
+                    if (yearSeasonId == Guid.Empty)
+                    {
+                        plot.IsEditableInCurrentSeason = true;
+                        plot.EditabilityNote = "No active year-season for cluster";
+                        continue;
+                    }
+
+                    var isInGroup = await _unitOfWork.PlotRepository
+                        .IsPlotAssignedToGroupForYearSeasonAsync(plot.PlotId, yearSeasonId, cancellationToken);
+
+                    plot.IsEditableInCurrentSeason = !isInGroup;
+                    plot.EditabilityNote = isInGroup 
+                        ? $"Assigned to group in current season ({currentSeason.SeasonName} {currentYear})"
+                        : $"Editable in current season ({currentSeason.SeasonName} {currentYear})";
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to enrich plots with editability info. Skipping.");
+            }
+        }
+
+        private async Task<(Season? season, int year)> GetCurrentSeasonAndYearAsync()
+        {
+            var today = DateTime.Now;
+            var currentMonth = today.Month;
+            var currentDay = today.Day;
+
+            var allSeasons = await _unitOfWork.Repository<Season>().ListAllAsync();
+
+            foreach (var season in allSeasons)
+            {
+                if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
+                {
+                    var startParts = season.StartDate.Split('/');
+                    int startMonth = int.Parse(startParts[0]);
+
+                    int year = today.Year;
+                    if (currentMonth < startMonth && startMonth > 6)
+                    {
+                        year--;
+                    }
+
+                    return (season, year);
+                }
+            }
+
+            return (null, today.Year);
+        }
+
+        private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
+        {
+            try
+            {
+                var startParts = startDateStr.Split('/');
+                var endParts = endDateStr.Split('/');
+
+                int startMonth = int.Parse(startParts[0]);
+                int startDay = int.Parse(startParts[1]);
+                int endMonth = int.Parse(endParts[0]);
+                int endDay = int.Parse(endParts[1]);
+
+                int currentDate = month * 100 + day;
+                int seasonStart = startMonth * 100 + startDay;
+                int seasonEnd = endMonth * 100 + endDay;
+
+                if (seasonStart > seasonEnd)
+                {
+                    return currentDate >= seasonStart || currentDate <= seasonEnd;
+                }
+                else
+                {
+                    return currentDate >= seasonStart && currentDate <= seasonEnd;
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
     }

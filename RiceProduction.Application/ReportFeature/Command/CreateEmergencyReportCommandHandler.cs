@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
+using System.Text.Json;
 
 namespace RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport;
 
@@ -142,17 +143,39 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                 NotificationSentAt = null
             };
 
+            // Store AI Detection Results if provided
+            if (request.AiDetectionResult != null && request.AiDetectionResult.HasPest)
+            {
+                emergencyReport.HasAiAnalysis = true;
+                emergencyReport.AiDetectedPestCount = request.AiDetectionResult.TotalDetections;
+                emergencyReport.AiDetectedPestNames = request.AiDetectionResult.DetectedPests
+                    .Select(p => p.PestName)
+                    .Distinct()
+                    .ToList();
+                emergencyReport.AiAverageConfidence = request.AiDetectionResult.AverageConfidence;
+                emergencyReport.AiPestAnalysisRaw = JsonSerializer.Serialize(request.AiDetectionResult);
+
+                _logger.LogInformation(
+                    "AI pest detection data included. Detected {PestCount} pest(s) with average confidence {Confidence:F2}%",
+                    emergencyReport.AiDetectedPestCount, emergencyReport.AiAverageConfidence);
+            }
+
             // 9. Save to database
             await _unitOfWork.Repository<EmergencyReport>().AddAsync(emergencyReport);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Emergency report created successfully. ID: {ReportId}, Type: {AlertType}, Source: {Source}, Reporter: {UserId}, Images: {ImageCount}",
-                emergencyReport.Id, emergencyReport.AlertType, emergencyReport.Source, userId.Value, uploadedUrls.Count);
+                "Emergency report created successfully. ID: {ReportId}, Type: {AlertType}, Source: {Source}, Reporter: {UserId}, Images: {ImageCount}, AI Analysis: {HasAI}",
+                emergencyReport.Id, emergencyReport.AlertType, emergencyReport.Source, userId.Value, uploadedUrls.Count, emergencyReport.HasAiAnalysis);
 
             var message = hasImages
                 ? $"Emergency report created successfully with {uploadedUrls.Count} image(s) uploaded."
                 : "Emergency report created successfully.";
+
+            if (emergencyReport.HasAiAnalysis)
+            {
+                message += $" AI detected {emergencyReport.AiDetectedPestCount} pest(s).";
+            }
 
             return Result<Guid>.Success(emergencyReport.Id, message);
         }

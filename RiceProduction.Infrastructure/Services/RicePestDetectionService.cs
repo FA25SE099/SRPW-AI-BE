@@ -33,7 +33,7 @@ namespace RiceProduction.Infrastructure.Services
             var endpoint = $"{aiApiUrl}/predict";
 
             var httpClient = _httpClientFactory.CreateClient();
-            httpClient.Timeout = TimeSpan.FromSeconds(60);
+            httpClient.Timeout = TimeSpan.FromSeconds(240);
 
             using var content = new MultipartFormDataContent();
             using var fileStream = file.OpenReadStream();
@@ -86,10 +86,15 @@ namespace RiceProduction.Infrastructure.Services
             var responseContent = await response.Content.ReadAsStringAsync();
             _logger.LogInformation("AI API response received: {Response}", responseContent);
 
-            AiDetectionResponse? aiResponse;
+            AiApiRootResponse? rootResponse;
             try
             {
-                aiResponse = System.Text.Json.JsonSerializer.Deserialize<AiDetectionResponse>(responseContent);
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = false,
+                    PropertyNamingPolicy = null
+                };
+                rootResponse = System.Text.Json.JsonSerializer.Deserialize<AiApiRootResponse>(responseContent, options);
             }
             catch (Exception ex)
             {
@@ -97,13 +102,17 @@ namespace RiceProduction.Infrastructure.Services
                 throw new Exception($"Failed to parse AI API response: {ex.Message}");
             }
 
-            if (aiResponse == null)
+            if (rootResponse == null || !rootResponse.Results.Any())
             {
-                _logger.LogError("AI API returned null response. Raw response: {Response}", responseContent);
-                throw new Exception("AI API returned null response");
+                _logger.LogError("AI API returned null or empty results. Raw response: {Response}", responseContent);
+                throw new Exception("AI API returned null or empty results");
             }
 
-            _logger.LogInformation("AI API response parsed successfully. Detections: {Count}", aiResponse.Detections.Count);
+            // Get the first result (since we're sending one image)
+            var aiResponse = rootResponse.Results[0];
+
+            _logger.LogInformation("AI API response parsed successfully. Filename: {Filename}, Detections: {Count}", 
+                aiResponse.Filename, aiResponse.Detections.Count);
 
             return MapToResult(aiResponse);
         }
@@ -127,10 +136,13 @@ namespace RiceProduction.Infrastructure.Services
             {
                 result.DetectedPests.Add(new PestInfo
                 {
+                    Id = detection.Id,
+                    ClassId = detection.ClassId,
                     PestName = FormatPestName(detection.ClassName),
                     Confidence = Math.Round(detection.Confidence * 100, 2),
                     ConfidenceLevel = GetConfidenceLevel(detection.Confidence),
-                    Location = detection.Box
+                    Location = detection.Box,
+                    Mask = detection.Mask
                 });
             }
 

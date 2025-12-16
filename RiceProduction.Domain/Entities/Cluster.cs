@@ -15,7 +15,6 @@ public class Cluster : BaseAuditableEntity
     [Column(TypeName = "decimal(10,2)")]
     public decimal? Area { get; set; }
 
-    // Navigation properties
     [ForeignKey("ClusterManagerId")]
     public ClusterManager? ClusterManager { get; set; }
     [ForeignKey("AgronomyExpertId")]
@@ -25,4 +24,6 @@ public class Cluster : BaseAuditableEntity
     public ICollection<Group> Groups { get; set; } = new List<Group>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();
     public ICollection<FieldWeather> WeatherData { get; set; } = new List<FieldWeather>();
+    public ICollection<YearSeason> YearSeasons { get; set; } = new List<YearSeason>();
+    public ICollection<LateFarmerRecord> LateFarmerRecords { get; set; } = new List<LateFarmerRecord>();
 }

@@ -21,5 +21,6 @@ namespace RiceProduction.Application.Common.Interfaces
         IPlotRepository PlotRepository { get; }
         IClusterRepository? ClusterRepository { get; }
         IUavVendorRepository? UavVendorRepository { get; }
+        ILateFarmerRecordRepository LateFarmerRecordRepository { get; }
     }
 }

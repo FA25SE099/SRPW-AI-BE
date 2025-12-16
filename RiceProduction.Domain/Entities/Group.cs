@@ -11,6 +11,8 @@ public class Group : BaseAuditableEntity
     public Guid? RiceVarietyId { get; set; }
 
     public Guid? SeasonId { get; set; }
+
+    public Guid? YearSeasonId { get; set; }
     
     [Required]
     public int Year { get; set; } 
@@ -35,16 +37,14 @@ public class Group : BaseAuditableEntity
     [Column(TypeName = "decimal(10,2)")]
     public decimal? TotalArea { get; set; }
 
-    // Navigation properties
     [ForeignKey("ClusterId")]
     public Cluster Cluster { get; set; } = null!;
     [ForeignKey("SeasonId")]
-    public Season Season { get; set; } = null!;
-
-
+    public Season? Season { get; set; }
+    [ForeignKey("YearSeasonId")]
+    public YearSeason? YearSeason { get; set; }
     [ForeignKey("SupervisorId")]
     public Supervisor? Supervisor { get; set; }
-
     [ForeignKey("RiceVarietyId")]
     public RiceVariety? RiceVariety { get; set; }
 
@@ -52,4 +52,5 @@ public class Group : BaseAuditableEntity
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
     public ICollection<UavServiceOrder> UavServiceOrders { get; set; } = new List<UavServiceOrder>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();
+    public ICollection<LateFarmerRecord> LateFarmerRecords { get; set; } = new List<LateFarmerRecord>();
 }

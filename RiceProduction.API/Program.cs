@@ -207,8 +207,8 @@ if (seedDatabase)
             //await initializer.SeedAsync();
 
         }
-        await initializer.SeedAsyncAdminOnly();
-        //await initializer.SeedAsync();
+        //await initializer.SeedAsyncAdminOnly();
+        await initializer.SeedAsync();
     }
     catch (Exception ex)
     {
@@ -217,33 +217,42 @@ if (seedDatabase)
     }
 }
 app.MapPost("/api/rice/check-pest", async (
-    [FromForm] IFormFile file,
+    [FromForm] IFormFileCollection files,
     [FromServices] IRicePestDetectionService detectionService) =>
 {
-    if (file == null || file.Length == 0)
+    if (files == null || files.Count == 0)
     {
-        return Results.BadRequest(new { error = "No file uploaded" });
+        return Results.BadRequest(new { error = "No files uploaded" });
     }
 
     // Validate file type
     var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
-    var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-
-    if (!allowedExtensions.Contains(extension))
+    
+    foreach (var file in files)
     {
-        return Results.BadRequest(new { error = "Only JPG, JPEG, and PNG files are allowed" });
-    }
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
 
-    // Validate file size (max 10MB)
-    if (file.Length > 10 * 1024 * 1024)
-    {
-        return Results.BadRequest(new { error = "File size must not exceed 10MB" });
+        if (!allowedExtensions.Contains(extension))
+        {
+            return Results.BadRequest(new { error = $"File '{file.FileName}' has invalid extension. Only JPG, JPEG, and PNG files are allowed" });
+        }
+
+        // Validate file size (max 10MB)
+        if (file.Length > 10 * 1024 * 1024)
+        {
+            return Results.BadRequest(new { error = $"File '{file.FileName}' size must not exceed 10MB" });
+        }
     }
 
     try
     {
-        var result = await detectionService.DetectPestAsync(file);
-        return Results.Ok(result);
+        var results = new List<object>();
+        foreach (var file in files)
+        {
+            var result = await detectionService.DetectPestAsync(file);
+            results.Add(result);
+        }
+        return Results.Ok(results);
     }
     catch (Exception ex)
     {

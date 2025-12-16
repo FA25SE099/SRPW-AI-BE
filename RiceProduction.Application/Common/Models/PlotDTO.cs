@@ -26,5 +26,7 @@ namespace RiceProduction.Application.Common.Models
         public PlotStatus Status { get; set; } 
         public string VarietyName { get; set; } 
         public ICollection<SeasonDTO> Seasons { get; set; } = new List<SeasonDTO>();
+        public bool? IsEditableInCurrentSeason { get; set; }
+        public string? EditabilityNote { get; set; }
     }
 }

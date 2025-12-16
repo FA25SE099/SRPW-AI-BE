@@ -58,22 +58,42 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                 .Select(pc => pc.Id)
                 .ToList();
             
-            // Tìm CultivationTask phù hợp (Spraying/Fertilization)
-            var cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => 
-                    selectedPlotCultivationIds.Contains(ct.PlotCultivationId) 
-                    &&
-                    (ct.TaskType == TaskType.Harvesting || ct.TaskType == TaskType.LandPreparation
-                    || ct.TaskType == TaskType.PestControl || ct.TaskType == TaskType.Fertilization ) 
-                    &&
-                    (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved
-                    || ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress 
-                    || ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed) // Task đang chờ thực hiện
-            );
+            // Tìm CultivationTask phù hợp
+            IReadOnlyList<CultivationTask> cultivationTasks;
+            
+            if (request.CultivationTaskIds != null && request.CultivationTaskIds.Any())
+            {
+                // Sử dụng CultivationTaskIds cụ thể nếu được cung cấp
+                cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
+                    filter: ct => 
+                        request.CultivationTaskIds.Contains(ct.Id) &&
+                        selectedPlotCultivationIds.Contains(ct.PlotCultivationId) &&
+                        (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed)
+                );
+            }
+            else
+            {
+                // Fallback: Tìm CultivationTask phù hợp (Spraying/Fertilization) tự động
+                cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
+                    filter: ct => 
+                        selectedPlotCultivationIds.Contains(ct.PlotCultivationId) 
+                        &&
+                        (ct.TaskType == TaskType.Harvesting || ct.TaskType == TaskType.LandPreparation
+                        || ct.TaskType == TaskType.PestControl || ct.TaskType == TaskType.Fertilization ) 
+                        &&
+                        (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed)
+                );
+            }
 
             if (cultivationTasks.Count == 0)
             {
-                return Result<Guid>.Failure("No active Cultivation Tasks (Spraying/Fertilization) found for the selected plots.", "NoActiveTasks");
+                return Result<Guid>.Failure("No active Cultivation Tasks found for the selected plots.", "NoActiveTasks");
             }
 
             // 3. Tính toán các thông số

@@ -17,13 +17,12 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
             .IsRequired()
             .HasComment("Year of the season cycle to distinguish recurring seasons");
 
-        // Indexes
         builder.HasIndex(g => g.ClusterId);
         builder.HasIndex(g => g.SupervisorId);
         builder.HasIndex(g => g.RiceVarietyId);
         builder.HasIndex(g => g.SeasonId);
+        builder.HasIndex(g => g.YearSeasonId);
         
-        // Composite index for unique group identification
         builder.HasIndex(g => new { g.SupervisorId, g.SeasonId, g.Year })
             .HasDatabaseName("IX_Group_Supervisor_Season_Year");
         
@@ -33,11 +32,20 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
         builder.HasIndex(g => g.PlantingDate);
         builder.HasIndex(g => g.ReadyForUavDate);
 
-        // Relationships
         builder.HasOne(g => g.Cluster)
             .WithMany(c => c.Groups)
             .HasForeignKey(g => g.ClusterId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(g => g.Season)
+            .WithMany()
+            .HasForeignKey(g => g.SeasonId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne(g => g.YearSeason)
+            .WithMany(ys => ys.Groups)
+            .HasForeignKey(g => g.YearSeasonId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne(g => g.Supervisor)
             .WithMany(s => s.SupervisedGroups)
