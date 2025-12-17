@@ -35,12 +35,7 @@ public class CalculateMaterialsCostByAreaResponse
     public decimal TotalCostForArea { get; set; }
 
     /// <summary>
-    /// Total cost for all task materials
-    /// </summary>
-    public decimal TotalTaskMaterialsCost { get; set; }
-
-    /// <summary>
-    /// All materials aggregated (old response format for backward compatibility)
+    /// All materials aggregated
     /// </summary>
     public List<MaterialCostItem> MaterialCostItems { get; set; } = new();
 

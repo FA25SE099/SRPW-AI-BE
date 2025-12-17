@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
 
@@ -21,20 +19,8 @@ public class CalculateMaterialsCostByAreaQuery : IRequest<Result<CalculateMateri
     /// <summary>
     /// List of tasks with their materials
     /// </summary>
+    [Required]
     public List<TaskWithMaterialsInput> Tasks { get; set; } = new();
-
-
-
-
-
-
-
-
-    /// <summary>
-    /// List of seed/service materials at the same level as tasks
-    /// </summary>
-    public List<SeedServiceInput> SeedServices { get; set; } = new();
-
 }
 
 public class CalculateMaterialsCostByAreaQueryValidator : AbstractValidator<CalculateMaterialsCostByAreaQuery>
@@ -45,10 +31,10 @@ public class CalculateMaterialsCostByAreaQueryValidator : AbstractValidator<Calc
             .GreaterThan(0)
             .WithMessage("Area must be greater than zero.");
 
-        // At least one of Tasks or SeedServices must be provided
-        RuleFor(x => x)
-            .Must(x => x.Tasks.Any() || x.SeedServices.Any())
-            .WithMessage("At least one task or seed service must be provided.");
+        // At least one task must be provided
+        RuleFor(x => x.Tasks)
+            .NotEmpty()
+            .WithMessage("At least one task must be provided.");
 
         // Validate each task
         RuleForEach(x => x.Tasks).ChildRules(task =>
@@ -61,14 +47,6 @@ public class CalculateMaterialsCostByAreaQueryValidator : AbstractValidator<Calc
                 material.RuleFor(m => m.MaterialId).NotEmpty().WithMessage("Material ID is required for each item.");
                 material.RuleFor(m => m.QuantityPerHa).GreaterThan(0).WithMessage("Quantity per hectare must be greater than zero.");
             });
-        });
-
-        // Validate each seed service
-        RuleForEach(x => x.SeedServices).ChildRules(seedService =>
-        {
-            seedService.RuleFor(s => s.MaterialId).NotEmpty().WithMessage("Material ID is required for seed service.");
-            seedService.RuleFor(s => s.QuantityPerHa).GreaterThan(0).WithMessage("Quantity per hectare must be greater than zero.");
-
         });
     }
 }

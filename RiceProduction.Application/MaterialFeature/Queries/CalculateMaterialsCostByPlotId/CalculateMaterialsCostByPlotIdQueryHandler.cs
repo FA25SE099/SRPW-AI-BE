@@ -1,4 +1,4 @@
-﻿﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
@@ -6,7 +6,7 @@ using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByPlotId;
@@ -45,18 +45,11 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
             var priceWarnings = new List<string>();
 
             // --- 2. Collect all material IDs ---
-            var taskMaterialIds = request.Tasks
+            var allMaterialIds = request.Tasks
                 .SelectMany(t => t.Materials)
                 .Select(m => m.MaterialId)
                 .Distinct()
                 .ToList();
-
-            var seedServiceMaterialIds = request.SeedServices
-                .Select(s => s.MaterialId)
-                .Distinct()
-                .ToList();
-
-            var allMaterialIds = taskMaterialIds.Union(seedServiceMaterialIds).ToList();
 
             // --- 3. Load material details ---
             var materials = await _unitOfWork.Repository<Material>().ListAsync(
@@ -83,13 +76,11 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
                 .ToDictionary(p => p.MaterialId, p => p);
 
             // --- 5. Initialize tracking ---
-            decimal totalTaskMaterialsCost = 0M;
-            decimal totalSeedServicesCost = 0M;
+            decimal totalCost = 0M;
             var materialCostItems = new List<MaterialCostItem>();
             var taskCostBreakdowns = new List<TaskCostBreakdown>();
-            var seedServiceCostBreakdowns = new List<SeedServiceCostBreakdown>();
 
-            // Dictionary to aggregate all materials for backward compatibility
+            // Dictionary to aggregate all materials
             var materialAggregation = new Dictionary<Guid, MaterialCostItem>();
 
             // --- 6. Process Tasks with Materials ---
@@ -121,7 +112,21 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
                         // Aggregate for overall summary
                         if (!materialAggregation.ContainsKey(materialInput.MaterialId))
                         {
-                            materialAggregation[materialInput.MaterialId] = materialCost;
+                            materialAggregation[materialInput.MaterialId] = new MaterialCostItem
+                            {
+                                MaterialId = materialCost.MaterialId,
+                                MaterialName = materialCost.MaterialName,
+                                Unit = materialCost.Unit,
+                                QuantityPerHa = materialCost.QuantityPerHa,
+                                TotalQuantityNeeded = materialCost.TotalQuantityNeeded,
+                                AmountPerMaterial = materialCost.AmountPerMaterial,
+                                PackagesNeeded = materialCost.PackagesNeeded,
+                                ActualQuantity = materialCost.ActualQuantity,
+                                PricePerMaterial = materialCost.PricePerMaterial,
+                                TotalCost = materialCost.TotalCost,
+                                CostPerHa = materialCost.CostPerHa,
+                                PriceValidFrom = materialCost.PriceValidFrom
+                            };
                         }
                         else
                         {
@@ -137,64 +142,16 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
 
                 taskBreakdown.TotalTaskCost = taskTotalCost;
                 taskCostBreakdowns.Add(taskBreakdown);
-                totalTaskMaterialsCost += taskTotalCost;
+                totalCost += taskTotalCost;
             }
 
-            // --- 7. Process Seed Services ---
-            foreach (var seedServiceInput in request.SeedServices)
-            {
-                var materialCost = CalculateMaterialCost(
-                    seedServiceInput.MaterialId,
-                    seedServiceInput.QuantityPerHa,
-                    plot.Area,
-                    materialsDict,
-                    currentPrices,
-                    priceWarnings);
-
-                if (materialCost != null)
-                {
-                    var seedServiceBreakdown = new SeedServiceCostBreakdown
-                    {
-                        MaterialId = seedServiceInput.MaterialId,
-                        MaterialName = materialCost.MaterialName,
-                        Unit = materialCost.Unit,
-                        QuantityPerHa = seedServiceInput.QuantityPerHa,
-                        RequiredQuantity = materialCost.TotalQuantityNeeded,
-                        PackagesNeeded = materialCost.PackagesNeeded,
-                        EffectivePricePerPackage = materialCost.PricePerMaterial,
-                        TotalCost = materialCost.TotalCost,
-                        Notes = seedServiceInput.Notes,
-                        PriceValidFrom = materialCost.PriceValidFrom
-                    };
-
-                    seedServiceCostBreakdowns.Add(seedServiceBreakdown);
-                    totalSeedServicesCost += materialCost.TotalCost;
-
-                    // Aggregate for overall summary
-                    if (!materialAggregation.ContainsKey(seedServiceInput.MaterialId))
-                    {
-                        materialAggregation[seedServiceInput.MaterialId] = materialCost;
-                    }
-                    else
-                    {
-                        var existing = materialAggregation[seedServiceInput.MaterialId];
-                        existing.TotalQuantityNeeded += materialCost.TotalQuantityNeeded;
-                        existing.PackagesNeeded += materialCost.PackagesNeeded;
-                        existing.ActualQuantity += materialCost.ActualQuantity;
-                        existing.TotalCost += materialCost.TotalCost;
-                        existing.CostPerHa = existing.TotalCost / plot.Area;
-                    }
-                }
-            }
-
-            // --- 8. Calculate totals ---
-            var totalCostForArea = totalTaskMaterialsCost + totalSeedServicesCost;
-            var totalCostPerHa = totalCostForArea / plot.Area;
+            // --- 7. Calculate totals ---
+            var totalCostPerHa = totalCost / plot.Area;
 
             // Convert aggregation to list
             materialCostItems = materialAggregation.Values.ToList();
 
-            if (!materialCostItems.Any() && !taskCostBreakdowns.Any() && !seedServiceCostBreakdowns.Any())
+            if (!materialCostItems.Any())
             {
                 return Result<CalculateMaterialsCostByAreaResponse>.Failure("No valid material cost calculations could be performed.", "NoValidCalculations");
             }
@@ -203,12 +160,9 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
             {
                 Area = plot.Area,
                 TotalCostPerHa = totalCostPerHa,
-                TotalCostForArea = totalCostForArea,
-                TotalTaskMaterialsCost = totalTaskMaterialsCost,
-                TotalSeedServicesCost = totalSeedServicesCost,
+                TotalCostForArea = totalCost,
                 MaterialCostItems = materialCostItems,
                 TaskCostBreakdowns = taskCostBreakdowns,
-                SeedServiceCostBreakdowns = seedServiceCostBreakdowns,
                 PriceWarnings = priceWarnings
             };
 
@@ -216,8 +170,8 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
                 ? $"Successfully calculated material costs for Plot ID {request.PlotId} with {priceWarnings.Count} warning(s)."
                 : $"Successfully calculated material costs for Plot ID {request.PlotId}.";
 
-            _logger.LogInformation("Calculated material costs for Plot ID {PlotId} (Area: {Area}ha). Total cost: {TotalCost} (Tasks: {TaskCost}, Seeds: {SeedCost}). Materials: {Count}",
-                request.PlotId, plot.Area, totalCostForArea, totalTaskMaterialsCost, totalSeedServicesCost, materialCostItems.Count);
+            _logger.LogInformation("Calculated material costs for Plot ID {PlotId} (Area: {Area}ha). Total cost: {TotalCost}. Materials: {Count}",
+                request.PlotId, plot.Area, totalCost, materialCostItems.Count);
 
             return Result<CalculateMaterialsCostByAreaResponse>.Success(response, message);
         }

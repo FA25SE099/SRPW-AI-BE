@@ -55,6 +55,7 @@ public class MaterialController : ControllerBase
         }
         return Ok(result);
     }
+    
     [HttpGet("by-id")]
     public async Task<IActionResult> GetMaterialById([FromQuery] Guid id)
     {
@@ -68,6 +69,7 @@ public class MaterialController : ControllerBase
 
         return Ok(result);
     }
+    
     [HttpPost("download-excel")]
     public async Task<IActionResult> DownloadMaterialExcel([FromBody] DateTime request)
     {
@@ -82,6 +84,7 @@ public class MaterialController : ControllerBase
         }
         return result.Data;
     }
+    
     [HttpPost("import-update-excel")]
     public async Task<Result<List<MaterialResponse>>> ImportUpdateMaterialExcel([FromForm] ImportMaterialExcel input)
     {
@@ -97,6 +100,7 @@ public class MaterialController : ControllerBase
         }
         return result;
     }
+    
     [HttpGet("download-create-sample-excel")]
     public async Task<IActionResult> DownloadCreateSampleMaterialExcelFile()
     {
@@ -108,6 +112,7 @@ public class MaterialController : ControllerBase
         }
         return result.Data;
     }
+    
     [HttpPost("import-create-excel")]
     public async Task<Result<List<MaterialResponse>>> ImportCreateMaterialExcel([FromForm] ImportMaterialExcel input)
     {
@@ -190,6 +195,7 @@ public class MaterialController : ControllerBase
 
         return Ok(result);
     }
+    
     [HttpPost("calculate-group-material-cost")]
     public async Task<IActionResult> CalculateGroupMaterialCost([FromBody] CalculateGroupMaterialCostQuery query)
     {
@@ -202,6 +208,7 @@ public class MaterialController : ControllerBase
 
         return Ok(result);
     }
+    
     [HttpPost("calculate-materials-cost-by-area")]
     public async Task<IActionResult> CalculateMaterialsCostByArea([FromBody] CalculateMaterialsCostByAreaQuery query)
     {
@@ -214,42 +221,9 @@ public class MaterialController : ControllerBase
 
         return Ok(result);
     }
+    
     [HttpPost("calculate-materials-cost-by-plot-id")]
     public async Task<IActionResult> CalculateMaterialsCostByPlotId([FromBody] CalculateMaterialsCostByPlotIdQuery query)
-    {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
-    }
-
-    /// <summary>
-    /// Calculate material costs using a StandardPlan for a specific area
-    /// </summary>
-    [HttpPost("calculate-cost-by-standard-plan-and-area")]
-    public async Task<IActionResult> CalculateCostByStandardPlanAndArea([FromBody] CalculateCostByStandardPlanAndAreaQuery query)
-    {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
-    }
-
-    /// <summary>
-    /// Calculate material costs for a plot using either a StandardPlan or manual input.
-    /// If StandardPlanId is provided, it will use tasks/materials from that plan.
-    /// If StandardPlanId is null, it will use the Tasks and SeedServices provided in the request.
-    /// </summary>
-    [HttpPost("calculate-cost-by-plot-and-standard-plan")]
-    public async Task<IActionResult> CalculateCostByPlotAndStandardPlan([FromBody] CalculateCostByPlotAndStandardPlanQuery query)
     {
         var result = await _mediator.Send(query);
 
