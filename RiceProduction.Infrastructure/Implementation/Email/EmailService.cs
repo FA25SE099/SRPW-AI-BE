@@ -257,7 +257,7 @@ namespace RiceProduction.Infrastructure.Services
             // This is a simple implementation - you can enhance it to load from files or database
             var templates = new Dictionary<string, string>
             {
-                ["farmer_account_created"] = @"
+                ["user_account_created"] = @"
     <html>
     <head>
         <style>
@@ -285,17 +285,6 @@ namespace RiceProduction.Infrastructure.Services
                     <p><strong>Số tài khoản:</strong> {{Email}}</p>
                     <p><strong>Mật khẩu tạm thời:</strong> {{TempPassword}}</p>
                 </div>
-
-                <div class='warning'>
-                    <h3>⚠️ Lưu ý quan trọng về bảo mật:</h3>
-                    <ul>
-                        <li><strong>Vui lòng đổi mật khẩu ngay sau khi đăng nhập lần đầu</strong></li>
-                        <li>Không chia sẻ mật khẩu với bất kỳ ai</li>
-                        <li>Chọn mật khẩu mạnh có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt</li>
-                        <li>Không sử dụng mật khẩu giống với các tài khoản khác</li>
-                    </ul>
-                </div>
-
                 <p>Nếu bạn gặp bất kỳ vấn đề gì khi đăng nhập hoặc cần hỗ trợ, vui lòng liên hệ với quản trị viên hệ thống.</p>
                 
                 <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>

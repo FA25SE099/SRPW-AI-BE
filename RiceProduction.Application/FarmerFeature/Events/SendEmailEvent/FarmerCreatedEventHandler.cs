@@ -43,7 +43,7 @@ namespace RiceProduction.Application.FarmerFeature.Events.SendEmailEvent
                 var result = await _emailService.SendEmailWithTemplateAsync(
                     to: notification.Email,
                     templateData: templateData,
-                    templateName: "farmer_account_created",
+                    templateName: "user_account_created",
                     subject: "Tài khoản của bạn đã được khởi tạo",
                     cancellationToken: cancellationToken);
                 if (result.Succeeded)
