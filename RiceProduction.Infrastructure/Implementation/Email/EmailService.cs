@@ -295,8 +295,67 @@ namespace RiceProduction.Infrastructure.Services
             </div>
         </div>
     </body>
-    </html>"
+    </html>",
+                ["password_reset_new"] = @"
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+        .credentials { background-color: #fff; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
+        .credentials strong { color: #4CAF50; }
+        .password-box { background-color: #e8f5e9; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px; }
+        .password-text { font-size: 24px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: 'Courier New', monospace; }
+        .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+        .footer { background-color: #333; color: white; padding: 15px; text-align: center; border-radius: 0 0 5px 5px; font-size: 12px; }
+        .icon { font-size: 20px; margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>🔐 Mật khẩu mới của bạn</h1>
+        </div>
+        <div class='content'>
+            <p>Xin chào <strong>{{FullName}}</strong>,</p>
+            <p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản <strong>{{Email}}</strong>.</p>
+            <p>Mật khẩu mới của bạn đã được tạo thành công:</p>
+            
+            <div class='password-box'>
+                <p style='margin: 0 0 10px 0; color: #666; font-size: 14px;'>Mật khẩu mới của bạn:</p>
+                <div class='password-text'>{{TempPassword}}</div>
+            </div>
 
+            <div class='credentials'>
+                <h3>Thông tin đăng nhập:</h3>
+                <p><strong>Email (Tài khoản):</strong> {{Email}}</p>
+                <p><strong>Mật khẩu mới:</strong> {{TempPassword}}</p>
+            </div>
+
+            <div class='warning'>
+                <h3><span class='icon'>⚠️</span>Lưu ý quan trọng về bảo mật:</h3>
+                <ul>
+                    <li><strong>Vui lòng đổi mật khẩu ngay sau khi đăng nhập</strong></li>
+                    <li>Đây là mật khẩu tạm thời, không nên sử dụng lâu dài</li>
+                    <li>Không chia sẻ mật khẩu với bất kỳ ai</li>
+                    <li>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng liên hệ quản trị viên ngay lập tức</li>
+                    <li>Chọn mật khẩu mới mạnh: ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt</li>
+                </ul>
+            </div>
+
+            <p style='margin-top: 30px;'>Nếu bạn gặp vấn đề khi đăng nhập, vui lòng liên hệ với bộ phận hỗ trợ.</p>
+            
+            <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>
+        </div>
+        <div class='footer'>
+            <p>&copy; 2025 Rice Production Management System. All rights reserved.</p>
+            <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+        </div>
+    </div>
+</body>
+</html>"
             };
 
             return await Task.FromResult(templates.GetValueOrDefault(templateName, "<p>Template not found</p>"));
