@@ -257,68 +257,57 @@ namespace RiceProduction.Infrastructure.Services
             // This is a simple implementation - you can enhance it to load from files or database
             var templates = new Dictionary<string, string>
             {
-                ["welcome"] = @"
-                    <html><body>
-                        <h2>Welcome {{FullName}}!</h2>
-                        <p>Thank you for joining Rice Production System.</p>
-                    </body></html>",
-                ["task_assigned"] = @"
-                    <html><body>
-                        <h2>New Task Assigned</h2>
-                        <p>Dear {{FullName}},</p>
-                        <p>You have been assigned a new task: {{TaskName}}</p>
-                        <p>Due date: {{DueDate}}</p>
-                    </body></html>",
                 ["farmer_account_created"] = @"
-                    <html>
-                    <head>
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-                            .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
-                            .credentials { background-color: #fff; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
-                            .credentials strong { color: #4CAF50; }
-                            .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-                            .footer { background-color: #333; color: white; padding: 15px; text-align: center; border-radius: 0 0 5px 5px; font-size: 12px; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class='container'>
-                            <div class='header'>
-                                <h1>Chào mừng đến với Hệ thống Quản lý Sản xuất Lúa</h1>
-                            </div>
-                            <div class='content'>
-                                <p>Xin chào <strong>{{FullName}}</strong>,</p>
-                                <p>Tài khoản của bạn đã được tạo thành công trong Hệ thống Quản lý Sản xuất Lúa.</p>
-                                
-                                <div class='credentials'>
-                                    <h3>Thông tin đăng nhập:</h3>
-                                    <p><strong>Số điện thoại (Tài khoản):</strong> {{PhoneNumber}}</p>
-                                    <p><strong>Mật khẩu tạm thời:</strong> {{TempPassword}}</p>
-                                </div>
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+            .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+            .credentials { background-color: #fff; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
+            .credentials strong { color: #4CAF50; }
+            .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+            .footer { background-color: #333; color: white; padding: 15px; text-align: center; border-radius: 0 0 5px 5px; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class='container'>
+            <div class='header'>
+                <h1>Chào mừng đến với Hệ thống Quản lý Sản xuất Lúa</h1>
+            </div>
+            <div class='content'>
+                <p>Xin chào <strong>{{FullName}}</strong>,</p>
+                <p>Tài khoản của bạn đã được tạo thành công trong Hệ thống Quản lý Sản xuất Lúa.</p>
+                
+                <div class='credentials'>
+                    <h3>Thông tin đăng nhập:</h3>
+                    <p><strong>Số tài khoản:</strong> {{Email}}</p>
+                    <p><strong>Mật khẩu tạm thời:</strong> {{TempPassword}}</p>
+                </div>
 
-                                <div class='warning'>
-                                    <h3>⚠️ Lưu ý quan trọng về bảo mật:</h3>
-                                    <ul>
-                                        <li><strong>Vui lòng đổi mật khẩu ngay sau khi đăng nhập lần đầu</strong></li>
-                                        <li>Không chia sẻ mật khẩu với bất kỳ ai</li>
-                                        <li>Chọn mật khẩu mạnh có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt</li>
-                                        <li>Không sử dụng mật khẩu giống với các tài khoản khác</li>
-                                    </ul>
-                                </div>
+                <div class='warning'>
+                    <h3>⚠️ Lưu ý quan trọng về bảo mật:</h3>
+                    <ul>
+                        <li><strong>Vui lòng đổi mật khẩu ngay sau khi đăng nhập lần đầu</strong></li>
+                        <li>Không chia sẻ mật khẩu với bất kỳ ai</li>
+                        <li>Chọn mật khẩu mạnh có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt</li>
+                        <li>Không sử dụng mật khẩu giống với các tài khoản khác</li>
+                    </ul>
+                </div>
 
-                                <p>Nếu bạn gặp bất kỳ vấn đề gì khi đăng nhập hoặc cần hỗ trợ, vui lòng liên hệ với quản trị viên hệ thống.</p>
-                                
-                                <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>
-                            </div>
-                            <div class='footer'>
-                                <p>&copy; 2025 Rice Production Management System. All rights reserved.</p>
-                                <p>Email này được gửi tự động, vui lòng không trả lời.</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>"
+                <p>Nếu bạn gặp bất kỳ vấn đề gì khi đăng nhập hoặc cần hỗ trợ, vui lòng liên hệ với quản trị viên hệ thống.</p>
+                
+                <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>
+            </div>
+            <div class='footer'>
+                <p>&copy; 2025 Rice Production Management System. All rights reserved.</p>
+                <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+            </div>
+        </div>
+    </body>
+    </html>"
+
             };
 
             return await Task.FromResult(templates.GetValueOrDefault(templateName, "<p>Template not found</p>"));
