@@ -16,6 +16,7 @@ using RiceProduction.Infrastructure;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using Serilog;
+using Serilog.Sinks.Grafana.Loki;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -23,7 +24,8 @@ using System.Text.Json.Serialization;
 
     var builder = WebApplication.CreateBuilder(args);
 
-    builder.Host.UseSerilog();
+
+builder.Host.UseSerilog();
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
