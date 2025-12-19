@@ -227,18 +227,44 @@ if (seedDatabase)
 
     try
     {
-        logger.LogWarning("SeedDatabase = true, Starting database seeding");
+        logger.LogWarning("=== STARTING DATABASE SEEDING ===");
+        logger.LogInformation("Environment: {Env}, IsProduction: {IsProd}, SeedDatabase: {Seed}",
+            app.Environment.EnvironmentName, isProduction, seedDatabase);
 
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
 
+        logger.LogInformation("Calling InitialiseAsync...");
         await initializer.InitialiseAsync();
-        await initializer.SeedAsync();
+        logger.LogInformation("InitialiseAsync completed");
 
-        logger.LogWarning("Database seeding completed");
+        logger.LogInformation("Calling SeedAsync...");
+        await initializer.SeedAsync();
+        logger.LogInformation("SeedAsync completed");
+
+        logger.LogWarning("=== DATABASE SEEDING COMPLETED SUCCESSFULLY ===");
+
+        // Verify seeding
+        var context = services.GetRequiredService<ApplicationDbContext>();
+        var userCount = await context.Users.CountAsync();
+        var farmerCount = await context.Farmers.CountAsync();
+        var plotCount = await context.Plots.CountAsync();
+
+        logger.LogWarning("Verification - Users: {Users}, Farmers: {Farmers}, Plots: {Plots}",
+            userCount, farmerCount, plotCount);
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error occurred while seeding database");
+        logger.LogError(ex, "=== ERROR DURING DATABASE SEEDING ===");
+        logger.LogError("Exception Type: {Type}", ex.GetType().Name);
+        logger.LogError("Message: {Message}", ex.Message);
+        logger.LogError("Stack Trace: {StackTrace}", ex.StackTrace);
+
+        if (ex.InnerException != null)
+        {
+            logger.LogError("Inner Exception: {Inner}", ex.InnerException.Message);
+        }
+
+        // Don't throw - let app continue but log the error
     }
 }
 app.MapPost("/api/rice/check-pest", async (
