@@ -187,35 +187,57 @@ var app = builder.Build();
 var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
 
 
+//if (seedDatabase)
+//{
+//    using var scope = app.Services.CreateScope();
+//    var services = scope.ServiceProvider;
+//    try
+//    {
+//        var context = services.GetRequiredService<ApplicationDbContext>();
+//        var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
+
+//        if (app.Environment.IsDevelopment() && !isProduction)
+//        {
+//            await initializer.InitialiseAsync();
+//        }
+//        //if (isProduction)
+//        //{
+//        //}
+//        if (isProduction)
+//        {
+//            //await initializer.ResetDatabaseAsync();
+//            //await initializer.SeedAsync();
+
+//        }
+//        //await initializer.SeedAsyncAdminOnly();
+//        await initializer.SeedAsync();
+//    }
+//    catch (Exception ex)
+//    {
+//        var logger = services.GetRequiredService<ILogger<Program>>();
+//        logger.LogError(ex, "An error occurred creating the DB or seeding data.");
+//    }
+//}
 if (seedDatabase)
 {
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+
     try
     {
-        var context = services.GetRequiredService<ApplicationDbContext>();
+        logger.LogWarning("SeedDatabase = true, Starting database seeding");
+
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
 
-        if (app.Environment.IsDevelopment() && !isProduction)
-        {
-            await initializer.InitialiseAsync();
-        }
-        //if (isProduction)
-        //{
-        //}
-        if (isProduction)
-        {
-            //await initializer.ResetDatabaseAsync();
-            //await initializer.SeedAsync();
-
-        }
-        //await initializer.SeedAsyncAdminOnly();
+        await initializer.InitialiseAsync();
         await initializer.SeedAsync();
+
+        logger.LogWarning("Database seeding completed");
     }
     catch (Exception ex)
     {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred creating the DB or seeding data.");
+        logger.LogError(ex, "Error occurred while seeding database");
     }
 }
 app.MapPost("/api/rice/check-pest", async (
