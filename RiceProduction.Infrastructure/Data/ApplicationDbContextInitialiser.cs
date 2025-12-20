@@ -2442,7 +2442,7 @@ namespace RiceProduction.Infrastructure.Data
                     PlotId = plot.Id,
                     ServicedArea = plot.Area,
                     Status = isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
-
+                    CultivationTaskId = Guid.Empty,
                     // Chi phí và báo cáo thực tế cho các Plot đã xong
                     ActualCost = isCompleted ? plot.Area * (vendor1.ServiceRatePerHa * 1.05m) : null,
                     CompletionDate = isCompleted ? DateTime.UtcNow.AddDays(-1) : null,
