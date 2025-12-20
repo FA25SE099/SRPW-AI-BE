@@ -21,6 +21,12 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Application.PlotFeature.Queries.GetPlotsByFarmer;
+using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
+using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
+using RiceProduction.Application.ReportFeature.Queries.GetReportsByFarmer;
+using RiceProduction.Application.FarmerFeature.Commands.ChangeFarmerStatus;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.API.Controllers
 {
@@ -303,5 +309,161 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
             }
         }
+
+        /// <summary>
+        /// Get all plots owned by a farmer
+        /// </summary>
+        [HttpPost("{farmerId}/plots")]
+        [ProducesResponseType(typeof(PagedResult<List<PlotListResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PagedResult<List<PlotListResponse>>>> GetPlotsByFarmer(
+            Guid farmerId,
+            [FromBody] GetPlotsByFarmerRequest request)
+        {
+            try
+            {
+                var query = new GetPlotsByFarmerQuery
+                {
+                    FarmerId = farmerId,
+                    CurrentPage = request.CurrentPage,
+                    PageSize = request.PageSize,
+                    Status = request.Status,
+                    IsUnassigned = request.IsUnassigned
+                };
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    if (result.Message?.Contains("not found") == true)
+                    {
+                        return NotFound(result);
+                    }
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting plots for farmer {FarmerId}", farmerId);
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+        /// <summary>
+        /// Get all emergency reports for a farmer (sorted by newest first)
+        /// </summary>
+        [HttpPost("{farmerId}/reports")]
+        [ProducesResponseType(typeof(PagedResult<List<ReportItemResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PagedResult<List<ReportItemResponse>>>> GetReportsByFarmer(
+            Guid farmerId,
+            [FromBody] GetReportsByFarmerRequest request)
+        {
+            try
+            {
+                var query = new GetReportsByFarmerQuery
+                {
+                    FarmerId = farmerId,
+                    CurrentPage = request.CurrentPage,
+                    PageSize = request.PageSize,
+                    SearchTerm = request.SearchTerm,
+                    Status = request.Status,
+                    Severity = request.Severity,
+                    ReportType = request.ReportType
+                };
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    if (result.Message?.Contains("not found") == true)
+                    {
+                        return NotFound(result);
+                    }
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting reports for farmer {FarmerId}", farmerId);
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+        /// <summary>
+        /// Change farmer status (Admin only)
+        /// </summary>
+        [HttpPut("{farmerId}/status")]
+        [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ChangeFarmerStatus(
+            Guid farmerId,
+            [FromBody] ChangeFarmerStatusRequest request)
+        {
+            try
+            {
+                if (farmerId != request.FarmerId)
+                {
+                    return BadRequest(new { message = "Farmer ID in URL does not match request body" });
+                }
+
+                var command = new ChangeFarmerStatusCommand
+                {
+                    FarmerId = request.FarmerId,
+                    NewStatus = request.NewStatus,
+                    Reason = request.Reason
+                };
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    if (result.Message?.Contains("not found") == true)
+                    {
+                        return NotFound(result);
+                    }
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while changing status for farmer {FarmerId}", farmerId);
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
     }
-    }
+}
+
+public class GetPlotsByFarmerRequest
+{
+    public int CurrentPage { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public PlotStatus? Status { get; set; }
+    public bool? IsUnassigned { get; set; }
+}
+
+public class GetReportsByFarmerRequest
+{
+    public int CurrentPage { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? SearchTerm { get; set; }
+    public string? Status { get; set; }
+    public string? Severity { get; set; }
+    public string? ReportType { get; set; }
+}
+
+public class ChangeFarmerStatusRequest
+{
+    public Guid FarmerId { get; set; }
+    public FarmerStatus NewStatus { get; set; }
+    public string? Reason { get; set; }
+}

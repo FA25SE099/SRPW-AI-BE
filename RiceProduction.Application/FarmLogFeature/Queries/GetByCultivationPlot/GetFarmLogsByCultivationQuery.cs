@@ -7,14 +7,12 @@ using System.Collections.Generic;
 
 namespace RiceProduction.Application.FarmLogFeature.Queries.GetByCultivationPlot;
 
-public class GetFarmLogsByCultivationQuery : IRequest<PagedResult<List<FarmLogDetailResponse>>>, ICacheable
+public class GetFarmLogsByCultivationQuery : IRequest<PagedResult<List<FarmLogDetailResponse>>>
 {
     public Guid PlotCultivationId { get; set; }
     
     public int CurrentPage { get; set; } = 1;
     public int PageSize { get; set; } = 10;
-    
-    public string CacheKey => $"FarmLogs:Cultivation:{PlotCultivationId}:Page{CurrentPage}";
 }
 
 public class GetFarmLogsByCultivationQueryValidator : AbstractValidator<GetFarmLogsByCultivationQuery>

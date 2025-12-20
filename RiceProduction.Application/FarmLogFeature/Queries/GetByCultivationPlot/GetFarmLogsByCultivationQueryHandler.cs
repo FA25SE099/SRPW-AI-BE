@@ -36,28 +36,44 @@ public class GetFarmLogsByCultivationQueryHandler : IRequestHandler<GetFarmLogsB
                 return PagedResult<List<FarmLogDetailResponse>>.Failure("Plot Cultivation not found or unauthorized.", "Unauthorized");
             }
 
-            // 2. Xây dựng biểu thức lọc Farm Logs
-            Expression<Func<FarmLog, bool>> filter = fl => fl.PlotCultivationId == request.PlotCultivationId;
+            // Get all CultivationTasks for this PlotCultivation (across all versions)
+            var cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
+                filter: ct => ct.PlotCultivationId == request.PlotCultivationId,
+                includeProperties: q => q.Include(ct => ct.ProductionPlanTask)
+            );
+
+            if (!cultivationTasks.Any())
+            {
+                return PagedResult<List<FarmLogDetailResponse>>.Success(
+                    new List<FarmLogDetailResponse>(),
+                    request.CurrentPage,
+                    request.PageSize,
+                    0,
+                    "No cultivation tasks found for this plot cultivation.");
+            }
+
+            var cultivationTaskIds = cultivationTasks.Select(ct => ct.Id).ToList();
             
-            // 3. Tải toàn bộ Farm Logs (và các quan hệ cần thiết)
+            // Get all farm logs for all cultivation tasks (across all versions)
             var allLogs = await _unitOfWork.Repository<FarmLog>().ListAsync(
-                filter: filter,
+                filter: fl => cultivationTaskIds.Contains(fl.CultivationTaskId),
                 orderBy: q => q.OrderByDescending(fl => fl.LoggedDate),
                 includeProperties: q => q
                     .Include(fl => fl.CultivationTask)
-                    .Include(fl => fl.FarmLogMaterials) // Vật tư chi tiết
+                        .ThenInclude(ct => ct.ProductionPlanTask)
+                    .Include(fl => fl.FarmLogMaterials)
                         .ThenInclude(flm => flm.Material)
             );
 
             var totalCount = allLogs.Count;
             
-            // 4. Áp dụng Phân trang
+            // Apply pagination
             var pagedLogs = allLogs
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
                 .ToList();
 
-            // 5. Ánh xạ dữ liệu
+            // Map to response - group by ProductionPlanTask to show task continuity across versions
             var plot = plotCultivation.Plot;
             
             var responseData = pagedLogs.Select(fl => new FarmLogDetailResponse
@@ -71,17 +87,27 @@ public class GetFarmLogsByCultivationQueryHandler : IRequestHandler<GetFarmLogsB
                 ServiceNotes = fl.ServiceNotes,
                 PhotoUrls = fl.PhotoUrls,
                 WeatherConditions = fl.WeatherConditions,
+                InterruptionReason = fl.InterruptionReason,
                 
-                CultivationTaskName = fl.CultivationTask?.CultivationTaskName ?? fl.CultivationTask.ProductionPlanTask.TaskName,
+                CultivationTaskName = fl.CultivationTask?.CultivationTaskName 
+                    ?? fl.CultivationTask?.ProductionPlanTask?.TaskName 
+                    ?? "Unknown Task",
                 PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
                 
                 MaterialsUsed = fl.FarmLogMaterials.Select(flm => new FarmLogMaterialRecord
                 {
                     MaterialName = flm.Material.Name,
                     ActualQuantityUsed = flm.ActualQuantityUsed,
-                    ActualCost = flm.ActualCost
+                    ActualCost = flm.ActualCost,
+                    Notes = flm.Notes
                 }).ToList()
             }).ToList();
+
+            _logger.LogInformation(
+                "Retrieved {Count} farm logs for Plot Cultivation {PCId} across {TaskCount} cultivation tasks",
+                responseData.Count,
+                request.PlotCultivationId,
+                cultivationTasks.Count);
 
             return PagedResult<List<FarmLogDetailResponse>>.Success(
                 responseData,
