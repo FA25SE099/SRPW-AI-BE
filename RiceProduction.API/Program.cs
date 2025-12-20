@@ -241,7 +241,8 @@ if (seedDatabase)
             await initializer.ResetDatabaseAsync();
         }
 
-        await initializer.SeedAsync();
+        //await initializer.SeedAsync();
+        await initializer.SeedAsyncAdminOnly();
 
         logger.LogWarning("Seeding database completed");
     }
