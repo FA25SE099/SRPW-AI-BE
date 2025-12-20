@@ -55,8 +55,7 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
                 "Changing farmer {FarmerId} status from {OldStatus} to {NewStatus}. Reason: {Reason}",
                 request.FarmerId,
                 oldStatus,
-                request.NewStatus,
-                request.Reason ?? "Not provided");
+                request.NewStatus);
 
             // If changing to NotAllowed or Resigned, deactivate assignments
             if (request.NewStatus == FarmerStatus.NotAllowed || request.NewStatus == FarmerStatus.Resigned)
@@ -67,7 +66,7 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
                 foreach (var assignment in assignments)
                 {
                     assignment.IsActive = false;
-                    assignment.AssignmentNotes = $"Deactivated due to farmer status change to {request.NewStatus}. {request.Reason}";
+                    assignment.AssignmentNotes = $"Deactivated due to farmer status change to {request.NewStatus}";
                 }
 
                 if (assignments.Any())
@@ -91,11 +90,6 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             var message = $"Farmer status successfully changed from {oldStatus} to {request.NewStatus}.";
-            
-            if (!string.IsNullOrWhiteSpace(request.Reason))
-            {
-                message += $" Reason: {request.Reason}";
-            }
 
             _logger.LogInformation(
                 "Successfully changed farmer {FarmerId} status to {NewStatus}",

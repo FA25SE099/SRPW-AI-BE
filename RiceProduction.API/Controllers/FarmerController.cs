@@ -5,6 +5,8 @@ using RiceProduction.API.Services;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
+using RiceProduction.Application.Common.Models.Request.FarmerRequests;
+using RiceProduction.Application.Common.Models.Response.FarmerResponses;
 using RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
@@ -18,6 +20,7 @@ using RiceProduction.Application.FarmerFeature.Queries.ExportFarmerTemplateExcel
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmersForAdmin;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
 using RiceProduction.Domain.Entities;
@@ -417,8 +420,7 @@ namespace RiceProduction.API.Controllers
                 var command = new ChangeFarmerStatusCommand
                 {
                     FarmerId = request.FarmerId,
-                    NewStatus = request.NewStatus,
-                    Reason = request.Reason
+                    NewStatus = request.NewStatus
                 };
 
                 var result = await _mediator.Send(command);
@@ -437,6 +439,43 @@ namespace RiceProduction.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while changing status for farmer {FarmerId}", farmerId);
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+        /// <summary>
+        /// Get all farmers with filtering and pagination (Admin)
+        /// </summary>
+        [HttpPost("get-all")]
+        [ProducesResponseType(typeof(PagedResult<List<FarmerListResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PagedResult<List<FarmerListResponse>>>> GetAllFarmersForAdmin(
+            [FromBody] FarmerListRequest request)
+        {
+            try
+            {
+                var query = new GetFarmersForAdminQuery
+                {
+                    CurrentPage = request.CurrentPage,
+                    PageSize = request.PageSize,
+                    Search = request.Search,
+                    PhoneNumber = request.PhoneNumber,
+                    ClusterId = request.ClusterId,
+                    FarmerStatus = request.FarmerStatus
+                };
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting farmers for admin");
                 return StatusCode(500, "An error occurred while processing your request");
             }
         }
@@ -465,5 +504,4 @@ public class ChangeFarmerStatusRequest
 {
     public Guid FarmerId { get; set; }
     public FarmerStatus NewStatus { get; set; }
-    public string? Reason { get; set; }
 }
