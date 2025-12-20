@@ -17,7 +17,9 @@ using RiceProduction.Infrastructure;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using Serilog;
+using Serilog.Events;
 using Serilog.Sinks.Grafana.Loki;
+using Serilog.Formatting.Json;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -26,12 +28,34 @@ using System.Text.Json.Serialization;
     var builder = WebApplication.CreateBuilder(args);
 
 
-builder.Host.UseSerilog();
 Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
     .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
     .Enrich.WithThreadId()
-    .CreateLogger();
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.GrafanaLoki(
+        uri: "http://loki:3100",
+        labels: new[]
+        {
+            new LokiLabel { Key = "application", Value = "rice-production-api" },
+            new LokiLabel { Key = "environment", Value = "production" }
+        },
+        propertiesAsLabels: new[] { "level" },
+        textFormatter: new LokiJsonTextFormatter()  
+    )
+    .CreateBootstrapLogger();
+
+//builder.Host.UseSerilog();
+//Log.Logger = new LoggerConfiguration()
+//    .ReadFrom.Configuration(builder.Configuration)
+//    .Enrich.FromLogContext()
+//    .Enrich.WithThreadId()
+//    .CreateLogger();
 
 //var otel = builder.Configuration.GetSection("OpenTelemetry");
 //var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
