@@ -1,6 +1,7 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using OpenTelemetry.Logs;
@@ -37,7 +38,7 @@ Log.Logger = new LoggerConfiguration()
 //var serviceVersion = otel["ServiceVersion"] ?? "1.0.0";
 //var otlpEndpoint = otel.GetSection("Otlp")["Endpoint"];
 //var otlpHeaders = otel.GetSection("Otlp")["Headers"];
-var isProduction = builder.Configuration.GetValue<bool>("IsProduction"); // or builder.Environment.IsProduction()
+//var isProduction = builder.Configuration.GetValue<bool>("IsProduction"); // or builder.Environment.IsProduction()
 
 //if (!string.IsNullOrEmpty(otlpEndpoint))
 //{
@@ -184,9 +185,8 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 var app = builder.Build();
-//var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
-var seedDatabase =
-    string.Equals(builder.Configuration["SeedDatabase"], "true", StringComparison.OrdinalIgnoreCase);
+var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
+//var seedDatabase = string.Equals(builder.Configuration["SeedDatabase"], "true", StringComparison.OrdinalIgnoreCase);
 
 //if (seedDatabase)
 //{
@@ -206,8 +206,8 @@ var seedDatabase =
 //        //}
 //        if (isProduction)
 //        {
-//            //await initializer.ResetDatabaseAsync();
-//            //await initializer.SeedAsync();
+//            await initializer.ResetDatabaseAsync();
+//            await initializer.SeedAsync();
 
 //        }
 //        //await initializer.SeedAsyncAdminOnly();
@@ -219,6 +219,7 @@ var seedDatabase =
 //        logger.LogError(ex, "An error occurred creating the DB or seeding data.");
 //    }
 //}
+
 if (seedDatabase)
 {
     using var scope = app.Services.CreateScope();
@@ -227,44 +228,25 @@ if (seedDatabase)
 
     try
     {
-        logger.LogWarning("=== STARTING DATABASE SEEDING ===");
-        logger.LogInformation("Environment: {Env}, IsProduction: {IsProd}, SeedDatabase: {Seed}",
-            app.Environment.EnvironmentName, isProduction, seedDatabase);
-
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
+        var isProduction = builder.Configuration.GetValue<bool>("IsProduction");
 
-        logger.LogInformation("Calling InitialiseAsync...");
-        await initializer.InitialiseAsync();
-        logger.LogInformation("InitialiseAsync completed");
+        if (isProduction)
+        {
+            logger.LogWarning("Production seed: Resetting database...");
+            await initializer.ResetDatabaseAsync();
+        }
+        else
+        {
+            logger.LogInformation("Development seed: Creating database...");
+            await initializer.InitialiseAsync();
+        }
 
-        logger.LogInformation("Calling SeedAsync...");
-        await initializer.SeedAsync();
-        logger.LogInformation("SeedAsync completed");
-
-        logger.LogWarning("=== DATABASE SEEDING COMPLETED SUCCESSFULLY ===");
-
-        // Verify seeding
-        var context = services.GetRequiredService<ApplicationDbContext>();
-        var userCount = await context.Users.CountAsync();
-        var farmerCount = await context.Farmers.CountAsync();
-        var plotCount = await context.Plots.CountAsync();
-
-        logger.LogWarning("Verification - Users: {Users}, Farmers: {Farmers}, Plots: {Plots}",
-            userCount, farmerCount, plotCount);
+        await initializer.SeedAsync();  
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "=== ERROR DURING DATABASE SEEDING ===");
-        logger.LogError("Exception Type: {Type}", ex.GetType().Name);
-        logger.LogError("Message: {Message}", ex.Message);
-        logger.LogError("Stack Trace: {StackTrace}", ex.StackTrace);
-
-        if (ex.InnerException != null)
-        {
-            logger.LogError("Inner Exception: {Inner}", ex.InnerException.Message);
-        }
-
-        // Don't throw - let app continue but log the error
+        logger.LogError(ex, "Error seeding database");
     }
 }
 app.MapPost("/api/rice/check-pest", async (
