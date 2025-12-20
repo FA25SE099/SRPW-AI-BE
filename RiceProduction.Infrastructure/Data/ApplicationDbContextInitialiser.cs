@@ -127,7 +127,6 @@ namespace RiceProduction.Infrastructure.Data
         {
             await SeedRolesAsync();
             await SeedAdmin();
-
             await SeedRiceVarietyCategoriesAsync();
             await SeedVietnameseRiceDataAsync();
             await SeedMaterialDataAsync();
@@ -432,7 +431,7 @@ namespace RiceProduction.Infrastructure.Data
             {
                 Id = demoClusterId,
                 ClusterName = "Demo Cluster",
-                ClusterManagerId = clusterManager.Id,
+                //ClusterManagerId = clusterManager.Id,
                 Area = 250.0m,
                 Boundary = polygonDemoCluster,
                 LastModified = DateTime.UtcNow

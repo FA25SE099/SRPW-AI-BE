@@ -132,7 +132,8 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3000", "https://srpw-ai-fe-phtr.vercel.app", "https://srpw-ai-fe-i3gi-dxwvy4apx-trincse182497-1426s-projects.vercel.app/") 
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3000", "https://srpw-ai-fe-phtr.vercel.app", "https://srpw-ai-fe-i3gi-dxwvy4apx-trincse182497-1426s-projects.vercel.app/"
+            , "https://srpw-ai-fe-5xrj.vercel.app/") 
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()  
@@ -203,12 +204,13 @@ if (seedDatabase)
         //}
         if (isProduction)
         {
-            //await initializer.ResetDatabaseAsync();
+            await initializer.ResetDatabaseAsync();
+
             //await initializer.SeedAsync();
 
         }
         //await initializer.SeedAsyncAdminOnly();
-        //await initializer.SeedAsync();
+        await initializer.SeedAsync();
     }
     catch (Exception ex)
     {
