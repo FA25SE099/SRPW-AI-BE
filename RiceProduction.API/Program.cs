@@ -186,7 +186,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 var app = builder.Build();
 var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
-//var seedDatabase = string.Equals(builder.Configuration["SeedDatabase"], "true", StringComparison.OrdinalIgnoreCase);
+
 
 //if (seedDatabase)
 //{

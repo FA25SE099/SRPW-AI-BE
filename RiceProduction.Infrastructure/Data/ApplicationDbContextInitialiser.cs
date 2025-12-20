@@ -2348,7 +2348,13 @@ namespace RiceProduction.Infrastructure.Data
             foreach (var groupPlot in groupPlots)
             {
                 var plot = groupPlot.Plot;
-            {
+                var existingPlotCultivation = await _context.PlotCultivations
+                    .AnyAsync(pc => pc.PlotId == plot.Id && pc.SeasonId == group.SeasonId!.Value);
+                if (existingPlotCultivation)
+                {
+                    continue;
+                }
+                {
                 task1.CultivationTasks.Add(new CultivationTask
                 {
                     Id = Guid.NewGuid(),
