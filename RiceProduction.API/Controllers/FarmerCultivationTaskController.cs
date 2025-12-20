@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationTaskDetail;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetTodayTask;
+using RiceProduction.Application.FarmerCultivationTaskFeature.Commands.StartCultivationTask;
 using RiceProduction.Application.FarmerCultivationTaskFeature.Queries.GetFarmerCultivationTasks;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
@@ -78,6 +79,21 @@ namespace RiceProduction.API.Controllers
             };
 
             var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        
+        [HttpPost("start")]
+        public async Task<IActionResult> StartCultivationTask(
+            [FromBody] StartCultivationTaskCommand command)
+        {
+            var result = await _mediator.Send(command);
+            
             if (!result.Succeeded)
             {
                 return BadRequest(result);

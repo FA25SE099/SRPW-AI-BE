@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.UAVFeature.Commands.ReportServiceOrder;
 using RiceProduction.Application.UAVFeature.Queries.GeUAVOrderDetail;
+using RiceProduction.Application.UAVFeature.Queries.GetClusterServiceOrdersByManager;
 using RiceProduction.Application.UAVFeature.Queries.GetVendorServiceOrders;
 using System.Collections.Generic;
 using RiceProduction.Application.UAVFeature.Commands.CreateUavOrder;
@@ -37,6 +38,26 @@ public class UavController : ControllerBase
         
         var result = await _mediator.Send(query);
 
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    [HttpGet("cluster-managers")]
+    public async Task<IActionResult> GetClusterServiceOrdersByClusterManagerId([FromQuery] GetClusterServiceOrdersByManagerQuery query)
+    {
+        var currentUserId = _currentUser.Id;
+        if (currentUserId == null)
+        {
+            return Unauthorized(PagedResult<List<UavServiceOrderResponse>>.Failure("User is not authenticated.", "Unauthorized"));
+        }
+
+        query.ClusterManagerId = currentUserId.Value;
+
+        var result = await _mediator.Send(query);
         if (!result.Succeeded)
         {
             return BadRequest(result);
