@@ -39,7 +39,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithThreadId()
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
     .WriteTo.GrafanaLoki(
-        uri: "http://157.66.218.227:3100",
+        uri: "http://host.docker.internal:3100",
         labels: new[]
         {
             new LokiLabel { Key = "application", Value = "rice-production-api" },
