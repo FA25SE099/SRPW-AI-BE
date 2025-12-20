@@ -128,6 +128,35 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
          }
+        [HttpGet("profile")]
+        [ProducesResponseType(typeof(FarmerDetailDTO), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<FarmerDetailDTO>> GetFarmerProfile()
+        {
+            try
+            {
+                var userId = _currentUser.Id;
+                if (userId == null || userId == Guid.Empty)
+                {
+                    return BadRequest("Invalid User ID");
+                }
+
+                var query = new GetFarmerByIdQueries(userId.Value);
+                var result = await _mediator.Send(query);
+                if (result == null)
+                {
+                    return NotFound($"Farmer profile for user ID {userId} not found");
+                }
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting farmer profile");
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
         [HttpPost("Import")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ImportFarmerResult), StatusCodes.Status200OK)]
