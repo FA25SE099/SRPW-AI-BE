@@ -316,25 +316,15 @@ namespace RiceProduction.API.Controllers
         /// <summary>
         /// Get all plots owned by a farmer
         /// </summary>
-        [HttpPost("{farmerId}/plots")]
+        [HttpPost("plots")]
         [ProducesResponseType(typeof(PagedResult<List<PlotListResponse>>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<PagedResult<List<PlotListResponse>>>> GetPlotsByFarmer(
-            Guid farmerId,
-            [FromBody] GetPlotsByFarmerRequest request)
+            [FromBody] GetPlotsByFarmerQuery query)
         {
             try
             {
-                var query = new GetPlotsByFarmerQuery
-                {
-                    FarmerId = farmerId,
-                    CurrentPage = request.CurrentPage,
-                    PageSize = request.PageSize,
-                    Status = request.Status,
-                    IsUnassigned = request.IsUnassigned
-                };
-
                 var result = await _mediator.Send(query);
 
                 if (!result.Succeeded)
@@ -350,7 +340,7 @@ namespace RiceProduction.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while getting plots for farmer {FarmerId}", farmerId);
+                _logger.LogError(ex, "Error occurred while getting plots for farmer {FarmerId}", query.FarmerId);
                 return StatusCode(500, "An error occurred while processing your request");
             }
         }
@@ -364,21 +354,10 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<PagedResult<List<ReportItemResponse>>>> GetReportsByFarmer(
             Guid farmerId,
-            [FromBody] GetReportsByFarmerRequest request)
+            [FromBody] GetReportsByFarmerQuery query)
         {
             try
             {
-                var query = new GetReportsByFarmerQuery
-                {
-                    FarmerId = farmerId,
-                    CurrentPage = request.CurrentPage,
-                    PageSize = request.PageSize,
-                    SearchTerm = request.SearchTerm,
-                    Status = request.Status,
-                    Severity = request.Severity,
-                    ReportType = request.ReportType
-                };
-
                 var result = await _mediator.Send(query);
 
                 if (!result.Succeeded)
@@ -408,21 +387,10 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> ChangeFarmerStatus(
             Guid farmerId,
-            [FromBody] ChangeFarmerStatusRequest request)
+            [FromBody] ChangeFarmerStatusCommand command)
         {
             try
             {
-                if (farmerId != request.FarmerId)
-                {
-                    return BadRequest(new { message = "Farmer ID in URL does not match request body" });
-                }
-
-                var command = new ChangeFarmerStatusCommand
-                {
-                    FarmerId = request.FarmerId,
-                    NewStatus = request.NewStatus
-                };
-
                 var result = await _mediator.Send(command);
 
                 if (!result.Succeeded)
@@ -482,26 +450,3 @@ namespace RiceProduction.API.Controllers
     }
 }
 
-public class GetPlotsByFarmerRequest
-{
-    public int CurrentPage { get; set; } = 1;
-    public int PageSize { get; set; } = 20;
-    public PlotStatus? Status { get; set; }
-    public bool? IsUnassigned { get; set; }
-}
-
-public class GetReportsByFarmerRequest
-{
-    public int CurrentPage { get; set; } = 1;
-    public int PageSize { get; set; } = 20;
-    public string? SearchTerm { get; set; }
-    public string? Status { get; set; }
-    public string? Severity { get; set; }
-    public string? ReportType { get; set; }
-}
-
-public class ChangeFarmerStatusRequest
-{
-    public Guid FarmerId { get; set; }
-    public FarmerStatus NewStatus { get; set; }
-}

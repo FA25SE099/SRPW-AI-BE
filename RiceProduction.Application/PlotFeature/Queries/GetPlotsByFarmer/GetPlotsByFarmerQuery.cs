@@ -10,10 +10,6 @@ public class GetPlotsByFarmerQuery : IRequest<PagedResult<List<PlotListResponse>
     public Guid FarmerId { get; set; }
     public int CurrentPage { get; set; } = 1;
     public int PageSize { get; set; } = 20;
-    
-    // Optional filters
-    public PlotStatus? Status { get; set; }
-    public bool? IsUnassigned { get; set; } // true = not in any group, false = in a group
 }
 
 public class GetPlotsByFarmerQueryValidator : AbstractValidator<GetPlotsByFarmerQuery>

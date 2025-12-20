@@ -42,26 +42,6 @@ public class GetPlotsByFarmerQueryHandler : IRequestHandler<GetPlotsByFarmerQuer
             var query = _unitOfWork.Repository<Plot>().GetQueryable()
                 .Where(p => p.FarmerId == request.FarmerId);
 
-            // Apply status filter
-            if (request.Status.HasValue)
-            {
-                query = query.Where(p => p.Status == request.Status.Value);
-            }
-
-            // Apply unassigned filter
-            if (request.IsUnassigned.HasValue)
-            {
-                if (request.IsUnassigned.Value)
-                {
-                    // Not in any group
-                    query = query.Where(p => !p.GroupPlots.Any());
-                }
-                else
-                {
-                    // In at least one group
-                    query = query.Where(p => p.GroupPlots.Any());
-                }
-            }
 
             // Include related data
             query = query
