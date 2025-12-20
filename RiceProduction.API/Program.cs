@@ -229,26 +229,29 @@ if (seedDatabase)
     try
     {
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
-        var isProduction = builder.Configuration.GetValue<bool>("IsProduction");
 
-        if (isProduction)
+        logger.LogWarning("Seeding database started");
+
+        await initializer.InitialiseAsync();
+
+        var resetDb = builder.Configuration.GetValue<bool>("ResetDatabase");
+        if (resetDb)
         {
-            logger.LogWarning("Production seed: Resetting database...");
+            logger.LogWarning("ResetDatabase = true → truncating data");
             await initializer.ResetDatabaseAsync();
         }
-        else
-        {
-            logger.LogInformation("Development seed: Creating database...");
-            await initializer.InitialiseAsync();
-        }
 
-        await initializer.SeedAsync();  
+        await initializer.SeedAsync();
+
+        logger.LogWarning("Seeding database completed");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error seeding database");
+        logger.LogError(ex, "SEED DATABASE FAILED");
+        throw;
     }
 }
+
 app.MapPost("/api/rice/check-pest", async (
     [FromForm] IFormFileCollection files,
     [FromServices] IRicePestDetectionService detectionService) =>
