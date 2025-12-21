@@ -24,17 +24,18 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
     {
         try
         {
+            // Get plot cultivation with related data
             var plotCultivation = await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
-                .Include(pc => pc.Plot)
-                    .ThenInclude(p => p.Farmer)
-                .Include(pc => pc.Plot)
-                    .ThenInclude(p => p.GroupPlots)
-                        .ThenInclude(gp => gp.Group)
-                            .ThenInclude(g => g.Cluster)
-                .Include(pc => pc.RiceVariety)
-                .Include(pc => pc.CultivationVersions)
-                .FirstOrDefaultAsync(pc => pc.Id == request.PlanId, cancellationToken);
+                .FindAsync(
+                    match: pc => pc.Id == request.PlanId,
+                    includeProperties: query => query
+                        .Include(pc => pc.Plot)
+                            .ThenInclude(p => p!.Farmer)
+                        .Include(pc => pc.Plot)
+                            .ThenInclude(p => p!.GroupPlots)
+                                .ThenInclude(gp => gp.Group)
+                                    .ThenInclude(g => g!.Cluster)
+                        .Include(pc => pc.RiceVariety));
 
             if (plotCultivation == null)
             {
@@ -43,27 +44,42 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                     "NotFound");
             }
 
-            var activeVersion = plotCultivation.CultivationVersions
-                .Where(v => v.IsActive)
+            // Get active version using the same pattern as GetTodayTasksQueryHandler
+            var activeVersions = await _unitOfWork.Repository<CultivationVersion>()
+                .ListAsync(filter: v => v.PlotCultivationId == plotCultivation.Id && v.IsActive);
+
+            var activeVersion = activeVersions
                 .OrderByDescending(v => v.VersionOrder)
                 .FirstOrDefault();
 
-            var tasks = await _unitOfWork.Repository<CultivationTask>()
-                .GetQueryable()
-                .Where(ct => ct.PlotCultivationId == plotCultivation.Id &&
-                            (activeVersion == null || ct.VersionId == activeVersion.Id))
-                .Include(ct => ct.ProductionPlanTask)
-                    .ThenInclude(ppt => ppt.ProductionStage)
-                .Include(ct => ct.ProductionPlanTask)
-                    .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
-                        .ThenInclude(pptm => pptm.Material)
-                .Include(ct => ct.CultivationTaskMaterials)
-                    .ThenInclude(ctm => ctm.Material)
-                .OrderBy(ct => ct.ProductionPlanTask.ProductionStage.SequenceOrder)
-                    .ThenBy(ct => ct.ProductionPlanTask.SequenceOrder)
-                .ToListAsync(cancellationToken);
+            if (activeVersion == null)
+            {
+                return Result<CultivationPlanDetailResponse>.Failure(
+                    $"No active version found for cultivation plan {request.PlanId}.",
+                    "NoActiveVersion");
+            }
 
-            if (!tasks.Any())
+            // Get tasks for the active version
+            var tasks = await _unitOfWork.Repository<CultivationTask>()
+                .ListAsync(
+                    filter: ct => ct.PlotCultivationId == plotCultivation.Id &&
+                                ct.VersionId.HasValue && ct.VersionId.Value == activeVersion.Id,
+                    includeProperties: query => query
+                        .Include(ct => ct.ProductionPlanTask)
+                            .ThenInclude(ppt => ppt!.ProductionStage)
+                        .Include(ct => ct.ProductionPlanTask)
+                            .ThenInclude(ppt => ppt!.ProductionPlanTaskMaterials)
+                                .ThenInclude(pptm => pptm.Material)
+                        .Include(ct => ct.CultivationTaskMaterials)
+                            .ThenInclude(ctm => ctm.Material));
+
+            // Sort tasks in memory after loading
+            var sortedTasks = tasks
+                .OrderBy(ct => ct.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? 0)
+                .ThenBy(ct => ct.ProductionPlanTask?.SequenceOrder ?? 0)
+                .ToList();
+
+            if (!sortedTasks.Any())
             {
                 return Result<CultivationPlanDetailResponse>.Failure(
                     $"No tasks found for cultivation plan {request.PlanId}.",
@@ -72,7 +88,7 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
 
             var stagesMap = new Dictionary<Guid, CultivationStageResponse>();
 
-            foreach (var task in tasks)
+            foreach (var task in sortedTasks)
             {
                 if (task.ProductionPlanTask?.ProductionStage == null) continue;
 
