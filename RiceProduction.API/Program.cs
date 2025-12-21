@@ -50,12 +50,12 @@ Log.Logger = new LoggerConfiguration()
     )
     .CreateBootstrapLogger();
 
-builder.Host.UseSerilog();
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
-    .Enrich.FromLogContext()
-    .Enrich.WithThreadId()
-    .CreateLogger();
+//builder.Host.UseSerilog();
+//Log.Logger = new LoggerConfiguration()
+//    .ReadFrom.Configuration(builder.Configuration)
+//    .Enrich.FromLogContext()
+//    .Enrich.WithThreadId()
+//    .CreateLogger();
 
 //var otel = builder.Configuration.GetSection("OpenTelemetry");
 //var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
