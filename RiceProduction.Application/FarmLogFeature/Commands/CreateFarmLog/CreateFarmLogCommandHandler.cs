@@ -136,7 +136,7 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
             }
 
             // 5b. Find and Update Next Task to InProgress
-            await UpdateNextTaskToInProgress(task.PlotCultivationId, task.VersionId, task.ExecutionOrder);
+            //await UpdateNextTaskToInProgress(task.PlotCultivationId, task.VersionId, task.ExecutionOrder);
 
             // 6. Save Changes
             await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);

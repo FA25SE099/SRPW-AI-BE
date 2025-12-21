@@ -83,7 +83,7 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
                 _logger.LogInformation("CultivationTask {TaskId} status updated to Completed via UAV report.", cultivationTask.Id);
                 
                 // Update next task to InProgress
-                await UpdateNextTaskToInProgress(cultivationTask.PlotCultivationId, cultivationTask.VersionId, cultivationTask.ExecutionOrder);
+                //await UpdateNextTaskToInProgress(cultivationTask.PlotCultivationId, cultivationTask.VersionId, cultivationTask.ExecutionOrder);
             }
             // 4. Tổng hợp và Cập nhật Order (Aggregate Logic)
             await _unitOfWork.Repository<UavOrderPlotAssignment>().SaveChangesAsync(); // Lưu Assignment trước
