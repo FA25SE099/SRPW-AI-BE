@@ -54,7 +54,7 @@ public class AuthController : ControllerBase
         Uav,
         ClusterManager
     }
-    [HttpGet("login-fast")]
+    [HttpGet("login-faster")]
     public async Task<ActionResult<Result<LoginResponse>>> LoginFast([FromQuery] TestRole role, [FromQuery] bool? rememberMe = true)
     {
         if (!Enum.IsDefined(typeof(TestRole), role))
