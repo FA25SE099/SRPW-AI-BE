@@ -32,15 +32,17 @@ public class GetCultivationsForPlotQueryHandler : IRequestHandler<GetCultivation
 
             Expression<Func<PlotCultivation, bool>> filter = pc => pc.PlotId == request.PlotId;
 
-            // Load PlotCultivation cùng với Season, RiceVariety, CultivationVersions và ProductionPlans
+            // Load PlotCultivation with Season, RiceVariety, CultivationVersions and ProductionPlans
             Func<IQueryable<PlotCultivation>, IIncludableQueryable<PlotCultivation, object>> includes =
                 q => q.Include(pc => pc.Season)
                       .Include(pc => pc.RiceVariety)
-                      .Include(pc => pc.CultivationVersions.Where(v => v.IsActive)) // Load Active Version
+                      .Include(pc => pc.CultivationVersions) // Load all versions (updated to latest version pattern)
+#pragma warning disable CS8602 // Dereference of a possibly null reference
                       .Include(pc => pc.CultivationTasks)
                           .ThenInclude(ct => ct.ProductionPlanTask)
                           .ThenInclude(ppt => ppt.ProductionStage)
                           .ThenInclude(ps => ps.ProductionPlan);
+#pragma warning restore CS8602 // Dereference of a possibly null reference
 
             var allCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                 filter: filter,
@@ -57,10 +59,13 @@ public class GetCultivationsForPlotQueryHandler : IRequestHandler<GetCultivation
 
             var responseData = pagedCultivations.Select(pc =>
             {
-                var activeVersion = pc.CultivationVersions.FirstOrDefault();
+                // Get the latest version (highest VersionOrder) - updated to match GetPlotCultivationByGroupAndPlot pattern
+                var latestVersion = pc.CultivationVersions
+                    .OrderByDescending(v => v.VersionOrder)
+                    .FirstOrDefault();
                 
                 var planName = pc.CultivationTasks
-                    .Where(ct => ct.VersionId == activeVersion?.Id) // Lọc Tasks theo Version đang hoạt động
+                    .Where(ct => ct.VersionId == latestVersion?.Id) // Filter Tasks by latest version
                     .Select(ct => ct.ProductionPlanTask?.ProductionStage?.ProductionPlan?.PlanName)
                     .FirstOrDefault(name => name != null);
 
@@ -76,7 +81,7 @@ public class GetCultivationsForPlotQueryHandler : IRequestHandler<GetCultivation
                     Status = pc.Status,
                     ActualYield = pc.ActualYield,
                     ProductionPlanName = planName ?? "N/A",
-                    ActiveVersionName = activeVersion?.VersionName ?? "Original"
+                    ActiveVersionName = latestVersion?.VersionName ?? "Original"
                 };
             }).ToList();
 
