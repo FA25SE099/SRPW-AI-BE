@@ -35,7 +35,8 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                             .ThenInclude(p => p!.GroupPlots)
                                 .ThenInclude(gp => gp.Group)
                                     .ThenInclude(g => g!.Cluster)
-                        .Include(pc => pc.RiceVariety));
+                        .Include(pc => pc.RiceVariety)
+                        .Include(pc => pc.CultivationVersions));
 
             if (plotCultivation == null)
             {
@@ -44,26 +45,24 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                     "NotFound");
             }
 
-            // Get active version using the same pattern as GetTodayTasksQueryHandler
-            var activeVersions = await _unitOfWork.Repository<CultivationVersion>()
-                .ListAsync(filter: v => v.PlotCultivationId == plotCultivation.Id && v.IsActive);
-
-            var activeVersion = activeVersions
+            // Get the latest version (highest VersionOrder) - updated to match GetPlotCultivationByGroupAndPlot pattern
+            var latestVersion = plotCultivation.CultivationVersions
                 .OrderByDescending(v => v.VersionOrder)
                 .FirstOrDefault();
 
-            if (activeVersion == null)
+            if (latestVersion == null)
             {
                 return Result<CultivationPlanDetailResponse>.Failure(
-                    $"No active version found for cultivation plan {request.PlanId}.",
-                    "NoActiveVersion");
+                    $"No version found for cultivation plan {request.PlanId}.",
+                    "NoVersionFound");
             }
 
-            // Get tasks for the active version
+            // Get tasks for the latest version
             var tasks = await _unitOfWork.Repository<CultivationTask>()
                 .ListAsync(
                     filter: ct => ct.PlotCultivationId == plotCultivation.Id &&
-                                ct.VersionId.HasValue && ct.VersionId.Value == activeVersion.Id,
+                                ct.VersionId.HasValue && ct.VersionId.Value == latestVersion.Id,
+#pragma warning disable CS8602 // Dereference of a possibly null reference
                     includeProperties: query => query
                         .Include(ct => ct.ProductionPlanTask)
                             .ThenInclude(ppt => ppt!.ProductionStage)
@@ -72,6 +71,7 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                                 .ThenInclude(pptm => pptm.Material)
                         .Include(ct => ct.CultivationTaskMaterials)
                             .ThenInclude(ctm => ctm.Material));
+#pragma warning restore CS8602 // Dereference of a possibly null reference
 
             // Sort tasks in memory after loading
             var sortedTasks = tasks
