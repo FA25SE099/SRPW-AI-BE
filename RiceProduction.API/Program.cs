@@ -50,19 +50,19 @@ Log.Logger = new LoggerConfiguration()
     )
     .CreateBootstrapLogger();
 
-//builder.Host.UseSerilog();
-//Log.Logger = new LoggerConfiguration()
-//    .ReadFrom.Configuration(builder.Configuration)
-//    .Enrich.FromLogContext()
-//    .Enrich.WithThreadId()
-//    .CreateLogger();
+builder.Host.UseSerilog();
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithThreadId()
+    .CreateLogger();
 
 //var otel = builder.Configuration.GetSection("OpenTelemetry");
 //var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
 //var serviceVersion = otel["ServiceVersion"] ?? "1.0.0";
 //var otlpEndpoint = otel.GetSection("Otlp")["Endpoint"];
 //var otlpHeaders = otel.GetSection("Otlp")["Headers"];
-//var isProduction = builder.Configuration.GetValue<bool>("IsProduction"); // or builder.Environment.IsProduction()
+var isProduction = builder.Configuration.GetValue<bool>("IsProduction"); // or builder.Environment.IsProduction()
 
 //if (!string.IsNullOrEmpty(otlpEndpoint))
 //{
@@ -212,70 +212,70 @@ var app = builder.Build();
 var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
 
 
-//if (seedDatabase)
-//{
-//    using var scope = app.Services.CreateScope();
-//    var services = scope.ServiceProvider;
-//    try
-//    {
-//        var context = services.GetRequiredService<ApplicationDbContext>();
-//        var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
-
-//        if (app.Environment.IsDevelopment() && !isProduction)
-//        {
-//            await initializer.InitialiseAsync();
-//        }
-//        //if (isProduction)
-//        //{
-//        //}
-//        if (isProduction)
-//        {
-//            await initializer.ResetDatabaseAsync();
-//            await initializer.SeedAsync();
-
-//        }
-//        //await initializer.SeedAsyncAdminOnly();
-//        await initializer.SeedAsync();
-//    }
-//    catch (Exception ex)
-//    {
-//        var logger = services.GetRequiredService<ILogger<Program>>();
-//        logger.LogError(ex, "An error occurred creating the DB or seeding data.");
-//    }
-//}
-
 if (seedDatabase)
 {
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
-    var logger = services.GetRequiredService<ILogger<Program>>();
-
     try
     {
+        var context = services.GetRequiredService<ApplicationDbContext>();
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
 
-        logger.LogWarning("Seeding database started");
-
-        await initializer.InitialiseAsync();
-
-        var resetDb = builder.Configuration.GetValue<bool>("ResetDatabase");
-        if (resetDb)
+        if (app.Environment.IsDevelopment() && !isProduction)
         {
-            logger.LogWarning("ResetDatabase = true → truncating data");
-            await initializer.ResetDatabaseAsync();
+            await initializer.InitialiseAsync();
         }
+        //if (isProduction)
+        //{
+        //}
+        if (isProduction)
+        {
+            //await initializer.ResetDatabaseAsync();
+            //await initializer.SeedAsync();
 
-        //await initializer.SeedAsync();
+        }       
         await initializer.SeedAsyncAdminOnly();
-
-        logger.LogWarning("Seeding database completed");
+        //await initializer.SeedAsync();
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "SEED DATABASE FAILED");
-        throw;
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred creating the DB or seeding data.");
     }
 }
+
+//if (seedDatabase)
+//{
+//    using var scope = app.Services.CreateScope();
+//    var services = scope.ServiceProvider;
+//    var logger = services.GetRequiredService<ILogger<Program>>();
+
+//    try
+//    {
+//        var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
+
+//        logger.LogWarning("Seeding database started");
+
+//        await initializer.InitialiseAsync();
+
+//        var resetDb = builder.Configuration.GetValue<bool>("ResetDatabase");
+//        if (resetDb)
+//        {
+//            logger.LogWarning("ResetDatabase = true → truncating data");
+//            await initializer.ResetDatabaseAsync();
+//        }
+
+//        //await initializer.SeedAsync();
+//        await initializer.SeedAsyncAdminOnly();
+
+//        logger.LogWarning("Seeding database completed");
+//    }
+//    catch (Exception ex)
+//    {
+//        logger.LogError(ex, "SEED DATABASE FAILED");
+//        throw;
+//    }
+//}
 
 app.MapPost("/api/rice/check-pest", async (
     [FromForm] IFormFileCollection files,
