@@ -333,7 +333,7 @@ app.UseSwagger();
 
 app.UseCors("AllowFrontend");
 app.UseCors("AllowGemini");
-
+app.UseOpenTelemetryPrometheusScrapingEndpoint();
 app.UseHttpsRedirection();
 app.UseMiddleware<LoggingMiddleware>();
 // Add authentication and authorization middleware
