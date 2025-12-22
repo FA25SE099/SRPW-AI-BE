@@ -122,6 +122,7 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                     TaskType = task.ProductionPlanTask.TaskType.ToString(),
                     ScheduledDate = task.ProductionPlanTask.ScheduledDate,
                     ScheduledEndDate = task.ProductionPlanTask.ScheduledEndDate,
+                    TaskStatus = task.Status.ToString() ?? "Approved",
                     Priority = task.ProductionPlanTask.Priority.ToString(),
                     SequenceOrder = task.ProductionPlanTask.SequenceOrder,
                     Materials = taskMaterials
