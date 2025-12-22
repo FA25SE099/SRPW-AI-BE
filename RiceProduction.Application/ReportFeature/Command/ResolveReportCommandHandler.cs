@@ -136,36 +136,35 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             {
                 var taskRequest = request.BaseCultivationTasks[i];
 
-                Guid? productionPlanTaskId = null;
+                // The frontend sends ProductionPlanTaskId directly in CultivationPlanTaskId field
+                // No need to lookup - just use it directly
+                Guid? productionPlanTaskId = taskRequest.CultivationPlanTaskId;
                 ProductionPlanTask? productionPlanTask = null;
                 
-                // Frontend sends CultivationPlanTaskId which is actually an existing CultivationTask ID
-                // Look it up to get the ProductionPlanTaskId for stage/template information
-                if (taskRequest.CultivationPlanTaskId.HasValue)
+                // Optionally load ProductionPlanTask for template info (task name, description, type)
+                if (productionPlanTaskId.HasValue)
                 {
-                    var existingCultivationTask = await _unitOfWork.Repository<CultivationTask>()
-                        .GetQueryable()
-                        .Include(ct => ct.ProductionPlanTask)
-                        .FirstOrDefaultAsync(ct => ct.Id == taskRequest.CultivationPlanTaskId.Value, cancellationToken);
-
-                    if (existingCultivationTask != null)
+                    productionPlanTask = await _unitOfWork.Repository<ProductionPlanTask>()
+                        .FindAsync(
+                            match: ppt => ppt.Id == productionPlanTaskId.Value,
+                            includeProperties: q => q.Include(ppt => ppt.ProductionStage)
+                        );
+                    
+                    if (productionPlanTask != null)
                     {
-                        productionPlanTaskId = existingCultivationTask.ProductionPlanTaskId;
-                        productionPlanTask = existingCultivationTask.ProductionPlanTask;
-                        
                         _logger.LogInformation(
-                            "Resolved ProductionPlanTaskId {ProductionPlanTaskId} from CultivationTask {CultivationTaskId}",
-                            productionPlanTaskId, taskRequest.CultivationPlanTaskId.Value);
+                            "Using ProductionPlanTaskId {ProductionPlanTaskId} (TaskName: {TaskName}, Stage: {StageName})",
+                            productionPlanTaskId, productionPlanTask.TaskName, productionPlanTask.ProductionStage?.StageName ?? "Unknown");
                     }
                     else
                     {
                         _logger.LogWarning(
-                            "CultivationTask {CultivationTaskId} not found. Emergency task will be created without ProductionPlanTask reference.",
-                            taskRequest.CultivationPlanTaskId.Value);
+                            "ProductionPlanTask {ProductionPlanTaskId} not found. Task will be created without template.",
+                            productionPlanTaskId);
                     }
                 }
 
-                var task = new CultivationTask
+                var newTask = new CultivationTask
                 {
                     ProductionPlanTaskId = productionPlanTaskId,
                     PlotCultivationId = plotCultivation.Id,
@@ -199,7 +198,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 {
                     var absoluteQuantity = mat.QuantityPerHa * plotArea;
 
-                    task.CultivationTaskMaterials.Add(new CultivationTaskMaterial
+                    newTask.CultivationTaskMaterials.Add(new CultivationTaskMaterial
                     {
                         MaterialId = mat.MaterialId,
                         ActualQuantity = absoluteQuantity,
@@ -207,11 +206,38 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     });
                 }
 
-                cultivationTasks.Add(task);
+                cultivationTasks.Add(newTask);
+                
+                // Log what we're about to save
+                _logger.LogInformation(
+                    "Creating task {Index}/{Total}: Name='{TaskName}', ProductionPlanTaskId={PPTId}, ExecutionOrder={Order}, Status={Status}",
+                    i + 1, request.BaseCultivationTasks.Count, newTask.CultivationTaskName, 
+                    productionPlanTaskId, newTask.ExecutionOrder, newTask.Status);
             }
 
             await _unitOfWork.Repository<CultivationTask>().AddRangeAsync(cultivationTasks);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            
+            // VERIFY: Check if ProductionPlanTaskId was actually saved
+            var savedTaskIds = cultivationTasks.Select(t => t.Id).ToList();
+            var verifyTasks = await _unitOfWork.Repository<CultivationTask>()
+                .GetQueryable()
+                .Where(t => savedTaskIds.Contains(t.Id))
+                .Select(t => new { t.Id, t.CultivationTaskName, t.ProductionPlanTaskId, t.ExecutionOrder })
+                .ToListAsync(cancellationToken);
+            
+            var tasksWithPPTId = verifyTasks.Count(t => t.ProductionPlanTaskId.HasValue);
+            var tasksWithoutPPTId = verifyTasks.Count(t => !t.ProductionPlanTaskId.HasValue);
+            
+            _logger.LogInformation(
+                "Verification after save: {TotalTasks} tasks saved. " +
+                "With ProductionPlanTaskId: {WithPPTId}, Without: {WithoutPPTId}. " +
+                "Sample tasks: {SampleTasks}",
+                verifyTasks.Count,
+                tasksWithPPTId,
+                tasksWithoutPPTId,
+                System.Text.Json.JsonSerializer.Serialize(verifyTasks.Take(3))
+            );
 
             // Copy farm logs from old cultivation tasks to new tasks
             // (including Emergency status tasks which are brand new problem-solving tasks)

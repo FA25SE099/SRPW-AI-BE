@@ -96,17 +96,53 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 
             // 4. Load cultivation tasks with related data for the target version
             Guid? versionId = targetVersion?.Id;
+            
+            // DEBUG: First check raw database values without includes
+            var rawTaskData = await _unitOfWork.Repository<CultivationTask>()
+                .GetQueryable()
+                .Where(ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId)
+                .Select(ct => new { 
+                    TaskId = ct.Id, 
+                    TaskName = ct.CultivationTaskName, 
+                    ProductionPlanTaskId = ct.ProductionPlanTaskId,
+                    ExecutionOrder = ct.ExecutionOrder,
+                    Status = ct.Status,
+                    IsContingency = ct.IsContingency
+                })
+                .ToListAsync(cancellationToken);
+            
+            _logger.LogInformation(
+                "Raw database check for Version {VersionId}: Found {TaskCount} tasks. " +
+                "Tasks with ProductionPlanTaskId: {WithPPTId}, Tasks without: {WithoutPPTId}. " +
+                "Emergency tasks: {EmergencyCount}",
+                versionId,
+                rawTaskData.Count,
+                rawTaskData.Count(t => t.ProductionPlanTaskId.HasValue),
+                rawTaskData.Count(t => !t.ProductionPlanTaskId.HasValue),
+                rawTaskData.Count(t => t.Status == Domain.Enums.TaskStatus.Emergency)
+            );
+            
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId,
                 orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
 #pragma warning disable CS8602 // Dereference of a possibly null reference
                 includeProperties: q => q
-                    .Include(ct => ct.ProductionPlanTask)!
-                        .ThenInclude(ppt => ppt.ProductionStage)!
-                        .ThenInclude(ps => ps.ProductionPlan)
+                    .Include(ct => ct.ProductionPlanTask)
+                        .ThenInclude(ppt => ppt.ProductionStage)
+                            .ThenInclude(ps => ps.ProductionPlan)
                     .Include(ct => ct.CultivationTaskMaterials)
                         .ThenInclude(ctm => ctm.Material)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
+            );
+
+            // Log what we loaded
+            _logger.LogInformation(
+                "Loaded {TaskCount} tasks. Navigation property status: " +
+                "ProductionPlanTask null: {PPTNullCount}, " +
+                "ProductionStage null: {PSNullCount}",
+                tasks.Count,
+                tasks.Count(t => t.ProductionPlanTask == null),
+                tasks.Count(t => t.ProductionPlanTask?.ProductionStage == null)
             );
 
             // Log warning if duplicates are detected
@@ -125,29 +161,57 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                 .Select(g => g.First())
                 .ToList();
 
-            // 5. Get production plan info from first task
-            var firstTask = uniqueTasks.FirstOrDefault();
-            var productionPlan = firstTask?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
+            // 5. Get production plan info from first task that has one
+            var firstTaskWithPlan = uniqueTasks.FirstOrDefault(t => t.ProductionPlanTask != null);
+            var productionPlan = firstTaskWithPlan?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
 
-            // 6. Group tasks by stage and create nested structure
-            var stagesGroup = uniqueTasks
-                .GroupBy(task => new
+            // DEBUG: Log task details to diagnose stage grouping issue
+            _logger.LogInformation(
+                "Task loading summary for Version {VersionId}: Total tasks: {TotalTasks}, " +
+                "Tasks with ProductionPlanTask loaded: {LoadedCount}, " +
+                "Tasks with ProductionPlanTaskId: {IdCount}",
+                versionId,
+                uniqueTasks.Count,
+                uniqueTasks.Count(t => t.ProductionPlanTask != null),
+                uniqueTasks.Count(t => t.ProductionPlanTaskId.HasValue)
+            );
+
+            // 6. Group tasks by stage - handle tasks with and without ProductionPlanTask
+            var stagesGroup = new List<CultivationStageSummary>();
+            
+            // Group by stage ID (null for emergency tasks)
+            var tasksByStage = uniqueTasks
+                .GroupBy(task => task.ProductionPlanTask?.ProductionStageId)
+                .OrderBy(g => {
+                    var firstTask = g.First();
+                    return firstTask.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue;
+                });
+
+            foreach (var stageTasksGroup in tasksByStage)
+            {
+                var firstTask = stageTasksGroup.First();
+                var stage = firstTask.ProductionPlanTask?.ProductionStage;
+                
+                _logger.LogInformation(
+                    "Processing stage group: StageId={StageId}, StageName={StageName}, TaskCount={TaskCount}, " +
+                    "First task: Id={TaskId}, Name={TaskName}, HasProductionPlanTask={HasPPT}, ProductionPlanTaskId={PPTId}",
+                    stage?.Id,
+                    stage?.StageName ?? "Emergency Tasks",
+                    stageTasksGroup.Count(),
+                    firstTask.Id,
+                    firstTask.CultivationTaskName,
+                    firstTask.ProductionPlanTask != null,
+                    firstTask.ProductionPlanTaskId
+                );
+
+                var stageSummary = new CultivationStageSummary
                 {
-                    StageId = task.ProductionPlanTask?.ProductionStage?.Id,
-                    StageName = task.ProductionPlanTask?.ProductionStage?.StageName ?? "N/A",
-                    SequenceOrder = task.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue,
-                    Description = task.ProductionPlanTask?.ProductionStage?.Description,
-                    TypicalDurationDays = task.ProductionPlanTask?.ProductionStage?.TypicalDurationDays
-                })
-                .OrderBy(g => g.Key.SequenceOrder)
-                .Select(stageGroup => new CultivationStageSummary
-                {
-                    StageId = stageGroup.Key.StageId,
-                    StageName = stageGroup.Key.StageName,
-                    SequenceOrder = stageGroup.Key.SequenceOrder,
-                    Description = stageGroup.Key.Description,
-                    TypicalDurationDays = stageGroup.Key.TypicalDurationDays,
-                    Tasks = stageGroup
+                    StageId = stage?.Id,
+                    StageName = stage?.StageName ?? "Emergency Tasks",
+                    SequenceOrder = stage?.SequenceOrder ?? int.MaxValue,
+                    Description = stage?.Description,
+                    TypicalDurationDays = stage?.TypicalDurationDays,
+                    Tasks = stageTasksGroup
                         .OrderBy(task => task.ExecutionOrder ?? int.MaxValue)
                         .ThenBy(task => task.CreatedAt)
                         .Select(task => new CultivationTaskSummary
@@ -172,8 +236,10 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                                 Unit = ctm.Material.Unit
                             }).ToList()
                         }).ToList()
-                })
-                .ToList();
+                };
+                
+                stagesGroup.Add(stageSummary);
+            }
 
             // 7. Calculate progress (using unique tasks)
             var totalTasks = uniqueTasks.Count;

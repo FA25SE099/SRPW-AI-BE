@@ -31,8 +31,8 @@ public class ResolveReportCommand : IRequest<Result<Guid>>
 public class BaseCultivationTaskRequest
 {
     /// <summary>
-    /// The existing CultivationTask ID that this emergency task is based on.
-    /// Backend will look up this task's ProductionPlanTaskId for stage information.
+    /// The ProductionPlanTaskId that defines which production stage this task belongs to.
+    /// This is sent directly from the frontend and determines the stage grouping.
     /// </summary>
     public Guid? CultivationPlanTaskId { get; set; }
 
