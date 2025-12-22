@@ -70,9 +70,12 @@ public class GetClusterHistoryQueryHandler
 
                 // Get all groups for this cluster and season (regular entity)
                 var groups = await _unitOfWork.Repository<Group>()
-                    .ListAsync(g => g.ClusterId == cluster.Id && 
-                                   g.SeasonId == season.Id &&
-                                   g.Year == year);
+                    .GetQueryable()
+                    .Include(g => g.YearSeason)
+                    .Where(g => g.ClusterId == cluster.Id && 
+                               g.YearSeason != null && g.YearSeason.SeasonId == season.Id &&
+                               g.Year == year)
+                    .ToListAsync(cancellationToken);
 
                 var groupsList = groups.ToList();
 
@@ -117,8 +120,8 @@ public class GetClusterHistoryQueryHandler
 
                 // Get rice varieties
                 var varietyIds = groupsList
-                    .Where(g => g.RiceVarietyId.HasValue)
-                    .Select(g => g.RiceVarietyId!.Value)
+                    .Where(g => g.YearSeason?.RiceVarietyId != null)
+                    .Select(g => g.YearSeason!.RiceVarietyId)
                     .Distinct()
                     .ToList();
                 
@@ -143,8 +146,8 @@ public class GetClusterHistoryQueryHandler
 
                 // Calculate rice variety breakdown
                 var varietyBreakdown = groupsList
-                    .Where(g => g.RiceVarietyId.HasValue)
-                    .GroupBy(g => g.RiceVarietyId!.Value)
+                    .Where(g => g.YearSeason?.RiceVarietyId != null)
+                    .GroupBy(g => g.YearSeason!.RiceVarietyId)
                     .Select(g => new RiceVarietyGroupSummary
                     {
                         RiceVarietyId = g.Key,
@@ -173,9 +176,9 @@ public class GetClusterHistoryQueryHandler
                     SupervisorName = g.SupervisorId.HasValue 
                         ? supervisorDict.GetValueOrDefault(g.SupervisorId.Value)?.FullName 
                         : null,
-                    RiceVarietyId = g.RiceVarietyId,
-                    RiceVarietyName = g.RiceVarietyId.HasValue 
-                        ? varietyDict.GetValueOrDefault(g.RiceVarietyId.Value)?.VarietyName 
+                    RiceVarietyId = g.YearSeason?.RiceVarietyId,
+                    RiceVarietyName = g.YearSeason?.RiceVarietyId != null 
+                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId)?.VarietyName 
                         : null,
                     PlantingDate = g.PlantingDate,
                     Status = g.Status.ToString(),

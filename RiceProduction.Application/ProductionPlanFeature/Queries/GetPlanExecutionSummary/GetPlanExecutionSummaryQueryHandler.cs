@@ -31,7 +31,8 @@ public class GetPlanExecutionSummaryQueryHandler : IRequestHandler<GetPlanExecut
                 match: p => p.Id == request.PlanId,
                 includeProperties: q => q
                     .Include(p => p.Group)
-                        .ThenInclude(g => g.Season)
+                        .ThenInclude(g => g.YearSeason)
+                            .ThenInclude(ys => ys.Season)
                     .Include(p => p.Group)
                         .ThenInclude(g => g.GroupPlots)
                             .ThenInclude(gp => gp.Plot)
@@ -105,7 +106,7 @@ public class GetPlanExecutionSummaryQueryHandler : IRequestHandler<GetPlanExecut
                 
                 GroupId = plan.GroupId ?? Guid.Empty,
                 GroupName = plan.Group?.GroupName ?? "Unknown",
-                SeasonName = plan.Group?.Season?.SeasonName ?? "Unknown",
+                SeasonName = plan.Group?.YearSeason?.Season?.SeasonName ?? "Unknown",
                 TotalArea = plan.TotalArea ?? 0,
                 PlotCount = plan.Group?.GroupPlots?.Count ?? 0,
                 FarmerCount = plan.Group?.GroupPlots?.Select(gp => gp.Plot.FarmerId).Distinct().Count() ?? 0,

@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.ClusterManagerFeature.Events;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.FarmerFeature.Events.SendEmailEvent;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using System;
@@ -9,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager
 {
@@ -18,17 +21,19 @@ namespace RiceProduction.Application.ClusterManagerFeature.Commands.CreateCluste
         private readonly ILogger<CreateClusterManagerCommandHandler> _logger;
         private readonly IPublisher _publisher;
         private readonly IUnitOfWork _unitOfWork;
-
+        private readonly IMediator _mediator;
         public CreateClusterManagerCommandHandler(
             UserManager<ApplicationUser> userManager,
             ILogger<CreateClusterManagerCommandHandler> logger,
             IPublisher publisher,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            IMediator mediator)
         {
             _userManager = userManager;
             _logger = logger;
             _publisher = publisher;
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
         }
 
         public async Task<Result<Guid>> Handle(CreateClusterManagerCommand request, CancellationToken cancellationToken)
@@ -50,7 +55,7 @@ namespace RiceProduction.Application.ClusterManagerFeature.Commands.CreateCluste
                 }
 
                 // Create Cluster Manager user
-                var clusterManager = new ClusterManager
+                var clusterManager = new Domain.Entities.ClusterManager
                 {
                     UserName = request.Email,
                     Email = request.Email,
@@ -87,6 +92,17 @@ namespace RiceProduction.Application.ClusterManagerFeature.Commands.CreateCluste
                 //}, cancellationToken);
 
                 _logger.LogInformation("Successfully created Cluster Manager with ID: {ManagerId}", clusterManager.Id);
+                await _mediator.Publish(new ClusterManagerCreatedEvent
+                {
+                    ClusterManagerId = clusterManager.Id,
+                    FullName = clusterManager.FullName,
+                    PhoneNumber = clusterManager.PhoneNumber,
+                    Email = clusterManager.Email,
+                    Password = psw,
+                    CreatedAt = DateTime.UtcNow
+                }, cancellationToken);
+
+                _logger.LogInformation("Published ClusterManagerCreatedEvent for cluster manager {ClusterManagerId} to send credentials email", clusterManager.Id);
                 return Result<Guid>.Success(clusterManager.Id, "Cluster Manager created successfully");
             }
             catch (Exception ex)

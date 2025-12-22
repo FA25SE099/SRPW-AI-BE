@@ -1,21 +1,28 @@
-﻿using MediatR;
+﻿using Google.Protobuf.WellKnownTypes;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.SupervisorRequests;
 using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
+using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
 using RiceProduction.Application.SupervisorFeature.Commands.CompletePolygonAssignment;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
+using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisor;
 using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForAdmin;
 using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForClusterManager;
+using RiceProduction.Application.SupervisorFeature.Queries.GetFarmersBySupervisor;
 using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupHistory;
 using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSeason;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPlanDetails;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorAvailableSeasons;
+using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorByClusterId;
 using RiceProduction.Application.SupervisorFeature.Queries.ValidatePolygonArea;
 using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
+using RiceProduction.Domain.Entities;
 using System.Security.Claims;
 
 namespace RiceProduction.API.Controllers;
@@ -316,6 +323,143 @@ public class SupervisorController : Controller
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// Get farmers managed by supervisor (all or only assigned)
+    /// </summary>
+    [HttpPost("farmers")]
+    [Authorize(Roles = "Supervisor")]
+    [ProducesResponseType(typeof(PagedResult<List<FarmerDTO>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<PagedResult<List<FarmerDTO>>>> GetFarmers(
+        [FromBody] GetFarmersBySupervisorRequest request)
+    {
+        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        {
+            return Unauthorized(PagedResult<List<FarmerDTO>>.Failure("User not authenticated"));
+        }
+
+        var query = new GetFarmersBySupervisorQuery
+        {
+            SupervisorId = supervisorId,
+            OnlyAssigned = request.OnlyAssigned,
+            CurrentPage = request.CurrentPage,
+            PageSize = request.PageSize,
+            SearchTerm = request.SearchTerm
+        };
+
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get emergency reports for farmers managed by this supervisor (sorted by newest first)
+    /// </summary>
+    [HttpPost("reports")]
+    [Authorize(Roles = "Supervisor")]
+    [ProducesResponseType(typeof(PagedResult<List<ReportItemResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<PagedResult<List<ReportItemResponse>>>> GetReports(
+        [FromBody] GetReportsBySupervisorRequest request)
+    {
+        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        {
+            return Unauthorized(PagedResult<List<ReportItemResponse>>.Failure("User not authenticated"));
+        }
+
+        var query = new RiceProduction.Application.ReportFeature.Queries.GetReportsBySupervisor.GetReportsBySupervisorQuery
+        {
+            SupervisorId = supervisorId,
+            CurrentPage = request.CurrentPage,
+            PageSize = request.PageSize,
+            SearchTerm = request.SearchTerm,
+            Status = request.Status,
+            Severity = request.Severity,
+            ReportType = request.ReportType
+        };
+
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    [HttpGet("by-cluster/{clusterId:guid}")]
+    [ProducesResponseType(typeof(Result<List<SupervisorDTO>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetSupervisorsByClusterId(Guid clusterId)
+    {
+        try
+        {
+            if (clusterId == Guid.Empty)
+            {
+                _logger.LogWarning("Invalid cluster ID provided: {ClusterId}", clusterId);
+                return BadRequest(Result.Failure("Invalid cluster ID"));
+            }
+
+            var query = new GetSupervisorByClusterIdQuery { ClusterId = clusterId };
+            var result = await _mediator.Send(query);
+
+            if (result == null || !result.Any())
+            {
+                _logger.LogInformation("No supervisors found for cluster ID: {ClusterId}", clusterId);
+                return NotFound(Result.Failure($"No supervisors found for cluster {clusterId}"));
+            }
+
+            return Ok(Result<List<SupervisorDTO>>.Success(
+                result,
+                $"Retrieved {result.Count} supervisors successfully"
+            ));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving supervisors for cluster ID: {ClusterId}", clusterId);
+            return StatusCode(500, Result.Failure("An error occurred while retrieving supervisors"));
+        }
+    }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(Result<List<SupervisorDTO>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetAllSupervisor()
+    {
+        try
+        {
+            var query = new Application.SupervisorFeature.Queries.GetAllSupervisor.GetAllSupervisorQueries();
+            var result = await _mediator.Send(query); 
+
+            if (result == null || !result.Any())
+            {
+                _logger.LogInformation("No supervisors found");
+                return NotFound(Result<List<SupervisorDTO>>.Failure("No supervisors found"));
+            }
+
+            return Ok(Result<List<SupervisorDTO>>.Success(result, "Retrieved successfully"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving supervisors");
+            return StatusCode(500, Result.Failure("An error occurred while retrieving supervisors"));
+        }
+    }
 }
 
 public class ValidatePolygonAreaRequest
@@ -329,4 +473,22 @@ public class CompletePolygonRequest
 {
     public string PolygonGeoJson { get; set; } = string.Empty;
     public string? Notes { get; set; }
+}
+
+public class GetFarmersBySupervisorRequest
+{
+    public bool OnlyAssigned { get; set; } = false;
+    public int CurrentPage { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? SearchTerm { get; set; }
+}
+
+public class GetReportsBySupervisorRequest
+{
+    public int CurrentPage { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? SearchTerm { get; set; }
+    public string? Status { get; set; }
+    public string? Severity { get; set; }
+    public string? ReportType { get; set; }
 }

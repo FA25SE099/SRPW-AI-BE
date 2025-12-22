@@ -42,7 +42,8 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include (p => p.Farmer)
                 .Include (p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
-                        .ThenInclude(g => g.RiceVariety)
+                        .ThenInclude(g => g.YearSeason)
+                            .ThenInclude(ys => ys.RiceVariety)
                 .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         }
 
@@ -52,7 +53,8 @@ namespace RiceProduction.Infrastructure.Repository
         .Include(p => p.Farmer)
         .Include(p => p.GroupPlots)
             .ThenInclude(gp => gp.Group)
-                .ThenInclude(g => g.RiceVariety)
+                .ThenInclude(g => g.YearSeason)
+                    .ThenInclude(ys => ys.RiceVariety)
         .Include(p => p.PlotCultivations)
         .ThenInclude(pc => pc.RiceVariety)
         .Include(p => p.PlotCultivations)
@@ -77,7 +79,8 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(p => p.Farmer)
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
-                        .ThenInclude(g => g.RiceVariety)
+                        .ThenInclude(g => g.YearSeason)
+                            .ThenInclude(ys => ys.RiceVariety)
                 .Where (p => p.Farmer.Id == farmerId && p.Status == PlotStatus.Active )
                 .OrderByDescending(p => p.SoThua)
                 .ToListAsync(cancellationToken);             
@@ -94,7 +97,8 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(p => p.Farmer)
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
-                        .ThenInclude(g => g.RiceVariety)
+                        .ThenInclude(g => g.YearSeason)
+                            .ThenInclude(ys => ys.RiceVariety)
                 .Where(p => p.GroupPlots.Any(gp => gp.GroupId == groupId) && p.Status == PlotStatus.Active)
                 .OrderByDescending(p => p.SoThua)
                 .ToListAsync(cancellationToken);
@@ -118,7 +122,8 @@ namespace RiceProduction.Infrastructure.Repository
         {
             return await _context.Set<GroupPlot>()
                 .Include(gp => gp.Group)
-                .AnyAsync(gp => gp.PlotId == plotId && gp.Group.SeasonId == seasonId, cancellationToken);
+                    .ThenInclude(g => g.YearSeason)
+                .AnyAsync(gp => gp.PlotId == plotId && gp.Group.YearSeason != null && gp.Group.YearSeason.SeasonId == seasonId, cancellationToken);
         }
 
         public async Task<bool> IsPlotAssignedToGroupForYearSeasonAsync(Guid plotId, Guid yearSeasonId, CancellationToken cancellationToken = default)

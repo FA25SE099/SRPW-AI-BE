@@ -8,10 +8,6 @@ public class Group : BaseAuditableEntity
 
     public Guid? SupervisorId { get; set; }
 
-    public Guid? RiceVarietyId { get; set; }
-
-    public Guid? SeasonId { get; set; }
-
     public Guid? YearSeasonId { get; set; }
     
     [Required]
@@ -39,14 +35,10 @@ public class Group : BaseAuditableEntity
 
     [ForeignKey("ClusterId")]
     public Cluster Cluster { get; set; } = null!;
-    [ForeignKey("SeasonId")]
-    public Season? Season { get; set; }
     [ForeignKey("YearSeasonId")]
     public YearSeason? YearSeason { get; set; }
     [ForeignKey("SupervisorId")]
     public Supervisor? Supervisor { get; set; }
-    [ForeignKey("RiceVarietyId")]
-    public RiceVariety? RiceVariety { get; set; }
 
     public ICollection<GroupPlot> GroupPlots { get; set; } = new List<GroupPlot>();
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();

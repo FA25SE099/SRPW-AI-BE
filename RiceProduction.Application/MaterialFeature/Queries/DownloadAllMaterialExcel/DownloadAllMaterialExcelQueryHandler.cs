@@ -52,7 +52,8 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                         Unit = m.Unit,
                         Description = m.Description,
                         Manufacturer = m.Manufacturer,
-                        IsActive = m.IsActive
+                        IsActive = m.IsActive,
+                        IsPartition = m.IsPartition
                     }).OrderByDescending(p => p.Type)
                     .ToList();
                 var result = await _genericExcel.DownloadGenericExcelFile(materialResponses, request.InputDate.ToString(), "Bảng giá sản phẩm ngày " + request.InputDate);

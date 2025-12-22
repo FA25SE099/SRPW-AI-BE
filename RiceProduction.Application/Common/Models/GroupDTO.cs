@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using NetTopologySuite.Geometries;
 using RiceProduction.Domain.Entities;
@@ -18,6 +19,7 @@ namespace RiceProduction.Application.Common.Models
         public GroupStatus Status { get; set; } = GroupStatus.Active;
         public string? Area { get; set; }
         public decimal? TotalArea { get; set; }
+        [JsonIgnore]
         public ICollection<ProductionPlanDTO> ProductionPlans { get; set; } = new List<ProductionPlanDTO>();
     }
 }

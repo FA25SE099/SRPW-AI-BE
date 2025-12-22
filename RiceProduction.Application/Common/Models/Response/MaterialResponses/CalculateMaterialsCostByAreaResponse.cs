@@ -6,6 +6,17 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Application.Common.Models.Response.MaterialResponses;
 
+/// <summary>
+/// Task cost breakdown with its materials
+/// </summary>
+public class TaskCostBreakdown
+{
+    public string TaskName { get; set; } = string.Empty;
+    public string? TaskDescription { get; set; }
+    public decimal TotalTaskCost { get; set; }
+    public List<MaterialCostItem> Materials { get; set; } = new();
+}
+
 public class CalculateMaterialsCostByAreaResponse
 {
     /// <summary>
@@ -24,14 +35,19 @@ public class CalculateMaterialsCostByAreaResponse
     public decimal TotalCostForArea { get; set; }
 
     /// <summary>
-    /// Detailed cost breakdown for each material
+    /// All materials aggregated
     /// </summary>
-    public List<MaterialCostItem> MaterialCostItems { get; set; } = new List<MaterialCostItem>();
+    public List<MaterialCostItem> MaterialCostItems { get; set; } = new();
+
+    /// <summary>
+    /// Cost breakdown by task
+    /// </summary>
+    public List<TaskCostBreakdown> TaskCostBreakdowns { get; set; } = new();
 
     /// <summary>
     /// Warnings about missing or invalid prices
     /// </summary>
-    public List<string> PriceWarnings { get; set; } = new List<string>();
+    public List<string> PriceWarnings { get; set; } = new();
 }
 
 public class MaterialCostItem

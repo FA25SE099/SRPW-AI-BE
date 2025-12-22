@@ -41,7 +41,7 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmersI
                 var templateData = new
                 {
                     FullName = farmer.FullName,
-                    PhoneNumber = farmer.PhoneNumber,
+                    Email = farmer.Email,
                     TempPassword = farmer.TempPassword
                 };
 
@@ -105,7 +105,7 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmersI
                         
                         <div class='credentials'>
                             <h3>Thông tin đăng nhập:</h3>
-                            <p><strong>Số điện thoại (Tài khoản):</strong> {{PhoneNumber}}</p>
+                            <p><strong>Tài khoản:</strong> {{Email}}</p>
                             <p><strong>Mật khẩu tạm thời:</strong> {{TempPassword}}</p>
                         </div>
 

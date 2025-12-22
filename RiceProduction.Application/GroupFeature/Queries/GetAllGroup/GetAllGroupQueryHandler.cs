@@ -34,14 +34,15 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
                 _logger.LogInformation(
                     "Getting groups with filters: ClusterId={ClusterId}, SeasonId={SeasonId}",
                     request.ClusterId, request.SeasonId);
-                Expression<Func<Group, bool>> predicate = g =>
-                    (request.ClusterId == Guid.Empty || g.ClusterId == request.ClusterId) &&
-                    (request.SeasonId == Guid.Empty || g.SeasonId == request.SeasonId) &&
-                    g.Status == GroupStatus.Active;
+                var groupsQuery = _unitOfWork.Repository<Group>()
+                    .GetQueryable()
+                    .Include(g => g.YearSeason)
+                    .Where(g => (request.ClusterId == Guid.Empty || g.ClusterId == request.ClusterId) &&
+                               (request.SeasonId == Guid.Empty || (g.YearSeason != null && g.YearSeason.SeasonId == request.SeasonId)) &&
+                               g.Status == GroupStatus.Active)
+                    .OrderBy(g => g.Area);
 
-                var groups = await _unitOfWork.Repository<Group>().ListAsync(
-                    predicate,
-                    orderBy: q => q.OrderBy(g => g.Area));
+                var groups = await groupsQuery.ToListAsync(cancellationToken);
 
                 if (!groups.Any())
                 {

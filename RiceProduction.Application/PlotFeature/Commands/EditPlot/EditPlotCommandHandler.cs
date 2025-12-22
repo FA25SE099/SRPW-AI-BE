@@ -107,12 +107,13 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
                     
                     // Only remove GroupPlot associations for the SAME SEASON
                     // This allows the plot to belong to groups in different seasons
-                    if (targetGroup.SeasonId.HasValue)
+                    if (targetGroup.YearSeason?.SeasonId != null)
                     {
                         var existingGroupPlots = await _unitOfWork.Repository<GroupPlot>()
                             .GetQueryable()
                             .Include(gp => gp.Group)
-                            .Where(gp => gp.PlotId == plot.Id && gp.Group.SeasonId == targetGroup.SeasonId.Value)
+                                .ThenInclude(g => g.YearSeason)
+                            .Where(gp => gp.PlotId == plot.Id && gp.Group.YearSeason != null && gp.Group.YearSeason.SeasonId == targetGroup.YearSeason.SeasonId)
                             .ToListAsync(cancellationToken);
                         
                         foreach (var gp in existingGroupPlots)

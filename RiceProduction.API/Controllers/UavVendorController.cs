@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
 using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerList;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.ClusterManagerRequests;
 using RiceProduction.Application.Common.Models.Request.UavVendorRequests;
@@ -21,6 +22,7 @@ public class UavVendorController : Controller
 {
     private readonly IMediator _mediator;
     private readonly ILogger<UavVendorController> _logger;
+    private readonly IUser _currentUser;
 
     public UavVendorController(IMediator mediator, ILogger<UavVendorController> logger)
     {
@@ -91,6 +93,21 @@ public class UavVendorController : Controller
             _logger.LogError(ex, "Error occurred while getting free cluster managers");
             return StatusCode(500, "An error occurred while processing your request");
         }
+    }
+    [HttpGet("profile")]
+    public async Task<IActionResult> GetUavVendorProfile()
+    {
+        var userId = _currentUser.Id;
+        var query = new GetUavVendorByIdQuery
+        {
+            UavVendorId = userId.Value
+        };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
     }
 
     [HttpPost("get-all")]

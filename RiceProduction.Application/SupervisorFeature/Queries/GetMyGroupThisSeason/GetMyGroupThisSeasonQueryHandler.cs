@@ -62,7 +62,12 @@ public class GetMyGroupThisSeasonQueryHandler
             }
 
             var groups = await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.SupervisorId == request.SupervisorId && g.SeasonId == targetSeason.Id);
+                .GetQueryable()
+                .Include(g => g.YearSeason)
+                    .ThenInclude(ys => ys.RiceVariety)
+                .Where(g => g.SupervisorId == request.SupervisorId && 
+                           g.YearSeason != null && g.YearSeason.SeasonId == targetSeason.Id)
+                .ToListAsync(cancellationToken);
 
             var group = groups.FirstOrDefault();
 
@@ -82,10 +87,10 @@ public class GetMyGroupThisSeasonQueryHandler
             var farmerDict = farmers.ToDictionary(f => f.Id);
 
             RiceVariety? riceVariety = null;
-            if (group.RiceVarietyId.HasValue)
+            if (group.YearSeason?.RiceVarietyId != null)
             {
                 riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                    .FindAsync(rv => rv.Id == group.RiceVarietyId.Value);
+                    .FindAsync(rv => rv.Id == group.YearSeason.RiceVarietyId);
             }
 
             var cluster = await _unitOfWork.Repository<Cluster>()
@@ -136,7 +141,7 @@ public class GetMyGroupThisSeasonQueryHandler
                 PlantingDate = group.PlantingDate,
                 TotalArea = group.TotalArea,
                 AreaGeoJson = group.Area != null ? SerializeGeometry(group.Area) : null,
-                RiceVarietyId = group.RiceVarietyId,
+                RiceVarietyId = group.YearSeason?.RiceVarietyId,
                 RiceVarietyName = riceVariety?.VarietyName,
                 Season = new SeasonInfo
                 {
@@ -186,7 +191,7 @@ public class GetMyGroupThisSeasonQueryHandler
         var warnings = new List<string>();
 
         // Check 1: Rice Variety
-        readiness.HasRiceVariety = group.RiceVarietyId.HasValue;
+        readiness.HasRiceVariety = group.YearSeason?.RiceVarietyId != null;
         if (!readiness.HasRiceVariety)
         {
             blocking.Add("Rice variety not selected");

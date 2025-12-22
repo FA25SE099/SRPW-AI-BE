@@ -16,6 +16,7 @@ namespace RiceProduction.Infrastructure.Repository
         Task<Supervisor?> GetSupervisorByNameOrEmail(string search, CancellationToken cancellationToken = default);
         Task<Supervisor?> GetSupervisorByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default);
         Task<Supervisor?> GetSupervisorByPlotId(Guid plotId, CancellationToken cancellationToken = default);
+        Task<List<Supervisor>> GetSupervisorsByClusterIdAsync(Guid clusterId,CancellationToken cancellationToken = default);
         void Update(Supervisor entity);
         void UpdateRange(IEnumerable<Supervisor> entities);
         Task<IReadOnlyList<Supervisor>> ListAsync(
