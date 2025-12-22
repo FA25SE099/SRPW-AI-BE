@@ -30,6 +30,10 @@ public class ResolveReportCommand : IRequest<Result<Guid>>
 
 public class BaseCultivationTaskRequest
 {
+    /// <summary>
+    /// The existing CultivationTask ID that this emergency task is based on.
+    /// Backend will look up this task's ProductionPlanTaskId for stage information.
+    /// </summary>
     public Guid? CultivationPlanTaskId { get; set; }
 
     [MaxLength(255)]

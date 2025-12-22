@@ -70,13 +70,32 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                     "PlotCultivationNotFound");
             }
 
-            // Get the latest version (highest VersionOrder)
-            var latestVersion = plotCultivation.CultivationVersions
-                .OrderByDescending(v => v.VersionOrder)
-                .FirstOrDefault();
+            // Determine which version to query
+            CultivationVersion? targetVersion = null;
+            
+            if (request.VersionId.HasValue)
+            {
+                // Query specific version
+                targetVersion = plotCultivation.CultivationVersions
+                    .FirstOrDefault(v => v.Id == request.VersionId.Value);
+                
+                if (targetVersion == null)
+                {
+                    return Result<CurrentPlotCultivationDetailResponse>.Failure(
+                        $"Version with ID {request.VersionId.Value} not found for this plot cultivation.",
+                        "VersionNotFound");
+                }
+            }
+            else
+            {
+                // Get the latest version (highest VersionOrder) - default behavior
+                targetVersion = plotCultivation.CultivationVersions
+                    .OrderByDescending(v => v.VersionOrder)
+                    .FirstOrDefault();
+            }
 
-            // 4. Load cultivation tasks with related data for the latest version
-            Guid? versionId = latestVersion?.Id;
+            // 4. Load cultivation tasks with related data for the target version
+            Guid? versionId = targetVersion?.Id;
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId,
                 orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
@@ -129,7 +148,8 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                     Description = stageGroup.Key.Description,
                     TypicalDurationDays = stageGroup.Key.TypicalDurationDays,
                     Tasks = stageGroup
-                        .OrderBy(task => task.ExecutionOrder ?? 0)
+                        .OrderBy(task => task.ExecutionOrder ?? int.MaxValue)
+                        .ThenBy(task => task.CreatedAt)
                         .Select(task => new CultivationTaskSummary
                         {
                             TaskId = task.Id,
@@ -199,8 +219,8 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                 ProductionPlanName = productionPlan?.PlanName,
                 ProductionPlanDescription = null,
 
-                ActiveVersionId = latestVersion?.Id,
-                ActiveVersionName = latestVersion?.VersionName,
+                ActiveVersionId = targetVersion?.Id,
+                ActiveVersionName = targetVersion?.VersionName,
 
                 Stages = stagesGroup,
                 Progress = new CultivationProgress
@@ -216,13 +236,18 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             };
 
             _logger.LogInformation(
-                "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId} using latest version {VersionOrder}. " +
+                "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId} " +
+                "using version {VersionName} (Order: {VersionOrder}, Requested: {RequestedVersionId}). " +
                 "Total unique tasks: {UniqueCount} (from {TotalCount} records)",
-                request.PlotId, request.GroupId, group.SeasonId.Value, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
+                request.PlotId, request.GroupId, group.SeasonId.Value, 
+                targetVersion?.VersionName, targetVersion?.VersionOrder, request.VersionId,
+                uniqueTasks.Count, tasks.Count);
 
             return Result<CurrentPlotCultivationDetailResponse>.Success(
                 response,
-                "Successfully retrieved cultivation plan for plot in group.");
+                request.VersionId.HasValue 
+                    ? $"Successfully retrieved cultivation plan for specific version '{targetVersion?.VersionName}'."
+                    : "Successfully retrieved cultivation plan with latest version.");
         }
         catch (Exception ex)
         {

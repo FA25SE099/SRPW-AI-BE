@@ -95,7 +95,8 @@ public class GetFarmLogsByProductionPlanTaskQueryHandler : IRequestHandler<GetFa
                     InterruptionReason = fl.InterruptionReason,
 
                     CultivationTaskName = fl.CultivationTask.CultivationTaskName ?? productionPlanTask.TaskName,
-                    PlotName = $"Th?a {plot.SoThua ?? 0}, T? {plot.SoTo ?? 0}",
+                    SoThua = plot.SoThua,
+                    SoTo = plot.SoTo,
 
                     MaterialsUsed = fl.FarmLogMaterials.Select(flm => new FarmLogMaterialRecord
                     {
