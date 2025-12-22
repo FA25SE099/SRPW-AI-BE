@@ -123,7 +123,17 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
             farmLog.FarmLogMaterials = logMaterials;
 
             // 5. Update Cultivation Task Status & Totals
-            task.Status = RiceProduction.Domain.Enums.TaskStatus.Completed; 
+            // Check if task is Emergency status - update to EmergencyApproval, otherwise Completed
+            if (task.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
+            {
+                task.Status = RiceProduction.Domain.Enums.TaskStatus.EmergencyApproval;
+                _logger.LogInformation("Emergency task {TaskId} updated to EmergencyApproval status", task.Id);
+            }
+            else
+            {
+                task.Status = RiceProduction.Domain.Enums.TaskStatus.Completed;
+            }
+            
             task.ActualEndDate = DateTime.UtcNow; 
             
             task.ActualMaterialCost += totalLogMaterialCost;
