@@ -138,7 +138,7 @@ public class FormGroupsCommandHandlerTests
         {
             Id = Guid.NewGuid(),
             ClusterId = clusterId,
-            SeasonId = seasonId,
+            YearSeasonId = null, // Changed from SeasonId to YearSeasonId
             Year = 2025,
             CreatedAt = DateTimeOffset.UtcNow
         };

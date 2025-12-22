@@ -37,4 +37,5 @@ public class PlotCultivation : BaseAuditableEntity
     public ICollection<CultivationTask> CultivationTasks { get; set; } = new List<CultivationTask>();
     public ICollection<CultivationVersion> CultivationVersions { get; set; } = new List<CultivationVersion>();
     public ICollection<FarmLog> FarmLogs { get; set; } = new List<FarmLog>();
+    public ICollection<MaterialDistribution> MaterialDistributions { get; set; } = new List<MaterialDistribution>();
 }

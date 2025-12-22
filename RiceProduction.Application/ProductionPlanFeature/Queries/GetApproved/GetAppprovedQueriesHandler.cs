@@ -32,7 +32,7 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved
                      request.GroupId, request.SupervisorId, request.FromDate, request.ToDate);
                 var query = _unitOfWork.Repository<ProductionPlan>().GetQueryable()
                      .Include(g => g.Group).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Plot)
-                     .Include(g => g.Group).ThenInclude(r => r.RiceVariety)
+                     .Include(g => g.Group).ThenInclude(ys => ys.YearSeason).ThenInclude(ys => ys.RiceVariety)
                      .Include(g => g.Group).ThenInclude(c => c.Cluster)
                      .Include(g => g.Group).ThenInclude(s => s.Supervisor)
                      .Include(st => st.StandardPlan)

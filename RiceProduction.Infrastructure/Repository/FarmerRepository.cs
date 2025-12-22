@@ -91,7 +91,7 @@ namespace RiceProduction.Infrastructure.Repository
                                 .ThenInclude(pp => pp.CurrentProductionStages)
                                     .ThenInclude(ps => ps.ProductionPlanTasks)
                 .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group)
-                .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(r => r.RiceVariety)
+                .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(g => g.YearSeason).ThenInclude(ys => ys.RiceVariety)
                 .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(c => c.Cluster)
                 .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(s => s.Supervisor)
                 .Include(f => f.FarmerAssignments).ThenInclude(a => a.Supervisor)

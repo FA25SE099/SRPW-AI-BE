@@ -35,14 +35,15 @@ public class GetApprovedPlansQueryHandler :
             Expression<Func<ProductionPlan, bool>> filter = p =>
                 p.Status == RiceProduction.Domain.Enums.TaskStatus.Approved &&
                 (!request.Year.HasValue || p.BasePlantingDate.Year == request.Year.Value) &&
-                (!request.SeasonId.HasValue || (p.GroupId.HasValue && p.Group != null && p.Group.SeasonId == request.SeasonId.Value));
+                (!request.SeasonId.HasValue || (p.GroupId.HasValue && p.Group != null && p.Group.YearSeason != null && p.Group.YearSeason.SeasonId == request.SeasonId.Value));
             
             // Tải toàn bộ Plans phù hợp với filter
             var allPlans = await planRepo.ListAsync(
                 filter: filter,
                 orderBy: q => q.OrderByDescending(p => p.ApprovedAt),
                 includeProperties: q => q
-                    .Include(p => p.Group) 
+                    .Include(p => p.Group)
+                        .ThenInclude(g => g.YearSeason) 
                     .Include(p => p.Submitter)
             );
 

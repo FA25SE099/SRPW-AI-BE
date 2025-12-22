@@ -2023,16 +2023,64 @@ namespace RiceProduction.Infrastructure.Data
             if (farmer4 != null) { farmer4.ClusterId = cluster2Id; _context.Update(farmer4); }
             if (farmer5 != null) { farmer5.ClusterId = cluster2Id; _context.Update(farmer5); }
             await _context.SaveChangesAsync();
-            // Create Groups with plots
+            
+            // Create YearSeasons for the groups
             var todayUtc = DateTime.UtcNow.Date;
+            var yearSeasons = new List<YearSeason>
+            {
+                new YearSeason
+                {
+                    SeasonId = thuDong!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-20),
+                    EndDate = todayUtc.AddDays(90),
+                    Status = SeasonStatus.Active
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-30),
+                    EndDate = todayUtc.AddDays(80),
+                    Status = SeasonStatus.Completed
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu.Id,
+                    ClusterId = cluster2Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-5),
+                    EndDate = todayUtc.AddDays(105),
+                    Status = SeasonStatus.Active
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2024,
+                    RiceVarietyId = om5451?.Id ?? st25.Id,
+                    StartDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
+                    EndDate = new DateTime(2024, 8, 20, 0, 0, 0, DateTimeKind.Utc),
+                    Status = SeasonStatus.Completed
+                }
+            };
+            
+            await _context.YearSeasons.AddRangeAsync(yearSeasons);
+            await _context.SaveChangesAsync();
+            
+            // Create Groups with plots
             var groups = new List<Group>
             {
                 new Group
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = thuDong.Id,
+                    YearSeasonId = yearSeasons[0].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-20),
                     Status = GroupStatus.Active,
@@ -2043,8 +2091,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[1].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-30),
                     Status = GroupStatus.Completed,
@@ -2055,8 +2102,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster2Id,
                     SupervisorId = supervisor2?.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[2].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-5),
                     Status = GroupStatus.Active,
@@ -2067,8 +2113,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = om5451?.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[3].Id,
                     Year = 2024,
                     PlantingDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
                     Status = GroupStatus.Completed,
@@ -2274,6 +2319,7 @@ namespace RiceProduction.Infrastructure.Data
 
             var pastGroup2024 = await _context.Groups
                 .Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot)
+                .Include(g => g.YearSeason)
                 .FirstOrDefaultAsync(g => g.Year == 2024 && g.Status == GroupStatus.Completed);
 
             if (pastGroup2024 == null)
@@ -2360,8 +2406,8 @@ namespace RiceProduction.Infrastructure.Data
                     PlotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
-                        RiceVarietyId = group.RiceVarietyId!.Value,
-                        SeasonId = group.SeasonId!.Value,
+                        RiceVarietyId = group.YearSeason!.RiceVarietyId,
+                        SeasonId = group.YearSeason!.SeasonId,
                         PlantingDate = plantingDate,
                         Status = CultivationStatus.Planned,
                         ActualYield = plot.Area * 7.2m

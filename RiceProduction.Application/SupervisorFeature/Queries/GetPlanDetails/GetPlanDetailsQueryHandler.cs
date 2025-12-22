@@ -34,6 +34,8 @@ public class GetPlanDetailsQueryHandler
                 match: p => p.Id == request.ProductionPlanId,
                 includeProperties: q => q
                     .Include(p => p.Group)
+                        .ThenInclude(g => g!.YearSeason)
+                    .Include(p => p.Group)
                         .ThenInclude(g => g!.GroupPlots)
                             .ThenInclude(gp => gp.Plot)
                                 .ThenInclude(plot => plot.Farmer)
@@ -73,10 +75,10 @@ public class GetPlanDetailsQueryHandler
 
             // 3. Get season info
             Season? season = null;
-            if (plan.Group.SeasonId.HasValue)
+            if (plan.Group.YearSeason?.SeasonId != null)
             {
                 season = await _unitOfWork.Repository<Season>()
-                    .FindAsync(s => s.Id == plan.Group.SeasonId.Value);
+                    .FindAsync(s => s.Id == plan.Group.YearSeason.SeasonId);
             }
 
             // 4. Calculate detailed progress

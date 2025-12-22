@@ -46,7 +46,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                     "GroupNotFound");
             }
 
-            if (!group.SeasonId.HasValue)
+            if (group.YearSeason?.SeasonId == null)
             {
                 return Result<CurrentPlotCultivationDetailResponse>.Failure(
                     $"Group with ID {request.GroupId} does not have a season assigned.",
@@ -55,7 +55,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 
             // 3. Find PlotCultivation using PlotId and SeasonId
             var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
-                match: pc => pc.PlotId == request.PlotId && pc.SeasonId == group.SeasonId.Value,
+                match: pc => pc.PlotId == request.PlotId && pc.SeasonId == group.YearSeason.SeasonId,
                 includeProperties: q => q
                     .Include(pc => pc.Plot)
                     .Include(pc => pc.Season)
@@ -66,7 +66,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             if (plotCultivation == null)
             {
                 return Result<CurrentPlotCultivationDetailResponse>.Failure(
-                    $"No cultivation found for Plot {request.PlotId} in Season {group.SeasonId.Value}.",
+                    $"No cultivation found for Plot {request.PlotId} in Season {group.YearSeason.SeasonId}.",
                     "PlotCultivationNotFound");
             }
 
@@ -218,7 +218,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             _logger.LogInformation(
                 "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId} using latest version {VersionOrder}. " +
                 "Total unique tasks: {UniqueCount} (from {TotalCount} records)",
-                request.PlotId, request.GroupId, group.SeasonId.Value, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
+                request.PlotId, request.GroupId, group.YearSeason.SeasonId, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
 
             return Result<CurrentPlotCultivationDetailResponse>.Success(
                 response,

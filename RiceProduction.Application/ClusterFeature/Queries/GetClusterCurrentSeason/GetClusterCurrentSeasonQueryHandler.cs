@@ -53,12 +53,14 @@ public class GetClusterCurrentSeasonQueryHandler
             var currentYear = currentSeasonResult.year;
 
             // Get groups for current season
-            var groups = await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.ClusterId == cluster.Id &&
-                               g.SeasonId == currentSeason.Id &&
-                               g.Year == currentYear);
-
-            var groupsList = groups.ToList();
+            var groupsList = await _unitOfWork.Repository<Group>()
+                .GetQueryable()
+                .Include(g => g.YearSeason)
+                    .ThenInclude(ys => ys.RiceVariety)
+                .Where(g => g.ClusterId == cluster.Id &&
+                           g.YearSeason != null && g.YearSeason.SeasonId == currentSeason.Id &&
+                           g.Year == currentYear)
+                .ToListAsync(cancellationToken);
             bool hasGroups = groupsList.Any();
 
             var response = new ClusterCurrentSeasonResponse
@@ -121,10 +123,10 @@ public class GetClusterCurrentSeasonQueryHandler
         var farmers = await _unitOfWork.FarmerRepository
             .ListAsync(f => farmerIds.Contains(f.Id));
 
-        // Get rice varieties
+        // Get rice varieties from YearSeason
         var varietyIds = groups
-            .Where(g => g.RiceVarietyId.HasValue)
-            .Select(g => g.RiceVarietyId!.Value)
+            .Where(g => g.YearSeason?.RiceVarietyId != null)
+            .Select(g => g.YearSeason!.RiceVarietyId)
             .Distinct()
             .ToList();
 
@@ -151,9 +153,9 @@ public class GetClusterCurrentSeasonQueryHandler
             SupervisorName = g.SupervisorId.HasValue
                 ? supervisorDict.GetValueOrDefault(g.SupervisorId.Value)?.FullName
                 : null,
-            RiceVarietyId = g.RiceVarietyId,
-            RiceVarietyName = g.RiceVarietyId.HasValue
-                ? varietyDict.GetValueOrDefault(g.RiceVarietyId.Value)?.VarietyName
+            RiceVarietyId = g.YearSeason?.RiceVarietyId,
+            RiceVarietyName = g.YearSeason?.RiceVarietyId != null
+                ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId)?.VarietyName
                 : null,
             PlantingDate = g.PlantingDate,
             Status = g.Status.ToString(),
@@ -163,8 +165,8 @@ public class GetClusterCurrentSeasonQueryHandler
 
         // Rice variety breakdown
         response.RiceVarietyBreakdown = groups
-            .Where(g => g.RiceVarietyId.HasValue)
-            .GroupBy(g => g.RiceVarietyId!.Value)
+            .Where(g => g.YearSeason?.RiceVarietyId != null)
+            .GroupBy(g => g.YearSeason!.RiceVarietyId)
             .Select(g => new RiceVarietyGroupSummary
             {
                 RiceVarietyId = g.Key,

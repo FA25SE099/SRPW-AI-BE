@@ -28,7 +28,7 @@ public class YearSeason : BaseAuditableEntity
     /// </summary>
     [Required]
     public DateTime StartDate { get; set; }
-
+    public int? MaterialConfirmationDaysBeforePlanting { get; set; }
     /// <summary>
     /// Actual end date for this season instance
     /// </summary>
@@ -39,6 +39,7 @@ public class YearSeason : BaseAuditableEntity
     /// Break period start (between this and next season)
     /// </summary>
     public DateTime? BreakStartDate { get; set; }
+    public int AllowedPlantingFlexibilityDays { get; set; } = 0;
 
     /// <summary>
     /// Break period end

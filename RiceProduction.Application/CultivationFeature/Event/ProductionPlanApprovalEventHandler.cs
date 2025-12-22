@@ -81,9 +81,9 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             var plots = plan.Group!.GroupPlots.Select(gp => gp.Plot).ToList();
             
             // FIX #2: Get only plot cultivations for the current season to avoid duplicates
-            var seasonId = plan.Group.SeasonId;
+            var seasonId = plan.Group.YearSeason?.SeasonId;
             
-            if (!seasonId.HasValue)
+            if (seasonId == null)
             {
                 _logger.LogWarning("Group {GroupId} for plan {PlanId} has no season assigned", 
                     plan.Group.Id, notification.PlanId);
@@ -92,7 +92,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             
             var plotCultivations = plots
                 .SelectMany(pl => pl.PlotCultivations)
-                .Where(pc => pc.SeasonId == seasonId.Value) // Only current season
+                .Where(pc => pc.SeasonId == seasonId) // Only current season
                 .GroupBy(pc => pc.PlotId) // Group by PlotId
                 .Select(g => g.OrderByDescending(pc => pc.CreatedAt).First()) // Take latest per plot
                 .ToList();
@@ -177,6 +177,8 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 q => q.Include(p => p.CurrentProductionStages)
                       .ThenInclude(s => s.ProductionPlanTasks)
                       .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                      .Include(p => p.Group)
+                        .ThenInclude(g => g.YearSeason)
                       .Include(p => p.Group)
                       .ThenInclude(g => g.GroupPlots)
                       .ThenInclude(gp => gp.Plot)
