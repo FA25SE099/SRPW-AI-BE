@@ -172,7 +172,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .FirstOrDefaultAsync(f => (f.FullName != null && f.FullName.Contains(search)) ||
                                           (f.Email != null && f.Email.Contains(search)), cancellationToken);
         }
-
+        
         public async Task<Supervisor?> GetSupervisorByPlotId(Guid plotId, CancellationToken cancellationToken = default)
         {
             return await _supervisor
@@ -232,5 +232,19 @@ namespace RiceProduction.Infrastructure.Repository
             return await query.ToListAsync();
         }
 
+        public async Task<List<Supervisor>> GetSupervisorsByClusterIdAsync(Guid clusterId, CancellationToken cancellationToken = default)
+        {
+            return await _supervisor
+           .Include(s => s.SupervisedGroups)
+           .ThenInclude(s => s.GroupPlots)
+           .ThenInclude(gp => gp.Plot)
+           .Include(s => s.SupervisedGroups)
+           .ThenInclude(s => s.ProductionPlans)
+           .Include(s => s.AssignedTasks)
+           .Include(s => s.SupervisorAssignments)
+           .Where(f => f.ClusterId == clusterId)
+           .OrderBy(s => s.FullName)
+           .ToListAsync(cancellationToken);
+        }
     }
 }

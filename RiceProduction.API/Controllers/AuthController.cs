@@ -9,6 +9,9 @@ using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.Common.Models.Response;
 using System.Security.Claims;
 using RiceProduction.Application.Auth.Queries.GetUserById;
+using RiceProduction.Application.Auth.Commands.ChangePassword;
+using RiceProduction.Application.Auth.Commands.ResetPassword;
+using RiceProduction.Application.Auth.Commands.ForgotPassword;
 
 namespace RiceProduction.API.Controllers;
 
@@ -156,5 +159,63 @@ public class AuthController : ControllerBase
         var user = await _mediator.Send(query);
 
         return user;
+    }
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<ActionResult<Result>> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        var command = new ChangePasswordCommand
+        {
+            CurrentPassword = request.CurrentPassword,
+            NewPassword = request.NewPassword,
+            ConfirmPassword = request.ConfirmPassword
+        };
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+    [HttpPost("reset-password")]
+    public async Task<ActionResult<Result>> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        var command = new ResetPasswordCommand
+        {
+            Email = request.Email,
+            Token = request.Token,
+            NewPassword = request.NewPassword,
+            ConfirmPassword = request.ConfirmPassword
+        };
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    [HttpPost("forgot-password")]
+    public async Task<ActionResult<Result>> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        var command = new ForgotPasswordCommand
+        {
+            Email = request.Email,
+        };
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
     }
 }

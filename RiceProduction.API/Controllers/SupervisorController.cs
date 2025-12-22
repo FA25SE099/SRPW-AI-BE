@@ -1,5 +1,7 @@
-﻿using MediatR;
+﻿using Google.Protobuf.WellKnownTypes;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.SupervisorRequests;
@@ -7,6 +9,7 @@ using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
 using RiceProduction.Application.SupervisorFeature.Commands.CompletePolygonAssignment;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
+using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisor;
 using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForAdmin;
 using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForClusterManager;
 using RiceProduction.Application.SupervisorFeature.Queries.GetFarmersBySupervisor;
@@ -15,9 +18,11 @@ using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSeason;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPlanDetails;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorAvailableSeasons;
+using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorByClusterId;
 using RiceProduction.Application.SupervisorFeature.Queries.ValidatePolygonArea;
 using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
+using RiceProduction.Domain.Entities;
 using System.Security.Claims;
 
 namespace RiceProduction.API.Controllers;
@@ -391,6 +396,69 @@ public class SupervisorController : Controller
         }
 
         return Ok(result);
+    }
+
+    [HttpGet("by-cluster/{clusterId:guid}")]
+    [ProducesResponseType(typeof(Result<List<SupervisorDTO>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetSupervisorsByClusterId(Guid clusterId)
+    {
+        try
+        {
+            if (clusterId == Guid.Empty)
+            {
+                _logger.LogWarning("Invalid cluster ID provided: {ClusterId}", clusterId);
+                return BadRequest(Result.Failure("Invalid cluster ID"));
+            }
+
+            var query = new GetSupervisorByClusterIdQuery { ClusterId = clusterId };
+            var result = await _mediator.Send(query);
+
+            if (result == null || !result.Any())
+            {
+                _logger.LogInformation("No supervisors found for cluster ID: {ClusterId}", clusterId);
+                return NotFound(Result.Failure($"No supervisors found for cluster {clusterId}"));
+            }
+
+            return Ok(Result<List<SupervisorDTO>>.Success(
+                result,
+                $"Retrieved {result.Count} supervisors successfully"
+            ));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving supervisors for cluster ID: {ClusterId}", clusterId);
+            return StatusCode(500, Result.Failure("An error occurred while retrieving supervisors"));
+        }
+    }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(Result<List<SupervisorDTO>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetAllSupervisor()
+    {
+        try
+        {
+            var query = new Application.SupervisorFeature.Queries.GetAllSupervisor.GetAllSupervisorQueries();
+            var result = await _mediator.Send(query); 
+
+            if (result == null || !result.Any())
+            {
+                _logger.LogInformation("No supervisors found");
+                return NotFound(Result<List<SupervisorDTO>>.Failure("No supervisors found"));
+            }
+
+            return Ok(Result<List<SupervisorDTO>>.Success(result, "Retrieved successfully"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving supervisors");
+            return StatusCode(500, Result.Failure("An error occurred while retrieving supervisors"));
+        }
     }
 }
 

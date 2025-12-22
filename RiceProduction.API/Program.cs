@@ -1,6 +1,7 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using OpenTelemetry.Logs;
@@ -16,6 +17,9 @@ using RiceProduction.Infrastructure;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using Serilog;
+using Serilog.Events;
+using Serilog.Sinks.Grafana.Loki;
+using Serilog.Formatting.Json;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -23,12 +27,45 @@ using System.Text.Json.Serialization;
 
     var builder = WebApplication.CreateBuilder(args);
 
-    builder.Host.UseSerilog();
+
 Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
     .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
     .Enrich.WithThreadId()
-    .CreateLogger();
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.GrafanaLoki(
+        uri: "http://loki:3100",
+        labels: new[]
+        {
+            new LokiLabel { Key = "application", Value = "rice-production-api" },
+            new LokiLabel { Key = "environment", Value = "production" }
+        },
+        propertiesAsLabels: new[] { "level" },
+        textFormatter: new LokiJsonTextFormatter()  
+    )
+    .CreateBootstrapLogger();
+
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddPrometheusExporter();  
+    });
+
+//builder.Host.UseSerilog();
+//Log.Logger = new LoggerConfiguration()
+//    .ReadFrom.Configuration(builder.Configuration)
+//    .Enrich.FromLogContext()
+//    .Enrich.WithThreadId()
+//    .CreateLogger();
 
 //var otel = builder.Configuration.GetSection("OpenTelemetry");
 //var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
@@ -206,8 +243,8 @@ if (seedDatabase)
             //await initializer.ResetDatabaseAsync();
             //await initializer.SeedAsync();
 
-        }
-        //await initializer.SeedAsyncAdminOnly();
+        }       
+        await initializer.SeedAsyncAdminOnly();
         //await initializer.SeedAsync();
     }
     catch (Exception ex)
@@ -216,6 +253,40 @@ if (seedDatabase)
         logger.LogError(ex, "An error occurred creating the DB or seeding data.");
     }
 }
+
+//if (seedDatabase)
+//{
+//    using var scope = app.Services.CreateScope();
+//    var services = scope.ServiceProvider;
+//    var logger = services.GetRequiredService<ILogger<Program>>();
+
+//    try
+//    {
+//        var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
+
+//        logger.LogWarning("Seeding database started");
+
+//        await initializer.InitialiseAsync();
+
+//        var resetDb = builder.Configuration.GetValue<bool>("ResetDatabase");
+//        if (resetDb)
+//        {
+//            logger.LogWarning("ResetDatabase = true → truncating data");
+//            await initializer.ResetDatabaseAsync();
+//        }
+
+//        //await initializer.SeedAsync();
+//        await initializer.SeedAsyncAdminOnly();
+
+//        logger.LogWarning("Seeding database completed");
+//    }
+//    catch (Exception ex)
+//    {
+//        logger.LogError(ex, "SEED DATABASE FAILED");
+//        throw;
+//    }
+//}
+
 app.MapPost("/api/rice/check-pest", async (
     [FromForm] IFormFileCollection files,
     [FromServices] IRicePestDetectionService detectionService) =>
@@ -272,7 +343,7 @@ app.UseSwagger();
 
 app.UseCors("AllowFrontend");
 app.UseCors("AllowGemini");
-
+app.UseOpenTelemetryPrometheusScrapingEndpoint();
 app.UseHttpsRedirection();
 app.UseMiddleware<LoggingMiddleware>();
 // Add authentication and authorization middleware
