@@ -51,13 +51,38 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
             
             var allPlotIdsInGroup = allPlotsInGroup.Select(p => p.Id).ToList();
 
-            // Lấy PlotCultivation IDs đang hoạt động trong Group này
-            var plotCultivationIdSet = allPlotsInGroup
+            // Get PlotCultivation IDs and their latest versions
+            var plotCultivationData = allPlotsInGroup
                 .SelectMany(p => p.PlotCultivations)
-                .Select(pc => pc.Id)
-                .ToHashSet();
+                .Select(pc => new
+                {
+                    PlotCultivationId = pc.Id,
+                    PlotId = pc.PlotId
+                })
+                .ToList();
 
-            // 2. Lọc ra các CultivationTask đang có Active UAV Order Assignment (kiểm tra theo task cụ thể)
+            var plotCultivationIds = plotCultivationData.Select(pc => pc.PlotCultivationId).ToList();
+
+            // Get the latest version for each PlotCultivation
+            var latestVersions = await _unitOfWork.Repository<CultivationVersion>()
+                .ListAsync(
+                    filter: v => plotCultivationIds.Contains(v.PlotCultivationId),
+                    orderBy: q => q.OrderByDescending(v => v.VersionOrder)
+                );
+
+            // Group by PlotCultivationId and take the latest version (highest VersionOrder)
+            var latestVersionMap = latestVersions
+                .GroupBy(v => v.PlotCultivationId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(v => v.VersionOrder).First()
+                );
+
+            _logger.LogInformation(
+                "Found {PlotCultivationCount} plot cultivations with {VersionCount} versions. Latest versions mapped: {MappedCount}",
+                plotCultivationIds.Count, latestVersions.Count, latestVersionMap.Count);
+
+            // 2. Filter active UAV Order Assignments (check by specific task)
             var busyAssignments = await _unitOfWork.Repository<UavOrderPlotAssignment>()
                 .ListAsync(
                     filter: a => 
@@ -66,6 +91,7 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                          a.Status == RiceProduction.Domain.Enums.TaskStatus.PendingApproval || 
                          a.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress)
                 );
+            
             // Track which specific cultivation tasks are already assigned (not just plots)
             var busyTaskIdSet = busyAssignments
                 .Select(a => a.CultivationTaskId)
@@ -74,9 +100,13 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
             // Also track plots with active orders (for informational purposes)
             var busyPlotIdSet = busyAssignments.Select(a => a.PlotId).Distinct().ToHashSet();
 
-            // 3. Tải tất cả CultivationTasks tiềm năng và các mối quan hệ liên quan
+            // 3. Load CultivationTasks ONLY from latest versions
+            var latestVersionIds = latestVersionMap.Values.Select(v => v.Id).ToList();
+            
             Expression<Func<CultivationTask, bool>> taskFilter = ct =>
-                plotCultivationIdSet.Contains(ct.PlotCultivationId) && 
+                plotCultivationIds.Contains(ct.PlotCultivationId) && 
+                ct.VersionId.HasValue &&
+                latestVersionIds.Contains(ct.VersionId.Value) && // ✅ Only latest versions
                 (ct.TaskType == request.RequiredTaskType);
 
             var potentialTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
@@ -85,8 +115,13 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                     .Include(ct => ct.PlotCultivation).ThenInclude(pc => pc.Plot)
                     .Include(ct => ct.ProductionPlanTask)
                         .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
+                    .Include(ct => ct.Version) // Include version for logging
             );
 
+            _logger.LogInformation(
+                "Loaded {TaskCount} potential tasks from latest versions (Type: {TaskType})",
+                potentialTasks.Count, request.RequiredTaskType);
+            
             // 4. Build response for ALL plots in the group
             var plotResponses = new List<UavPlotReadinessResponse>();
 
@@ -96,27 +131,37 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                 var plotArea = plotCultivation?.Area ?? 0M;
                 var hasActiveUavOrder = busyPlotIdSet.Contains(plot.Id);
                 
-                // Find the most relevant task for this plot
+                // Get the latest version for this plot's cultivation
+                Guid? latestVersionId = null;
+                string? latestVersionName = null;
+                if (plotCultivation != null && latestVersionMap.TryGetValue(plotCultivation.Id, out var latestVersion))
+                {
+                    latestVersionId = latestVersion.Id;
+                    latestVersionName = latestVersion.VersionName;
+                }
+                
+                // Find tasks from the latest version only
                 var relevantTasks = potentialTasks
                     .Where(t => t.PlotCultivation.PlotId == plot.Id)
                     .Where(t => t.Status != RiceProduction.Domain.Enums.TaskStatus.Completed && 
                                t.Status != RiceProduction.Domain.Enums.TaskStatus.Cancelled)
+                    .Where(t => t.ProductionPlanTask != null) // Must have ProductionPlanTask for scheduling
                     .OrderBy(t => t.ProductionPlanTask.ScheduledDate)
+                    .ThenBy(t => t.ExecutionOrder ?? 0) // Then by execution order
                     .ToList();
 
                 if (relevantTasks.Any())
                 {
                     // Group by unique task identifier to avoid duplicates
                     var uniqueTasks = relevantTasks
-                        .GroupBy(t => new { 
-                            t.Id,
-                            t.PlotCultivationId, 
-                            ScheduledDate = t.ProductionPlanTask.ScheduledDate.Date,
-                            t.CultivationTaskName,
-                            t.TaskType
-                        })
+                        .GroupBy(t => t.Id)
                         .Select(g => g.First())
                         .ToList();
+
+                    _logger.LogInformation(
+                        "Plot {PlotId} ({PlotName}): Found {TaskCount} tasks in version {VersionName}",
+                        plot.Id, $"Thửa {plot.SoThua}, Tờ {plot.SoTo}", 
+                        uniqueTasks.Count, latestVersionName ?? "Unknown");
 
                     foreach (var task in uniqueTasks)
                     {
@@ -167,9 +212,13 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                         IsReady = false,
                         ReadyStatus = hasActiveUavOrder 
                             ? "Plot has active UAV order, no pending tasks" 
-                            : $"No pending {request.RequiredTaskType} tasks scheduled",
+                            : $"No pending {request.RequiredTaskType} tasks in latest version ({latestVersionName ?? "Unknown"})",
                         HasActiveUavOrder = hasActiveUavOrder
                     });
+                    
+                    _logger.LogInformation(
+                        "Plot {PlotId} ({PlotName}): No ready tasks found in version {VersionName}",
+                        plot.Id, $"Thửa {plot.SoThua}, Tờ {plot.SoTo}", latestVersionName ?? "Unknown");
                 }
             }
 

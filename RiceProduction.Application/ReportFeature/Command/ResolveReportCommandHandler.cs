@@ -136,31 +136,34 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             {
                 var taskRequest = request.BaseCultivationTasks[i];
 
-                // The frontend sends ProductionPlanTaskId directly in CultivationPlanTaskId field
-                // No need to lookup - just use it directly
-                Guid? productionPlanTaskId = taskRequest.CultivationPlanTaskId;
+                Guid? productionPlanTaskId = null;
                 ProductionPlanTask? productionPlanTask = null;
+                Guid? oldCultivationTaskId = taskRequest.CultivationPlanTaskId;
                 
-                // Optionally load ProductionPlanTask for template info (task name, description, type)
-                if (productionPlanTaskId.HasValue)
+                // Frontend sends CultivationPlanTaskId which is actually an existing CultivationTask ID
+                // Look it up to get the ProductionPlanTaskId for stage/template information
+                if (taskRequest.CultivationPlanTaskId.HasValue)
                 {
-                    productionPlanTask = await _unitOfWork.Repository<ProductionPlanTask>()
+                    var existingCultivationTask = await _unitOfWork.Repository<CultivationTask>()
                         .FindAsync(
-                            match: ppt => ppt.Id == productionPlanTaskId.Value,
-                            includeProperties: q => q.Include(ppt => ppt.ProductionStage)
+                            match: ct => ct.Id == taskRequest.CultivationPlanTaskId.Value,
+                            includeProperties: q => q.Include(ct => ct.ProductionPlanTask)
                         );
-                    
-                    if (productionPlanTask != null)
+
+                    if (existingCultivationTask != null)
                     {
+                        productionPlanTaskId = existingCultivationTask.ProductionPlanTaskId;
+                        productionPlanTask = existingCultivationTask.ProductionPlanTask;
+                        
                         _logger.LogInformation(
-                            "Using ProductionPlanTaskId {ProductionPlanTaskId} (TaskName: {TaskName}, Stage: {StageName})",
-                            productionPlanTaskId, productionPlanTask.TaskName, productionPlanTask.ProductionStage?.StageName ?? "Unknown");
+                            "Resolved ProductionPlanTaskId {ProductionPlanTaskId} from CultivationTask {CultivationTaskId} (TaskName: {TaskName})",
+                            productionPlanTaskId, taskRequest.CultivationPlanTaskId.Value, existingCultivationTask.CultivationTaskName);
                     }
                     else
                     {
                         _logger.LogWarning(
-                            "ProductionPlanTask {ProductionPlanTaskId} not found. Task will be created without template.",
-                            productionPlanTaskId);
+                            "CultivationTask {CultivationTaskId} not found. Emergency task will be created without ProductionPlanTask reference.",
+                            taskRequest.CultivationPlanTaskId.Value);
                     }
                 }
 
@@ -208,6 +211,15 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
                 cultivationTasks.Add(newTask);
                 
+                // Store mapping for UAV assignment updates later
+                if (oldCultivationTaskId.HasValue)
+                {
+                    // Will use this mapping after tasks are saved and have IDs
+                    _logger.LogInformation(
+                        "Will update UAV assignments: Old CultivationTask {OldId} ? New CultivationTask (will be assigned after save)",
+                        oldCultivationTaskId.Value);
+                }
+                
                 // Log what we're about to save
                 _logger.LogInformation(
                     "Creating task {Index}/{Total}: Name='{TaskName}', ProductionPlanTaskId={PPTId}, ExecutionOrder={Order}, Status={Status}",
@@ -238,6 +250,12 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 tasksWithoutPPTId,
                 System.Text.Json.JsonSerializer.Serialize(verifyTasks.Take(3))
             );
+
+            // Update UAV assignments to point to new cultivation tasks
+            await UpdateUavAssignmentsForNewVersion(
+                request.BaseCultivationTasks,
+                cultivationTasks,
+                cancellationToken);
 
             // Copy farm logs from old cultivation tasks to new tasks
             // (including Emergency status tasks which are brand new problem-solving tasks)
@@ -500,6 +518,82 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         {
             _logger.LogError(ex, 
                 "Error copying late farmer records to new tasks. Continuing with resolution.");
+            // Don't throw - this is a nice-to-have feature, shouldn't block the resolution
+        }
+    }
+
+    /// <summary>
+    /// Updates UAV service order plot assignments to reference new cultivation task IDs.
+    /// When creating a new version, UAV assignments that pointed to old tasks need to be updated
+    /// to point to the corresponding new tasks in the new version.
+    /// </summary>
+    private async Task UpdateUavAssignmentsForNewVersion(
+        List<BaseCultivationTaskRequest> taskRequests,
+        List<CultivationTask> newTasks,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            int updatedCount = 0;
+            
+            for (int i = 0; i < taskRequests.Count; i++)
+            {
+                var taskRequest = taskRequests[i];
+                
+                // Skip if no old cultivation task ID provided
+                if (!taskRequest.CultivationPlanTaskId.HasValue)
+                {
+                    continue;
+                }
+                
+                var oldCultivationTaskId = taskRequest.CultivationPlanTaskId.Value;
+                var newCultivationTask = newTasks[i]; // Same index as request
+                
+                // Find all UAV assignments that reference the old cultivation task
+                var uavAssignments = await _unitOfWork.Repository<UavOrderPlotAssignment>()
+                    .GetQueryable()
+                    .Where(ua => ua.CultivationTaskId == oldCultivationTaskId)
+                    .ToListAsync(cancellationToken);
+                
+                if (!uavAssignments.Any())
+                {
+                    _logger.LogInformation(
+                        "No UAV assignments found for old CultivationTask {OldTaskId}",
+                        oldCultivationTaskId);
+                    continue;
+                }
+                
+                // Update each assignment to point to the new cultivation task
+                foreach (var assignment in uavAssignments)
+                {
+                    assignment.CultivationTaskId = newCultivationTask.Id;
+                    updatedCount++;
+                    
+                    _logger.LogInformation(
+                        "Updated UAV assignment {AssignmentId}: Old task {OldTaskId} ? New task {NewTaskId}",
+                        assignment.Id, oldCultivationTaskId, newCultivationTask.Id);
+                }
+                
+                _unitOfWork.Repository<UavOrderPlotAssignment>().UpdateRange(uavAssignments);
+            }
+            
+            if (updatedCount > 0)
+            {
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                
+                _logger.LogInformation(
+                    "Successfully updated {Count} UAV assignments to reference new cultivation tasks",
+                    updatedCount);
+            }
+            else
+            {
+                _logger.LogInformation("No UAV assignments needed updating");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, 
+                "Error updating UAV assignments for new version. Continuing with resolution.");
             // Don't throw - this is a nice-to-have feature, shouldn't block the resolution
         }
     }

@@ -31,8 +31,9 @@ public class ResolveReportCommand : IRequest<Result<Guid>>
 public class BaseCultivationTaskRequest
 {
     /// <summary>
-    /// The ProductionPlanTaskId that defines which production stage this task belongs to.
-    /// This is sent directly from the frontend and determines the stage grouping.
+    /// The existing CultivationTask ID that this emergency task is based on.
+    /// Backend will look up this task's ProductionPlanTaskId for stage information.
+    /// After creating the new task, UAV assignments will be updated to reference the new task ID.
     /// </summary>
     public Guid? CultivationPlanTaskId { get; set; }
 
