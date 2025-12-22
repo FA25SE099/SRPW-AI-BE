@@ -50,6 +50,16 @@ Log.Logger = new LoggerConfiguration()
     )
     .CreateBootstrapLogger();
 
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddPrometheusExporter();  
+    });
+
 //builder.Host.UseSerilog();
 //Log.Logger = new LoggerConfiguration()
 //    .ReadFrom.Configuration(builder.Configuration)
