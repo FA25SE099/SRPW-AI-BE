@@ -59,7 +59,7 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                     ServiceRadius = request.ServiceRadius
                 };
 
-                var psw = "123456";
+                var psw = "Uav123!";
                 var result = await _userManager.CreateAsync(uavVendor, psw);
                 if (!result.Succeeded)
                 {

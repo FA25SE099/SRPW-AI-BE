@@ -40,14 +40,19 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 }
 
                 // Get all late records in the cluster by navigating through relationships
+                // Only get records from active versions
                 var lateRecordsInCluster = await _unitOfWork.LateFarmerRecordRepository.GetQueryable()
                     .Include(lr => lr.CultivationTask)
                         .ThenInclude(ct => ct.PlotCultivation)
                             .ThenInclude(pc => pc.Plot)
                                 .ThenInclude(p => p.GroupPlots)
                                     .ThenInclude(gp => gp.Group)
+                    .Include(lr => lr.CultivationTask)
+                        .ThenInclude(ct => ct.Version) // Include version to check if active
                     .Where(lr => lr.CultivationTask.PlotCultivation.Plot.GroupPlots
-                        .Any(gp => gp.Group.ClusterId == expert.ClusterId.Value))
+                        .Any(gp => gp.Group.ClusterId == expert.ClusterId.Value)
+                        && lr.CultivationTask.Version != null
+                        && lr.CultivationTask.Version.IsActive) // Only active versions
                     .Select(lr => lr.CultivationTask.PlotCultivation.PlotId)
                     .Distinct()
                     .ToListAsync(cancellationToken);
@@ -87,13 +92,18 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 }
 
                 // Get plots with late records in these groups
+                // Only get records from active versions
                 plotIds = await _unitOfWork.LateFarmerRecordRepository.GetQueryable()
                     .Include(lr => lr.CultivationTask)
                         .ThenInclude(ct => ct.PlotCultivation)
                             .ThenInclude(pc => pc.Plot)
                                 .ThenInclude(p => p.GroupPlots)
+                    .Include(lr => lr.CultivationTask)
+                        .ThenInclude(ct => ct.Version) // Include version to check if active
                     .Where(lr => lr.CultivationTask.PlotCultivation.Plot.GroupPlots
-                        .Any(gp => groupIds.Contains(gp.GroupId)))
+                        .Any(gp => groupIds.Contains(gp.GroupId))
+                        && lr.CultivationTask.Version != null
+                        && lr.CultivationTask.Version.IsActive) // Only active versions
                     .Select(lr => lr.CultivationTask.PlotCultivation.PlotId)
                     .Distinct()
                     .ToListAsync(cancellationToken);

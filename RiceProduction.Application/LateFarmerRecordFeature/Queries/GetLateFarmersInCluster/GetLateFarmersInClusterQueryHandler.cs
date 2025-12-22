@@ -50,14 +50,19 @@ public class GetLateFarmersInClusterQueryHandler : IRequestHandler<GetLateFarmer
             }
 
             // Get all late farmer records in the cluster by navigating through CultivationTask -> Plot -> GroupPlot -> Group -> Cluster
+            // Only get records from active versions
             var lateRecordsQuery = _unitOfWork.LateFarmerRecordRepository.GetQueryable()
                 .Include(lr => lr.CultivationTask)
                     .ThenInclude(ct => ct.PlotCultivation)
                         .ThenInclude(pc => pc.Plot)
                             .ThenInclude(p => p.GroupPlots)
                                 .ThenInclude(gp => gp.Group)
+                .Include(lr => lr.CultivationTask)
+                    .ThenInclude(ct => ct.Version) // Include version to check if active
                 .Where(lr => lr.CultivationTask.PlotCultivation.Plot.GroupPlots
-                    .Any(gp => gp.Group.ClusterId == clusterId.Value));
+                    .Any(gp => gp.Group.ClusterId == clusterId.Value)
+                    && lr.CultivationTask.Version != null
+                    && lr.CultivationTask.Version.IsActive); // Only active versions
 
             // Get distinct farmer IDs who have late records
             var farmerIdsWithLateRecords = await lateRecordsQuery

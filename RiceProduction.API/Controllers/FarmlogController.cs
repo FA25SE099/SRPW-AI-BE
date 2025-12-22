@@ -7,6 +7,7 @@ using RiceProduction.Application.FarmLogFeature.Commands.CreateFarmLog;
 using RiceProduction.Application.FarmLogFeature.Queries;
 using RiceProduction.Application.FarmLogFeature.Queries.GetByCultivationPlot;
 using RiceProduction.Application.FarmLogFeature.Queries.GetByProductionPlanTask;
+using RiceProduction.Application.FarmLogFeature.Queries.GetByCultivationTask;
 
 namespace RiceProduction.API.Controllers;
 
@@ -96,6 +97,33 @@ public class FarmlogController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpPost("farm-logs/by-cultivation-task")]
+    [ProducesResponseType(typeof(PagedResult<List<FarmLogDetailResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetFarmLogsByCultivationTask([FromBody] GetFarmLogsByCultivationTaskRequest request)
+    {
+        var query = new GetFarmLogsByCultivationTaskQuery
+        {
+            CultivationTaskId = request.CultivationTaskId,
+            CurrentPage = request.CurrentPage,
+            PageSize = request.PageSize
+        };
+
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            if (result.Message?.Contains("not found") == true)
+            {
+                return NotFound(result);
+            }
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
 }
 
 public class GetFarmLogsByCultivationRequest
@@ -110,5 +138,12 @@ public class GetFarmLogsByProductionPlanTaskRequest
     public Guid ProductionPlanTaskId { get; set; }
     public int CurrentPage { get; set; } = 1;
     public int PageSize { get; set; } = 20;
+}
+
+public class GetFarmLogsByCultivationTaskRequest
+{
+    public Guid CultivationTaskId { get; set; }
+    public int CurrentPage { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
 }
 

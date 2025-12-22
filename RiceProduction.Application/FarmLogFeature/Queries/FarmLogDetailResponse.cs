@@ -3,7 +3,11 @@ public class FarmLogDetailResponse
 {
     public Guid FarmLogId { get; set; }
     public string CultivationTaskName { get; set; } = string.Empty;
-    public string PlotName { get; set; } = string.Empty;
+    
+    // Plot information - separate attributes for frontend formatting
+    public int? SoThua { get; set; }
+    public int? SoTo { get; set; }
+    
     public DateTime LoggedDate { get; set; }
     public string? WorkDescription { get; set; }
     public int CompletionPercentage { get; set; }

@@ -92,7 +92,8 @@ public class GetFarmLogsByCultivationQueryHandler : IRequestHandler<GetFarmLogsB
                 CultivationTaskName = fl.CultivationTask?.CultivationTaskName 
                     ?? fl.CultivationTask?.ProductionPlanTask?.TaskName 
                     ?? "Unknown Task",
-                PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
+                SoThua = plot.SoThua,
+                SoTo = plot.SoTo,
                 
                 MaterialsUsed = fl.FarmLogMaterials.Select(flm => new FarmLogMaterialRecord
                 {
