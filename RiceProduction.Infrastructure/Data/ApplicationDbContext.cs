@@ -41,6 +41,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     // Material management
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<MaterialPrice> MaterialPrices => Set<MaterialPrice>();
+    public DbSet<MaterialDistribution> MaterialDistributions => Set<MaterialDistribution>();
     public DbSet<UavOrderPlotAssignment> UavOrderPlotAssignments => Set<UavOrderPlotAssignment>();
 
     // Planning entities
@@ -106,6 +107,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.HasPostgresEnum<RiskLevel>();
         builder.HasPostgresEnum<PriorityLevel>();
         builder.HasPostgresEnum<SeasonStatus>();
+        builder.HasPostgresEnum<DistributionStatus>();
         builder.HasPostgresExtension("postgis")
             .HasPostgresExtension("uuid-ossp");
 

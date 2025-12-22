@@ -46,9 +46,11 @@ public class GetClusterAvailableSeasonsQueryHandler
             var currentYear = currentSeasonResult.year;
 
             // Get all groups for this cluster
-            var groups = await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.ClusterId == cluster.Id);
-            var groupsList = groups.ToList();
+            var groupsList = await _unitOfWork.Repository<Group>()
+                .GetQueryable()
+                .Include(g => g.YearSeason)
+                .Where(g => g.ClusterId == cluster.Id)
+                .ToListAsync(cancellationToken);
 
             var response = new ClusterSeasonsResponse();
 
@@ -56,7 +58,7 @@ public class GetClusterAvailableSeasonsQueryHandler
             if (currentSeason != null)
             {
                 var currentGroups = groupsList
-                    .Where(g => g.SeasonId == currentSeason.Id && g.Year == currentYear)
+                    .Where(g => g.YearSeason != null && g.YearSeason.SeasonId == currentSeason.Id && g.Year == currentYear)
                     .ToList();
 
                 // Get selection progress for current season
@@ -94,7 +96,7 @@ public class GetClusterAvailableSeasonsQueryHandler
                 var year = DetermineYearForSeason(season);
 
                 var seasonGroups = groupsList
-                    .Where(g => g.SeasonId == season.Id && g.Year == year)
+                    .Where(g => g.YearSeason != null && g.YearSeason.SeasonId == season.Id && g.Year == year)
                     .ToList();
 
                 if (!request.IncludeEmpty && !seasonGroups.Any())

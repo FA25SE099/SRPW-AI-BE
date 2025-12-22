@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationPlanFeature.Queries;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetByPlotId;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationPlanById;
@@ -39,22 +40,11 @@ public class CultivationPlanController : ControllerBase
     [Authorize] // Require authentication
     public async Task<IActionResult> GetCultivationsByPlot(Guid plotId)
     {
-        // Check if user is authenticated
-        if (!_currentUser.Id.HasValue)
+        if (_currentUser.Id == null)
         {
-            return Unauthorized(new { 
-                succeeded = false,
-                message = "User not authenticated. Please login first.",
-                errors = new[] { "Unauthorized" }
-            });
+            return Unauthorized(Result<object>.Failure("User not authenticated", "AuthenticationRequired"));
         }
-
-        var query = new GetCultivationsForPlotQuery 
-        { 
-            PlotId = plotId, 
-            FarmerId = _currentUser.Id.Value 
-        };
-        
+        var query = new GetCultivationsForPlotQuery { PlotId = plotId, FarmerId = (Guid)_currentUser.Id };
         var result = await _mediator.Send(query);
 
         if (!result.Succeeded)

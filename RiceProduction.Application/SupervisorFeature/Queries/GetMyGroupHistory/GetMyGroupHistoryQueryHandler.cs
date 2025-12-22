@@ -51,14 +51,14 @@ public class GetMyGroupHistoryQueryHandler
 
             if (!request.IncludeCurrentSeason && currentSeason != null)
             {
-                groupsList = groupsList.Where(g => g.SeasonId != currentSeason.Id).ToList();
+                groupsList = groupsList.Where(g => g.YearSeason?.SeasonId != currentSeason.Id).ToList();
             }
 
             var history = new List<GroupHistorySummary>();
 
             foreach (var group in groupsList)
             {
-                var season = allSeasons.FirstOrDefault(s => s.Id == group.SeasonId);
+                var season = allSeasons.FirstOrDefault(s => s.Id == group.YearSeason?.SeasonId);
                 if (season == null) continue;
 
                 var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken);
@@ -67,10 +67,10 @@ public class GetMyGroupHistoryQueryHandler
                     .ListAsync(pp => pp.GroupId == group.Id);
 
                 RiceVariety? riceVariety = null;
-                if (group.RiceVarietyId.HasValue)
+                if (group.YearSeason?.RiceVarietyId != null)
                 {
                     riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                        .FindAsync(rv => rv.Id == group.RiceVarietyId.Value);
+                        .FindAsync(rv => rv.Id == group.YearSeason.RiceVarietyId);
                 }
 
                 Cluster? cluster = null;
