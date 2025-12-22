@@ -294,6 +294,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             emergencyReport.ResolvedBy = expertId;
             emergencyReport.ResolvedAt = DateTime.UtcNow;
             emergencyReport.ResolutionNotes =
+                $"Emergency resolved with notes from expert: '{request.ResolutionReason}' " +
                 $"Emergency resolved by creating version '{newVersion.VersionName}' with {cultivationTasks.Count} tasks " +
                 $"on plot {plot.SoThua}/{plot.SoTo} ({plotArea:F2} ha).";
 
