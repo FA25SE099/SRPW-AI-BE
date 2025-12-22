@@ -128,6 +128,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     includeProperties: q => q
                         .Include(ct => ct.FarmLogs)
                             .ThenInclude(fl => fl.FarmLogMaterials)
+                        .Include(ct => ct.LateFarmerRecords) // Include late records for copying
                 );
             }
 
@@ -220,6 +221,12 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     oldCultivationTasks,
                     cultivationTasks,
                     plotCultivation.Id,
+                    cancellationToken);
+                
+                // Also copy late farmer records to new tasks
+                await CopyLateFarmerRecordsToNewTasks(
+                    oldCultivationTasks,
+                    cultivationTasks,
                     cancellationToken);
             }
 
@@ -378,6 +385,95 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         {
             _logger.LogError(ex, 
                 "Error copying farm logs to new tasks. Continuing with resolution.");
+            // Don't throw - this is a nice-to-have feature, shouldn't block the resolution
+        }
+    }
+
+    /// <summary>
+    /// Copies late farmer records from old cultivation tasks to new cultivation tasks based on ProductionPlanTaskId matching.
+    /// This preserves the lateness history when creating new versions.
+    /// </summary>
+    private async Task CopyLateFarmerRecordsToNewTasks(
+        IReadOnlyList<CultivationTask> oldCultivationTasks,
+        List<CultivationTask> newCultivationTasks,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var newLateRecords = new List<LateFarmerRecord>();
+            int copiedRecordsCount = 0;
+
+            foreach (var newTask in newCultivationTasks)
+            {
+                // Skip tasks without ProductionPlanTaskId
+                if (!newTask.ProductionPlanTaskId.HasValue)
+                {
+                    _logger.LogWarning(
+                        "New task {TaskId} has no ProductionPlanTaskId. Skipping late record copy.",
+                        newTask.Id);
+                    continue;
+                }
+
+                // Find the old cultivation task with the same ProductionPlanTaskId
+                var oldTask = oldCultivationTasks.FirstOrDefault(
+                    ot => ot.ProductionPlanTaskId.HasValue && 
+                          ot.ProductionPlanTaskId.Value == newTask.ProductionPlanTaskId.Value);
+
+                if (oldTask == null)
+                {
+                    _logger.LogInformation(
+                        "No old task found with ProductionPlanTaskId {ProductionPlanTaskId} for new task {NewTaskId}. Nothing to copy.",
+                        newTask.ProductionPlanTaskId.Value, newTask.Id);
+                    continue;
+                }
+
+                if (!oldTask.LateFarmerRecords.Any())
+                {
+                    _logger.LogInformation(
+                        "Old task {OldTaskId} has no late records. Nothing to copy for new task {NewTaskId}.",
+                        oldTask.Id, newTask.Id);
+                    continue;
+                }
+
+                // Copy all late farmer records from old task to new task
+                foreach (var oldRecord in oldTask.LateFarmerRecords)
+                {
+                    var newRecord = new LateFarmerRecord
+                    {
+                        FarmerId = oldRecord.FarmerId,
+                        CultivationTaskId = newTask.Id,
+                        RecordedAt = oldRecord.RecordedAt,
+                        Notes = oldRecord.Notes + " [Copied from previous version]",
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    newLateRecords.Add(newRecord);
+                    copiedRecordsCount++;
+                }
+
+                _logger.LogInformation(
+                    "Copied {Count} late records from old task {OldTaskId} to new task {NewTaskId}",
+                    oldTask.LateFarmerRecords.Count, oldTask.Id, newTask.Id);
+            }
+
+            if (newLateRecords.Any())
+            {
+                await _unitOfWork.Repository<LateFarmerRecord>().AddRangeAsync(newLateRecords);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "Successfully copied total {Count} late farmer records to {TaskCount} new tasks",
+                    copiedRecordsCount, newCultivationTasks.Count);
+            }
+            else
+            {
+                _logger.LogInformation("No late farmer records were copied - no matching old tasks with records found");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, 
+                "Error copying late farmer records to new tasks. Continuing with resolution.");
             // Don't throw - this is a nice-to-have feature, shouldn't block the resolution
         }
     }
