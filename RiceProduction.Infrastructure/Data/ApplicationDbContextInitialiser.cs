@@ -134,7 +134,7 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
             await SeedDemoClusterAndFarmersAsync();
-            await SeedEmergencyReportsAsync();
+            //await SeedEmergencyReportsAsync();
 
         }
         public async Task TrySeedAsync()
@@ -149,7 +149,7 @@ namespace RiceProduction.Infrastructure.Data
             await SeedStandardPlanDataAsync();
             await SeedClustersAndGroupsAsync(); // Consolidated
             await SeedCompletedPlansForPastGroups();
-            await SeedEmergencyReportsAsync();
+            //await SeedEmergencyReportsAsync();
             await SeedUavOrdersAsync();
         }
 
@@ -268,6 +268,7 @@ namespace RiceProduction.Infrastructure.Data
                 ("Farmer", "farmer3@ricepro.com", "farmer3@ricepro.com", "Farmer123!", "Le Thi C", "+1234567812", null, null, null, 6.0m, "Demo Area C", null, null, null),
                 ("Farmer", "farmer4@ricepro.com", "farmer4@ricepro.com", "Farmer123!", "Pham Van D", "+1234567813", null, null, null, 3.8m, "Demo Area D", null, null, null),
                 ("Farmer", "farmer5@ricepro.com", "farmer5@ricepro.com", "Farmer123!", "Hoang Thi E", "+1234567814", null, null, null, 5.5m, "Demo Area E", null, null, null),
+                ("UavVendor", "uav1@ricepro.com", "uav1@ricepro.com", "Uav123!", "Team UAV", "+1234567815", null, null, null, null, null, "SkyTech Drones", "Alex Thompson", 50.0m),
 
             };
 
