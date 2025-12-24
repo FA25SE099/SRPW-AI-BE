@@ -32,10 +32,11 @@ public class SupervisorController : Controller
     private readonly ILogger<SupervisorController> _logger;
     private readonly IUser _currentUser;
 
-    public SupervisorController(IMediator mediator, ILogger<SupervisorController> logger)
+    public SupervisorController(IMediator mediator, ILogger<SupervisorController> logger, IUser currentUser)
     {
         _mediator = mediator;
         _logger = logger;
+        _currentUser = currentUser;
     }
 
     [HttpPost("get-supervisor-by-clustermanager-paging")]
