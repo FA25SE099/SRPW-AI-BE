@@ -15,7 +15,7 @@ public class GetUavOrderDetailQuery : IRequest<Result<UavOrderDetailResponse>>
     /// <summary>
     /// ID của Vendor hiện tại (dùng để xác thực quyền sở hữu Order).
     /// </summary>
-    public Guid VendorId { get; set; }
+    public Guid? VendorId { get; set; }
 }
 
 public class GetUavOrderDetailQueryValidator : AbstractValidator<GetUavOrderDetailQuery>
