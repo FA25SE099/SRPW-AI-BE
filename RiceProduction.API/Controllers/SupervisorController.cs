@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.SupervisorRequests;
 using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
@@ -15,6 +16,7 @@ using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSeason;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPlanDetails;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorAvailableSeasons;
+using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorProfile;
 using RiceProduction.Application.SupervisorFeature.Queries.ValidatePolygonArea;
 using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
@@ -28,6 +30,7 @@ public class SupervisorController : Controller
 {
     private readonly IMediator _mediator;
     private readonly ILogger<SupervisorController> _logger;
+    private readonly IUser _currentUser;
 
     public SupervisorController(IMediator mediator, ILogger<SupervisorController> logger)
     {
@@ -81,6 +84,34 @@ public class SupervisorController : Controller
         {
             return BadRequest(result);
         }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get current supervisor's profile information
+    /// </summary>
+    [HttpGet("profile")]
+    [Authorize(Roles = "Supervisor")]
+    public async Task<ActionResult<Result<SupervisorProfileResponse>>> GetMyProfile()
+    {
+        var supervisorId = _currentUser.Id;
+        if (supervisorId == Guid.Empty)
+        {
+            return Unauthorized(Result<SupervisorProfileResponse>.Failure("User not authenticated"));
+        }
+
+        var query = new GetSupervisorProfileQuery
+        {
+            SupervisorId = supervisorId.Value
+        };
+
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
+        {
+            return NotFound(result);
+        }
+
         return Ok(result);
     }
 
