@@ -30,6 +30,11 @@ public class ResolveReportCommand : IRequest<Result<Guid>>
 
 public class BaseCultivationTaskRequest
 {
+    /// <summary>
+    /// The existing CultivationTask ID that this emergency task is based on.
+    /// Backend will look up this task's ProductionPlanTaskId for stage information.
+    /// After creating the new task, UAV assignments will be updated to reference the new task ID.
+    /// </summary>
     public Guid? CultivationPlanTaskId { get; set; }
 
     [MaxLength(255)]

@@ -22,6 +22,8 @@
 	  <Folder Include="GroupFeature\Commands\" />
 	  <Folder Include="CultivationFeature\Commands\" />
 	  <Folder Include="CultivationFeature\Queries\" />
+	  <Folder Include="MaterialFeature\Queries\CalculateCostByPlotAndStandardPlan\" />
+	  <Folder Include="MaterialFeature\Queries\CalculateCostByStandardPlanAndArea\" />
 	  <Folder Include="RiceVarietyFeature\Queries\GetAllRiceVarietyBySeason\" />
 	</ItemGroup>
 

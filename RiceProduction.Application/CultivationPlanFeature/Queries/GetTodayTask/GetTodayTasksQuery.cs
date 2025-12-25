@@ -8,7 +8,7 @@ namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetTodayTask
 public class GetTodayTasksQuery : IRequest<Result<List<TodayTaskResponse>>>, ICacheable
 {
     public Guid FarmerId { get; set; }
-    public Guid? PlotId { get; set; }
+    public Guid? PlotCultivationId { get; set; }
 
     public RiceProduction.Domain.Enums.TaskStatus? StatusFilter { get; set; }
     

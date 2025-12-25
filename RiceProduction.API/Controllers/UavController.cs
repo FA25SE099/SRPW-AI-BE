@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.UAVFeature.Commands.ReportServiceOrder;
 using RiceProduction.Application.UAVFeature.Queries.GeUAVOrderDetail;
+using RiceProduction.Application.UAVFeature.Queries.GetClusterServiceOrdersByManager;
 using RiceProduction.Application.UAVFeature.Queries.GetVendorServiceOrders;
 using System.Collections.Generic;
 using RiceProduction.Application.UAVFeature.Commands.CreateUavOrder;
@@ -44,20 +45,40 @@ public class UavController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpGet("cluster-managers")]
+    public async Task<IActionResult> GetClusterServiceOrdersByClusterManagerId([FromQuery] GetClusterServiceOrdersByManagerQuery query)
+    {
+        var currentUserId = _currentUser.Id;
+        if (currentUserId == null)
+        {
+            return Unauthorized(PagedResult<List<UavServiceOrderResponse>>.Failure("User is not authenticated.", "Unauthorized"));
+        }
+
+        query.ClusterManagerId = currentUserId.Value;
+
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
     
     [HttpGet("{orderId}")]
     public async Task<IActionResult> GetUavOrderDetail(Guid orderId)
     {
-        var vendorId = _currentUser.Id;
-        if (vendorId == null)
-        {
-            return Unauthorized(Result<UavOrderDetailResponse>.Failure("Vendor is not authenticated.", "Unauthorized"));
-        }
+        //var vendorId = _currentUser.Id;
+        //if (vendorId == null)
+        //{
+        //    return Unauthorized(Result<UavOrderDetailResponse>.Failure("Vendor is not authenticated.", "Unauthorized"));
+        //}
 
         var query = new GetUavOrderDetailQuery 
         { 
             OrderId = orderId, 
-            VendorId = vendorId.Value 
+            //VendorId = vendorId.Value 
         };
         
         var result = await _mediator.Send(query);

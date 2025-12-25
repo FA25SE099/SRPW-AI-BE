@@ -134,8 +134,9 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialDataAsync();
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
+            await SeedEmergencyProtocolDataAsync();
             await SeedDemoClusterAndFarmersAsync();
-            await SeedEmergencyReportsAsync();
+            //await SeedEmergencyReportsAsync();
 
         }
         public async Task TrySeedAsync()
@@ -148,9 +149,10 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialDataAsync();
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
+            await SeedEmergencyProtocolDataAsync();
             await SeedClustersAndGroupsAsync(); // Consolidated
             await SeedCompletedPlansForPastGroups();
-            await SeedEmergencyReportsAsync();
+            //await SeedEmergencyReportsAsync();
             await SeedUavOrdersAsync();
         }
 
@@ -269,6 +271,7 @@ namespace RiceProduction.Infrastructure.Data
                 ("Farmer", "farmer3@ricepro.com", "farmer3@ricepro.com", "Farmer123!", "Le Thi C", "+1234567812", null, null, null, 6.0m, "Demo Area C", null, null, null),
                 ("Farmer", "farmer4@ricepro.com", "farmer4@ricepro.com", "Farmer123!", "Pham Van D", "+1234567813", null, null, null, 3.8m, "Demo Area D", null, null, null),
                 ("Farmer", "farmer5@ricepro.com", "farmer5@ricepro.com", "Farmer123!", "Hoang Thi E", "+1234567814", null, null, null, 5.5m, "Demo Area E", null, null, null),
+                ("UavVendor", "uav1@ricepro.com", "uav1@ricepro.com", "Uav123!", "Team UAV", "+1234567815", null, null, null, null, null, "SkyTech Drones", "Alex Thompson", 50.0m),
 
             };
 
@@ -1641,6 +1644,170 @@ namespace RiceProduction.Infrastructure.Data
         //    await _context.Set<StandardPlanTaskMaterial>().AddRangeAsync(allTaskMaterials);
         //    await _context.SaveChangesAsync();
         //}
+        #endregion
+
+        #region Emergency Protocol Seeding
+        private async Task SeedEmergencyProtocolDataAsync()
+        {
+            if (_context.Set<EmergencyProtocol>().Any(p => p.PlanName.Contains("Khẩn Cấp")))
+            {
+                _logger.LogInformation("Emergency protocols already exist - skipping");
+                return;
+            }
+
+            var longCategory = await _context.RiceVarietyCategories.FirstOrDefaultAsync(c => c.CategoryCode == "long");
+            if (longCategory == null)
+            {
+                _logger.LogError("Long category not found for emergency protocol");
+                return;
+            }
+
+            var expert = await _context.Set<AgronomyExpert>().FirstOrDefaultAsync(e => e.IsActive);
+            if (expert == null)
+            {
+                _logger.LogError("No active expert found for emergency protocol");
+                return;
+            }
+
+            // Create Emergency Protocol for Pest Outbreak
+            await CreateEmergencyProtocolForPestOutbreak(longCategory.Id, expert.Id);
+
+            _logger.LogInformation("Seeded emergency protocols");
+        }
+
+        private async Task CreateEmergencyProtocolForPestOutbreak(Guid categoryId, Guid expertId)
+        {
+            var emergencyProtocol = new EmergencyProtocol
+            {
+                Id = Guid.NewGuid(),
+                CategoryId = categoryId,
+                ExpertId = expertId,
+                PlanName = "Quy Trình Khẩn Cấp - Rầy Nâu Bùng Phát",
+                Description = "Quy trình xử lý khẩn cấp khi phát hiện rầy nâu bùng phát với mật độ cao",
+                TotalDurationDays = 7,
+                CreatedBy = expertId,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                LastModified = DateTime.UtcNow
+            };
+
+            await _context.Set<EmergencyProtocol>().AddAsync(emergencyProtocol);
+            await _context.SaveChangesAsync();
+
+            // Create emergency stage
+            var emergencyStage = new StandardPlanStage
+            {
+                Id = Guid.NewGuid(),
+                StageName = "Xử lý dịch hại khẩn cấp",
+                StandardPlanId = emergencyProtocol.Id,
+                ExpectedDurationDays = 7,
+                SequenceOrder = 1,
+                IsMandatory = true,
+                Notes = "Giai đoạn xử lý khẩn cấp rầy nâu, yêu cầu thực hiện ngay lập tức",
+                CreatedAt = DateTime.UtcNow,
+                LastModified = DateTime.UtcNow
+            };
+
+            await _context.Set<StandardPlanStage>().AddAsync(emergencyStage);
+            await _context.SaveChangesAsync();
+
+            // Create 5 emergency tasks
+            var emergencyTasks = new List<StandardPlanTask>();
+            var taskMaterials = new List<StandardPlanTaskMaterial>();
+
+            // Task 1: Immediate inspection
+            var inspectionTask = CreateTask(
+                emergencyStage.Id,
+                "Kiểm tra khẩn cấp đồng ruộng",
+                "- Khảo sát toàn bộ diện tích bị ảnh hưởng\r\n- Đánh giá mức độ thiệt hại và mật độ rầy nâu\r\n- Ghi nhận vị trí các điểm nóng",
+                0, 1, TaskType.PestControl, TaskPriority.Critical, 1);
+            emergencyTasks.Add(inspectionTask);
+
+            // Task 2: Emergency pesticide application - Round 1
+            var sprayRound1Task = CreateTask(
+                emergencyStage.Id,
+                "Phun thuốc trừ sâu đợt 1 (Ngày 1)",
+                "- Phun thuốc trừ rầy nâu liều lượng cao\r\n- Tập trung vào các khu vực có mật độ cao nhất\r\n- Sử dụng Villa Fuji kết hợp DT Aba",
+                1, 1, TaskType.PestControl, TaskPriority.Critical, 2);
+            emergencyTasks.Add(sprayRound1Task);
+            taskMaterials.Add(CreateTaskMaterial(sprayRound1Task.Id, MaterialIds.VillaFuji, 2000m)); // Double dose
+            taskMaterials.Add(CreateTaskMaterial(sprayRound1Task.Id, MaterialIds.DTAba, 960m)); // Double dose
+
+            // Task 3: Monitoring
+            var monitoringTask = CreateTask(
+                emergencyStage.Id,
+                "Giám sát hiệu quả (Ngày 2-3)",
+                "- Theo dõi mật độ rầy nâu sau phun thuốc đợt 1\r\n- Đánh giá tình trạng cây lúa\r\n- Xác định các khu vực cần xử lý bổ sung",
+                2, 2, TaskType.PestControl, TaskPriority.High, 3);
+            emergencyTasks.Add(monitoringTask);
+
+            // Task 4: Emergency pesticide application - Round 2
+            var sprayRound2Task = CreateTask(
+                emergencyStage.Id,
+                "Phun thuốc trừ sâu đợt 2 (Ngày 4)",
+                "- Phun thuốc trừ rầy nâu bổ sung cho các khu vực còn mật độ cao\r\n- Sử dụng Rusem Super kết hợp Upper 400SC",
+                4, 1, TaskType.PestControl, TaskPriority.Critical, 4);
+            emergencyTasks.Add(sprayRound2Task);
+            taskMaterials.Add(CreateTaskMaterial(sprayRound2Task.Id, MaterialIds.RusemSuper, 150m)); // Double dose
+            taskMaterials.Add(CreateTaskMaterial(sprayRound2Task.Id, MaterialIds.Upper400SC, 720m)); // Double dose
+
+            // Task 5: Final assessment and recovery support
+            var recoveryTask = CreateTask(
+                emergencyStage.Id,
+                "Đánh giá và hỗ trợ phục hồi (Ngày 5-7)",
+                "- Đánh giá tổng thể tình hình sau xử lý\r\n- Bón phân phục hồi cho cây lúa\r\n- Lập kế hoạch giám sát dài hạn",
+                5, 3, TaskType.Fertilization, TaskPriority.Normal, 5);
+            emergencyTasks.Add(recoveryTask);
+            taskMaterials.Add(CreateTaskMaterial(recoveryTask.Id, MaterialIds.Ure, 100m)); // Recovery fertilizer
+            taskMaterials.Add(CreateTaskMaterial(recoveryTask.Id, new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"), 1000m)); // Amino Gold for recovery
+
+            await _context.Set<StandardPlanTask>().AddRangeAsync(emergencyTasks);
+            await _context.SaveChangesAsync();
+
+            await _context.Set<StandardPlanTaskMaterial>().AddRangeAsync(taskMaterials);
+            await _context.SaveChangesAsync();
+
+            // Create threshold for triggering this emergency protocol
+            var threshold = new Threshold
+            {
+                Id = Guid.NewGuid(),
+                EmergencyProtocolId = emergencyProtocol.Id,
+
+                // Pest threshold settings
+                PestAffectType = "Rầy nâu (Brown Planthopper)",
+                PestSeverityLevel = "Critical",
+                PestAreaThresholdPercent = 20.0m, // Trigger if 20% area affected
+                PestPopulationThreshold = "1000 con/m²", // Population density threshold
+                PestDamageThresholdPercent = 15.0m, // 15% damage threshold
+                PestGrowthStage = "Đẻ nhánh đến trỗ", // Tillering to heading stage
+                PestThresholdNotes = "Kích hoạt khi mật độ rầy nâu vượt 1000 con/m² hoặc thiệt hại > 15% diện tích",
+
+                // Weather threshold (optional, can be null for pest-only)
+                WeatherEventType = null,
+                WeatherIntensityLevel = null,
+                WeatherMeasurementThreshold = null,
+                WeatherMeasurementUnit = null,
+                WeatherThresholdOperator = null,
+                WeatherDurationDaysThreshold = null,
+                WeatherThresholdNotes = null,
+
+                // Common fields
+                ApplicableSeason = "Tất cả các vụ", // All seasons
+                RiceVarietyId = null, // Applies to all varieties
+                Priority = 1, // Highest priority
+                GeneralNotes = "Quy trình khẩn cấp này được kích hoạt tự động khi hệ thống phát hiện mật độ rầy nâu vượt ngưỡng nguy hiểm",
+
+                CreatedAt = DateTime.UtcNow,
+                LastModified = DateTime.UtcNow
+            };
+
+            await _context.Set<Threshold>().AddAsync(threshold);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Created Emergency Protocol {ProtocolId} '{ProtocolName}' with {TaskCount} tasks and 1 threshold",
+                emergencyProtocol.Id, emergencyProtocol.PlanName, emergencyTasks.Count);
+        }
         #endregion
 
         #region Cluster and Group Seeding (Consolidated)

@@ -36,7 +36,8 @@ public class GetUavOrderDetailQueryHandler : IRequestHandler<GetUavOrderDetailQu
         {
             // Tải Order với tất cả các mối quan hệ sâu, bao gồm các Plot Assignments
             var order = await _unitOfWork.Repository<UavServiceOrder>().FindAsync(
-                match: o => o.Id == request.OrderId && o.UavVendorId == request.VendorId,
+                match: o => o.Id == request.OrderId ,
+                //&& o.UavVendorId == request.VendorId,
                 includeProperties: q => q
                     .Include(o => o.UavVendor)
                     .Include(o => o.Creator)

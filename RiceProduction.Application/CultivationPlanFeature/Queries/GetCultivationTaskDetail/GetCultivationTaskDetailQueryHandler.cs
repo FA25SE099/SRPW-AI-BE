@@ -99,6 +99,8 @@ public class GetCultivationTaskDetailQueryHandler :
                 VersionOrder = task.Version?.VersionOrder ?? 1,
                 
                 PlannedScheduledDate = plannedTask.ScheduledDate,
+                PlannedScheduledEndDate = plannedTask.ScheduledEndDate.Value,
+
                 ActualStartDate = task.ActualStartDate,
                 ActualEndDate = task.ActualEndDate,
 

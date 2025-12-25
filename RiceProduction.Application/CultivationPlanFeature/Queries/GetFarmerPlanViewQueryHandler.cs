@@ -22,11 +22,11 @@ public class GetFarmerPlanViewQueryHandler :
     {
         try
         {
-            // 1. Tải PlotCultivation và Active Version
+            // 1. Load PlotCultivation with CultivationVersions
             var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
                 pc => pc.Id == request.PlotCultivationId,
                 includeProperties: q => q
-                    .Include(pc => pc.CultivationVersions.Where(v => v.IsActive)) // Load Active Version
+                    .Include(pc => pc.CultivationVersions)
                     .Include(pc => pc.Plot)
             );
 
@@ -35,36 +35,47 @@ public class GetFarmerPlanViewQueryHandler :
                 return Result<FarmerPlanViewResponse>.Failure($"Plot Cultivation with ID {request.PlotCultivationId} not found.", "PlotCultivationNotFound");
             }
             
-            var activeVersion = plotCultivation.CultivationVersions.FirstOrDefault();
-            var activeVersionId = activeVersion?.Id;
-            var activeVersionName = activeVersion?.VersionName ?? "Original";
+            // Get the latest version (highest VersionOrder) - updated to match GetPlotCultivationByGroupAndPlot pattern
+            var latestVersion = plotCultivation.CultivationVersions
+                .OrderByDescending(v => v.VersionOrder)
+                .FirstOrDefault();
 
-            if (!activeVersionId.HasValue)
+            var latestVersionId = latestVersion?.Id;
+            var latestVersionName = latestVersion?.VersionName ?? "Original";
+
+            if (!latestVersionId.HasValue)
             {
-                // Xử lý trường hợp không có Version nào được đánh dấu là Active (có thể là Original Plan)
-                _logger.LogWarning("No active version found for PlotCultivation {PCId}", request.PlotCultivationId);
+                // Handle case where no version exists
+                _logger.LogWarning("No version found for PlotCultivation {PCId}", request.PlotCultivationId);
             }
             
-            // 2. Tải CultivationTasks chỉ thuộc về Version đang hoạt động/mới nhất
+            // 2. Load CultivationTasks for the latest version
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: ct => 
                     ct.PlotCultivationId == request.PlotCultivationId && 
-                    (!activeVersionId.HasValue || ct.VersionId == activeVersionId.Value), // Lọc theo VersionId nếu có
-                orderBy: q => q.OrderBy(ct => ct.ProductionPlanTask.ProductionStage.SequenceOrder)
+                    ct.VersionId == latestVersionId,
+                orderBy: q => q.OrderBy(ct => ct.ProductionPlanTask!.ProductionStage!.SequenceOrder)
                               .ThenBy(ct => ct.ExecutionOrder),
+#pragma warning disable CS8602 // Dereference of a possibly null reference
                 includeProperties: q => q
                     .Include(ct => ct.CultivationTaskMaterials).ThenInclude(ctm => ctm.Material) 
                     .Include(ct => ct.ProductionPlanTask).ThenInclude(ppt => ppt.ProductionStage).ThenInclude(ps => ps.ProductionPlan)
                     .Include(ct => ct.ProductionPlanTask).ThenInclude(ppt => ppt.ProductionPlanTaskMaterials).ThenInclude(pptm => pptm.Material)
+#pragma warning restore CS8602 // Dereference of a possibly null reference
             );
 
             if (!tasks.Any())
             {
-                return Result<FarmerPlanViewResponse>.Failure($"No active tasks found for Plot Cultivation ID {request.PlotCultivationId}.", "TasksNotFound");
+                return Result<FarmerPlanViewResponse>.Failure($"No tasks found for Plot Cultivation ID {request.PlotCultivationId}.", "TasksNotFound");
             }
 
             var firstTask = tasks.First();
-            var plan = firstTask.ProductionPlanTask.ProductionStage.ProductionPlan;
+            var plan = firstTask.ProductionPlanTask?.ProductionStage?.ProductionPlan;
+
+            if (plan == null)
+            {
+                return Result<FarmerPlanViewResponse>.Failure($"Production plan not found for Plot Cultivation ID {request.PlotCultivationId}.", "PlanNotFound");
+            }
 
             var response = new FarmerPlanViewResponse
             {
@@ -74,14 +85,16 @@ public class GetFarmerPlanViewQueryHandler :
                 BasePlantingDate = plan.BasePlantingDate,
                 PlanStatus = plan.Status,
                 PlotArea = plotCultivation.Area ?? 0M,
-                ActiveVersionName = activeVersionName
+                ActiveVersionName = latestVersionName
             };
 
             var stagesMap = new Dictionary<Guid, FarmerPlanStageViewResponse>();
 
             foreach (var task in tasks)
             {
-                var stage = task.ProductionPlanTask.ProductionStage;
+                var stage = task.ProductionPlanTask?.ProductionStage;
+                
+                if (stage == null) continue;
                 
                 if (!stagesMap.ContainsKey(stage.Id))
                 {
@@ -95,22 +108,22 @@ public class GetFarmerPlanViewQueryHandler :
                 var taskResponse = new FarmerCultivationTaskResponse
                 {
                     Id = task.Id,
-                    TaskName = task.CultivationTaskName ?? task.ProductionPlanTask.TaskName,
-                    Description = task.Description ?? task.ProductionPlanTask.Description,
+                    TaskName = task.CultivationTaskName ?? task.ProductionPlanTask!.TaskName,
+                    Description = task.Description ?? task.ProductionPlanTask!.Description,
                     TaskType = task.TaskType.GetValueOrDefault(TaskType.Harvesting),
-                    ScheduledDate = task.ProductionPlanTask.ScheduledDate,
+                    ScheduledDate = task.ProductionPlanTask!.ScheduledDate,
                     Status = task.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft),
-                    Priority = task.ProductionPlanTask.Priority,
+                    Priority = task.ProductionPlanTask!.Priority,
                     IsContingency = task.IsContingency,
                     ActualMaterialCost = task.ActualMaterialCost,
-                    VersionName = activeVersionName // Gán tên Version
+                    VersionName = latestVersionName
                 };
 
                 // Ánh xạ và So sánh Vật tư
                 var materialsMap = new Dictionary<Guid, FarmerMaterialComparisonResponse>();
 
                 // 1. Thêm vật tư Kế hoạch (Planned)
-                foreach (var plannedMat in task.ProductionPlanTask.ProductionPlanTaskMaterials)
+                foreach (var plannedMat in task.CultivationTaskMaterials)
                 {
                     if (!materialsMap.ContainsKey(plannedMat.MaterialId))
                     {
@@ -121,8 +134,10 @@ public class GetFarmerPlanViewQueryHandler :
                             MaterialUnit = plannedMat.Material.Unit
                         };
                     }
-                    materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = plannedMat.QuantityPerHa;
-                    materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.EstimatedAmount.GetValueOrDefault(0);
+                    //materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = plannedMat.QuantityPerHa;
+                    //materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.EstimatedAmount.GetValueOrDefault(0);
+                    materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = Math.Ceiling(plannedMat.ActualQuantity/plotCultivation.Plot.Area);
+                    materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.ActualCost;
                 }
 
                 // 2. Thêm vật tư Thực tế (Actual)
