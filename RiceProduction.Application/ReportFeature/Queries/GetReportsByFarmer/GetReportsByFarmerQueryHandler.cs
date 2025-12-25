@@ -74,6 +74,8 @@ public class GetReportsByFarmerQueryHandler : IRequestHandler<GetReportsByFarmer
                 .Include(r => r.Cluster)
                 .Include(r => r.AffectedTask)
                     .ThenInclude(t => t.ProductionPlanTask)
+                .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.Version)
                 .AsQueryable();
 
             // Apply filters
@@ -152,7 +154,8 @@ public class GetReportsByFarmerQueryHandler : IRequestHandler<GetReportsByFarmer
                 AffectedCultivationTaskId = r.AffectedCultivationTaskId,
                 AffectedTaskName = r.AffectedTask?.CultivationTaskName 
                     ?? r.AffectedTask?.ProductionPlanTask?.TaskName,
-                AffectedTaskType = r.AffectedTask?.TaskType?.ToString()
+                AffectedTaskType = r.AffectedTask?.TaskType?.ToString(),
+                AffectedTaskVersionName = r.AffectedTask?.Version?.VersionName
             }).ToList();
 
             _logger.LogInformation(

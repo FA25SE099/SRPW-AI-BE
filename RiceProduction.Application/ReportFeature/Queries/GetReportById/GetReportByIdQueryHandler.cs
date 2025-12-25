@@ -43,6 +43,8 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 .Include(r => r.Cluster)
                      .Include(r => r.AffectedTask)
                     .ThenInclude(t => t.ProductionPlanTask)
+                .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.Version)
                 .FirstOrDefaultAsync(r => r.Id == request.ReportId, cancellationToken);
 
             if (report == null)
@@ -82,7 +84,8 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 AffectedCultivationTaskId = report.AffectedCultivationTaskId,
                 AffectedTaskName = report.AffectedTask?.CultivationTaskName
                     ?? report.AffectedTask?.ProductionPlanTask?.TaskName,
-                AffectedTaskType = report.AffectedTask?.TaskType?.ToString()
+                AffectedTaskType = report.AffectedTask?.TaskType?.ToString(),
+                AffectedTaskVersionName = report.AffectedTask?.Version?.VersionName
             };
 
             return Result<ReportItemResponse>.Success(response);

@@ -42,4 +42,5 @@ public class ReportItemResponse
     public Guid? AffectedCultivationTaskId { get; set; }
     public string? AffectedTaskName { get; set; }
     public string? AffectedTaskType { get; set; }
+    public string? AffectedTaskVersionName { get; set; }
 }
