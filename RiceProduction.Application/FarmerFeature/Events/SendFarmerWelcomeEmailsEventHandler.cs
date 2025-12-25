@@ -26,8 +26,11 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
     {
         try
         {
+            // Filter farmers with valid email addresses and deduplicate by email
             var farmersWithEmail = notification.ImportedFarmers
                 .Where(f => !string.IsNullOrWhiteSpace(f.Email))
+                .GroupBy(f => f.Email!.ToLowerInvariant()) // Group by email (case-insensitive)
+                .Select(g => g.First()) // Take only the first farmer for each unique email
                 .ToList();
 
             if (!farmersWithEmail.Any())
@@ -36,7 +39,17 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
                 return;
             }
 
-            _logger.LogInformation("Queuing welcome emails for {Count} farmers", farmersWithEmail.Count);
+            var totalFarmers = notification.ImportedFarmers.Count(f => !string.IsNullOrWhiteSpace(f.Email));
+            if (totalFarmers != farmersWithEmail.Count)
+            {
+                _logger.LogWarning(
+                    "Deduplicated {DuplicateCount} farmers with duplicate email addresses. Original: {Total}, Unique: {Unique}",
+                    totalFarmers - farmersWithEmail.Count,
+                    totalFarmers,
+                    farmersWithEmail.Count);
+            }
+
+            _logger.LogInformation("Queuing welcome emails for {Count} unique email addresses", farmersWithEmail.Count);
 
             
             _backgroundTaskQueue.QueueEmailTask(async (ct) =>
@@ -68,6 +81,8 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
                             Priority = 1
                         });
                     }
+
+                    logger.LogInformation("Sending {Count} welcome emails via bulk email service", emailRequests.Count);
 
                     var emailResult = await emailService.SendBulkEmailAsync(emailRequests, ct);
 

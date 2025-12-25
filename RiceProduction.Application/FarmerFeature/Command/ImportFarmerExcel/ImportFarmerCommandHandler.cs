@@ -60,11 +60,35 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
             // Publish event for async email sending (non-blocking)
             if (result.SuccessCount > 0 && result.ImportedFarmers.Any())
             {
+                // Deduplicate by email, excluding null/empty emails
+                var farmersWithEmail = result.ImportedFarmers
+                    .Where(f => !string.IsNullOrWhiteSpace(f.Email))
+                    .ToList();
+
+                var uniqueFarmers = farmersWithEmail
+                    .GroupBy(f => f.Email!.ToLowerInvariant())
+                    .Select(g => g.First())
+                    .ToList();
+
+                if (farmersWithEmail.Count != uniqueFarmers.Count)
+                {
+                    _logger.LogWarning(
+                        "Found {DuplicateCount} duplicate email addresses in imported farmers. " +
+                        "Total with email: {TotalWithEmail}, Unique emails: {UniqueCount}",
+                        farmersWithEmail.Count - uniqueFarmers.Count,
+                        farmersWithEmail.Count,
+                        uniqueFarmers.Count);
+                }
+
                 await _mediator.Publish(new FarmerWelcomeImportedEvent
                 {
-                    ImportedFarmers = result.ImportedFarmers.DistinctBy(f => f.Email).ToList(), 
+                    ImportedFarmers = uniqueFarmers,
                     ImportedAt = DateTime.UtcNow
                 }, cancellationToken);
+
+                _logger.LogInformation(
+                    "Published farmer welcome event for {Count} unique email addresses",
+                    uniqueFarmers.Count);
             }
 
             // Note: Plots are now imported separately using the plot import template
