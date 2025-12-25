@@ -45,6 +45,8 @@ public class BaseCultivationTaskRequest
     public TaskType? TaskType { get; set; }
 
     public DateTime? ScheduledEndDate { get; set; }
+    public DateTime? ActualStartDate { get; set; }
+    public DateTime? ActualEndDate { get; set; }
 
     public TaskStatus? Status { get; set; }
 
