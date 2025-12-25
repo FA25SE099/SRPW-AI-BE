@@ -3,6 +3,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
+using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.ReportFeature.Queries.GetAllReports;
 
@@ -95,6 +96,8 @@ public class GetAllReportsQueryHandler : IRequestHandler<GetAllReportsQuery, Pag
                     ? $"{r.PlotCultivation.Plot.SoThua}/{r.PlotCultivation.Plot.SoTo}"
                     : null,
                 PlotArea = r.PlotCultivation?.Plot?.Area,
+                GroupId = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.Id,
+                GroupName = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.GroupName,
                 CultivationPlanId = r.PlotCultivationId,
                 CultivationPlanName = r.PlotCultivation != null
                     ? $"Plan {r.PlotCultivation.PlantingDate:yyyy-MM-dd}"
@@ -120,7 +123,8 @@ public class GetAllReportsQueryHandler : IRequestHandler<GetAllReportsQuery, Pag
                 AffectedTaskName = r.AffectedTask?.CultivationTaskName 
                     ?? r.AffectedTask?.ProductionPlanTask?.TaskName,
                 AffectedTaskType = r.AffectedTask?.TaskType?.ToString(),
-                AffectedTaskVersionName = r.AffectedTask?.Version?.VersionName
+                AffectedTaskVersionName = r.AffectedTask?.Version?.VersionName,
+                AffectedTaskVersionId = r.AffectedTask?.VersionId
             }).ToList();
 
             return PagedResult<List<ReportItemResponse>>.Success(

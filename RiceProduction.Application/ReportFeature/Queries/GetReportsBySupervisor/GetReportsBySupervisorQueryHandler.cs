@@ -150,6 +150,8 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                     ? $"{r.PlotCultivation.Plot.SoThua}/{r.PlotCultivation.Plot.SoTo}"
                     : null,
                 PlotArea = r.PlotCultivation?.Plot?.Area,
+                GroupId = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.Id,
+                GroupName = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.GroupName,
                 CultivationPlanId = r.PlotCultivationId,
                 CultivationPlanName = r.PlotCultivation != null
                     ? $"Plan {r.PlotCultivation.PlantingDate:yyyy-MM-dd}"
@@ -175,7 +177,8 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                 AffectedTaskName = r.AffectedTask?.CultivationTaskName 
                     ?? r.AffectedTask?.ProductionPlanTask?.TaskName,
                 AffectedTaskType = r.AffectedTask?.TaskType?.ToString(),
-                AffectedTaskVersionName = r.AffectedTask?.Version?.VersionName
+                AffectedTaskVersionName = r.AffectedTask?.Version?.VersionName,
+                AffectedTaskVersionId = r.AffectedTask?.VersionId
             }).ToList();
 
             _logger.LogInformation(
