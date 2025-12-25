@@ -41,6 +41,8 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 .Include(r => r.Group)
                     .ThenInclude(g => g.Cluster)
                 .Include(r => r.Cluster)
+                     .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.ProductionPlanTask)
                 .FirstOrDefaultAsync(r => r.Id == request.ReportId, cancellationToken);
 
             if (report == null)
