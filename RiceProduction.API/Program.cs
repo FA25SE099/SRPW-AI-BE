@@ -230,17 +230,20 @@ if (seedDatabase)
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
-     
+
+        if (app.Environment.IsDevelopment() && !isProduction)
+        {
             await initializer.InitialiseAsync();
+        }
         //if (isProduction)
         //{
         //}
-        //if (isProduction)
-        //{
-        //    //await initializer.ResetDatabaseAsync();
-        //    //await initializer.SeedAsync();
+        if (isProduction)
+        {
+            //await initializer.ResetDatabaseAsync();
+            //await initializer.SeedAsync();
 
-        //}       
+        }       
         await initializer.SeedAsyncAdminOnly();
         //await initializer.SeedAsync();
     }
