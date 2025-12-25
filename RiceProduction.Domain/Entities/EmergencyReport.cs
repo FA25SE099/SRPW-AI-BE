@@ -101,4 +101,5 @@ public class EmergencyReport : BaseAuditableEntity
 
     public List<CultivationTask>? CreatedEmergencyTasks { get; set; }
     
+    
 }

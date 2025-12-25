@@ -94,6 +94,7 @@ namespace RiceProduction.Infrastructure.Repository
                 .Include(s => s.SupervisedGroups).ThenInclude(s => s.ProductionPlans)
                 .Include(s => s.AssignedTasks)
                 .Include(s => s.SupervisorAssignments)
+                .Include(s => s.ManagedCluster)
                 .AsQueryable();
             var totalCount = await query.CountAsync(cancellationToken);
             search = search?.ToLower();

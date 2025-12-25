@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateGroupMaterialCost;
+
 public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateGroupMaterialCostQuery, Result<CalculateGroupMaterialCostResponse>>
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -36,155 +37,130 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
             {
                 return Result<CalculateGroupMaterialCostResponse>.Failure($"Group with ID {request.GroupId} not found.", "GroupNotFound");
             }
-            
+
             if (group.TotalArea == null || group.TotalArea.Value <= 0)
             {
                 return Result<CalculateGroupMaterialCostResponse>.Failure("Group's Total Area is not defined or is zero.", "GroupAreaMissing");
             }
-            
+
             decimal effectiveTotalArea = group.TotalArea.Value;
 
-            // --- 2. Tổng hợp Vật tư Yêu cầu (Quantity/ha) ---
-            var aggregatedMaterials = request.Materials
-                .GroupBy(m => m.MaterialId)
-                .Select(g => new MaterialInputModel
-                {
-                    MaterialId = g.Key,
-                    // Giữ nguyên Quantity/ha (chỉ lấy lần xuất hiện đầu tiên, hoặc max nếu logic yêu cầu)
-                    Quantity = g.First().Quantity 
-                })
+            // --- 2. Collect all material IDs from the Materials list ---
+            var allMaterialIds = request.Materials
+                .Select(m => m.MaterialId)
+                .Distinct()
                 .ToList();
-
-            var materialIds = aggregatedMaterials.Select(m => m.MaterialId).ToList();
 
             // --- 3. Tải chi tiết Material và Material Prices ---
             var materialDetails = await _unitOfWork.Repository<Material>()
-                .ListAsync(filter: m => materialIds.Contains(m.Id));
+                .ListAsync(filter: m => allMaterialIds.Contains(m.Id));
 
             var materialDetailsMap = materialDetails.ToDictionary(m => m.Id, m => m);
 
             var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom <= today
+                filter: p => allMaterialIds.Contains(p.MaterialId) && p.ValidFrom <= today
             );
 
             var materialPriceMap = potentialPrices
                 .GroupBy(p => p.MaterialId)
                 .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
-                .ToDictionary(p => p.MaterialId, p => new { p.PricePerMaterial, p.ValidFrom });
-            
-            // --- 4. Tính toán Chi phí từng Plot trước, sau đó tổng hợp lên Group ---
-            
+                .ToDictionary(p => p.MaterialId, p => p);
+
+            // --- 4. Initialize tracking dictionaries ---
             decimal totalGroupCost = 0M;
             var priceWarnings = new List<string>();
             var plotCostDetails = new List<PlotCostDetailResponse>();
-            
-            // Dictionary để tổng hợp vật tư: MaterialId -> { TotalRequiredQuantity, TotalPackages, TotalCost }
+
+            // Dictionary to aggregate all materials
             var materialAggregation = new Dictionary<Guid, (decimal TotalQuantity, decimal TotalPackages, decimal TotalCost)>();
 
-            // --- 4a. Tính chi phí cho TỪNG PLOT ---
+            // --- 5. Process Materials ---
+            var materialCostDetails = new List<MaterialCostDetailResponse>();
+            
+            foreach (var materialInput in request.Materials)
+            {
+                var (materialCost, aggregatedData) = CalculateMaterialCostForGroup(
+                    materialInput.MaterialId,
+                    materialInput.Quantity,
+                    effectiveTotalArea,
+                    materialDetailsMap,
+                    materialPriceMap,
+                    priceWarnings);
+
+                if (materialCost != null)
+                {
+                    materialCostDetails.Add(materialCost);
+                    totalGroupCost += materialCost.MaterialTotalCost;
+
+                    // Aggregate for overall summary
+                    if (!materialAggregation.ContainsKey(materialInput.MaterialId))
+                    {
+                        materialAggregation[materialInput.MaterialId] = (0M, 0M, 0M);
+                    }
+                    var current = materialAggregation[materialInput.MaterialId];
+                    materialAggregation[materialInput.MaterialId] = (
+                        current.TotalQuantity + aggregatedData.TotalQuantity,
+                        current.TotalPackages + aggregatedData.TotalPackages,
+                        current.TotalCost + aggregatedData.TotalCost
+                    );
+                }
+            }
+
+            // --- 6. Calculate plot cost details (proportional allocation) ---
             foreach (var groupPlot in group.GroupPlots)
             {
                 var plot = groupPlot.Plot;
-            {
                 var plotArea = plot.Area;
                 if (plotArea <= 0) continue;
-                
-                decimal plotTotalCost = 0M;
-                
-                // Tính chi phí vật tư cho plot này
-                foreach (var input in aggregatedMaterials)
-                {
-                    if (!materialDetailsMap.TryGetValue(input.MaterialId, out var materialDetail)) continue;
-                    if (!materialPriceMap.TryGetValue(input.MaterialId, out var priceInfo)) continue;
-                    
-                    var amountPerPackage = materialDetail.AmmountPerMaterial.GetValueOrDefault(1M);
-                    if (amountPerPackage <= 0) amountPerPackage = 1M;
-                    
-                    var quantityPerHa = input.Quantity;
-                    var effectivePricePerPackage = priceInfo.PricePerMaterial;
-                    
-                    // Số lượng cần thiết cho plot này
-                    var plotQuantityRequired = quantityPerHa * plotArea;
-                    
-                    // Số gói cần mua cho plot này
-                    // Nếu IsPartition = true (vật tư có thể chia nhỏ), không cần làm tròn lên
-                    var plotPackagesNeeded = materialDetail.IsPartition 
-                        ? plotQuantityRequired / amountPerPackage 
-                        : Math.Ceiling(plotQuantityRequired / amountPerPackage);
-                    
-                    // Chi phí vật tư này cho plot
-                    var plotMaterialCost = plotPackagesNeeded * effectivePricePerPackage;
-                    
-                    plotTotalCost += plotMaterialCost;
-                    
-                    // Tổng hợp vào dictionary để tính MaterialCostDetails
-                    if (!materialAggregation.ContainsKey(input.MaterialId))
-                    {
-                        materialAggregation[input.MaterialId] = (0M, 0M, 0M);
-                    }
-                    
-                    var current = materialAggregation[input.MaterialId];
-                    materialAggregation[input.MaterialId] = (
-                        current.TotalQuantity + plotQuantityRequired,
-                        current.TotalPackages + plotPackagesNeeded,
-                        current.TotalCost + plotMaterialCost
-                    );
-                }
-                
-                // Lưu chi tiết plot
+
+                var plotRatio = plotArea / effectiveTotalArea;
+                var allocatedCost = totalGroupCost * plotRatio;
+
                 plotCostDetails.Add(new PlotCostDetailResponse
                 {
                     PlotId = plot.Id,
                     PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
                     PlotArea = plotArea,
-                    AreaRatio = plotArea / effectiveTotalArea,
-                    AllocatedCost = plotTotalCost
+                    AreaRatio = plotRatio,
+                    AllocatedCost = allocatedCost
                 });
-                
-                // Cộng vào tổng chi phí group
-                totalGroupCost += plotTotalCost;
             }
-            }
-            
-            // --- 4b. Tạo MaterialCostDetails từ dữ liệu đã tổng hợp ---
-            var materialCostDetails = new List<MaterialCostDetailResponse>();
-            
-            foreach (var input in aggregatedMaterials)
+
+            // --- 7. Create aggregated material cost details ---
+            foreach (var kvp in materialAggregation)
             {
-                if (!materialDetailsMap.TryGetValue(input.MaterialId, out var materialDetail)) continue;
-                if (!materialPriceMap.TryGetValue(input.MaterialId, out var priceInfo)) continue;
-                if (!materialAggregation.TryGetValue(input.MaterialId, out var aggregated)) continue;
-                
+                if (!materialDetailsMap.TryGetValue(kvp.Key, out var materialDetail)) continue;
+                if (!materialPriceMap.TryGetValue(kvp.Key, out var priceInfo)) continue;
+
                 materialCostDetails.Add(new MaterialCostDetailResponse
                 {
-                    MaterialId = input.MaterialId,
+                    MaterialId = kvp.Key,
                     MaterialName = materialDetail.Name,
                     Unit = materialDetail.Unit,
-                    RequiredQuantity = aggregated.TotalQuantity,
-                    PackagesNeeded = aggregated.TotalPackages,
+                    RequiredQuantity = kvp.Value.TotalQuantity,
+                    PackagesNeeded = kvp.Value.TotalPackages,
                     EffectivePricePerPackage = priceInfo.PricePerMaterial,
-                    MaterialTotalCost = aggregated.TotalCost,
+                    MaterialTotalCost = kvp.Value.TotalCost,
                     PriceValidFrom = priceInfo.ValidFrom
                 });
             }
-            
-            // --- 6. Xây dựng Phản hồi ---
 
+            // --- 8. Build response ---
             var response = new CalculateGroupMaterialCostResponse
             {
                 GroupId = request.GroupId,
                 TotalGroupArea = effectiveTotalArea,
-                TotalGroupCost = totalGroupCost, // TỔNG CHI PHÍ CUỐI CÙNG (Đã làm tròn gói)
+                TotalGroupCost = totalGroupCost,
                 MaterialCostDetails = materialCostDetails,
                 PlotCostDetails = plotCostDetails,
                 PriceWarnings = priceWarnings
             };
 
-            var message = priceWarnings.Any() 
-                ? $"Successfully calculated cost with {priceWarnings.Count} warning(s)." 
+            var message = priceWarnings.Any()
+                ? $"Successfully calculated cost with {priceWarnings.Count} warning(s)."
                 : "Successfully calculated group material cost.";
 
-            _logger.LogInformation("Calculated total group cost for Group ID {GId}: {Cost}. Plots analyzed: {PlotCount}", 
+            _logger.LogInformation("Calculated total group cost for Group ID {GId}: {Cost}. Plots analyzed: {PlotCount}",
                 request.GroupId, totalGroupCost, plotCostDetails.Count);
 
             return Result<CalculateGroupMaterialCostResponse>.Success(response, message);
@@ -194,5 +170,55 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
             _logger.LogError(ex, "Error calculating group material cost for Group ID {GId}", request.GroupId);
             return Result<CalculateGroupMaterialCostResponse>.Failure("An error occurred during cost calculation.", "CostCalculationFailed");
         }
+    }
+
+    private (MaterialCostDetailResponse? materialCost, (decimal TotalQuantity, decimal TotalPackages, decimal TotalCost) aggregatedData)
+        CalculateMaterialCostForGroup(
+            Guid materialId,
+            decimal quantityPerHa,
+            decimal totalArea,
+            Dictionary<Guid, Material> materialDetailsMap,
+            Dictionary<Guid, MaterialPrice> materialPriceMap,
+            List<string> priceWarnings)
+    {
+        if (!materialDetailsMap.TryGetValue(materialId, out var materialDetail))
+        {
+            priceWarnings.Add($"Material ID {materialId} not found.");
+            return (null, (0, 0, 0));
+        }
+
+        if (!materialPriceMap.TryGetValue(materialId, out var priceInfo))
+        {
+            priceWarnings.Add($"No valid price found for material '{materialDetail.Name}' (ID: {materialId}).");
+            return (null, (0, 0, 0));
+        }
+
+        var amountPerPackage = materialDetail.AmmountPerMaterial.GetValueOrDefault(1M);
+        if (amountPerPackage <= 0) amountPerPackage = 1M;
+
+        // Calculate total quantity needed for entire group area
+        var requiredQuantity = quantityPerHa * totalArea;
+
+        // Calculate packages needed
+        var packagesNeeded = materialDetail.IsPartition
+            ? requiredQuantity / amountPerPackage
+            : Math.Ceiling(requiredQuantity / amountPerPackage);
+
+        // Calculate total cost
+        var totalCost = packagesNeeded * priceInfo.PricePerMaterial;
+
+        var materialCost = new MaterialCostDetailResponse
+        {
+            MaterialId = materialId,
+            MaterialName = materialDetail.Name,
+            Unit = materialDetail.Unit,
+            RequiredQuantity = requiredQuantity,
+            PackagesNeeded = packagesNeeded,
+            EffectivePricePerPackage = priceInfo.PricePerMaterial,
+            MaterialTotalCost = totalCost,
+            PriceValidFrom = priceInfo.ValidFrom
+        };
+
+        return (materialCost, (requiredQuantity, packagesNeeded, totalCost));
     }
 }

@@ -1,16 +1,21 @@
-﻿using MediatR;
+﻿using Azure.Core;
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.API.Services;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
+using RiceProduction.Application.Common.Models.Request.FarmerRequests;
+using RiceProduction.Application.Common.Models.Response.FarmerResponses;
 using RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport;
 using RiceProduction.Application.FarmerFeature;
 using RiceProduction.Application.FarmerFeature.Command;
 using RiceProduction.Application.FarmerFeature.Command.CreateFarmer;
 using RiceProduction.Application.FarmerFeature.Command.ImportFarmer;
 using RiceProduction.Application.FarmerFeature.Command.UpdateFarmer;
+using RiceProduction.Application.FarmerFeature.Commands.ChangeFarmerStatus;
 using RiceProduction.Application.FarmerFeature.Queries;
 using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel;
 using RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerImportTemplate;
@@ -18,9 +23,17 @@ using RiceProduction.Application.FarmerFeature.Queries.ExportFarmerTemplateExcel
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
+using RiceProduction.Application.FarmerFeature.Queries.GetFarmersForAdmin;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
+using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
+using RiceProduction.Application.PlotFeature.Queries.GetPlotsByFarmer;
+using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
+using RiceProduction.Application.ReportFeature.Queries.GetReportsByFarmer;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
+using System.Security.Claims;
+using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.API.Controllers
 {
@@ -332,5 +345,166 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
             }
         }
+
+        /// <summary>
+        /// Get all plots owned by a farmer
+        /// </summary>
+        [HttpPost("plots")]
+        [ProducesResponseType(typeof(PagedResult<List<PlotListResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PagedResult<List<PlotListResponse>>>> GetPlotsByFarmer(
+            [FromBody] GetPlotsByFarmerQuery query)
+        {
+            try
+            {
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    if (result.Message?.Contains("not found") == true)
+                    {
+                        return NotFound(result);
+                    }
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting plots for farmer {FarmerId}", query.FarmerId);
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+        /// <summary>
+        /// Get all emergency reports for a farmer (sorted by newest first)
+        /// </summary>
+        [HttpPost("reports")]
+        [Authorize(Roles = "Farmer")]
+        [ProducesResponseType(typeof(PagedResult<List<ReportItemResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PagedResult<List<ReportItemResponse>>>> GetReportsByFarmer(
+            [FromBody] GetReportsByFarmerRequest request)
+        {
+            try
+            {
+                var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var farmerId))
+                {
+                    return Unauthorized(PagedResult<List<ReportItemResponse>>.Failure("User not authenticated"));
+                }
+
+                var query = new GetReportsByFarmerQuery
+                {
+                    FarmerId = farmerId,
+                    CurrentPage = request.CurrentPage,
+                    PageSize = request.PageSize,
+                    SearchTerm = request.SearchTerm,
+                    Status = request.Status,
+                    Severity = request.Severity,
+                    ReportType = request.ReportType
+                };
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    if (result.Message?.Contains("not found") == true)
+                    {
+                        return NotFound(result);
+                    }
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+        /// <summary>
+        /// Change farmer status (Admin only)
+        /// </summary>
+        [HttpPut("{farmerId}/status")]
+        [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ChangeFarmerStatus(
+            Guid farmerId,
+            [FromBody] ChangeFarmerStatusCommand command)
+        {
+            try
+            {
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    if (result.Message?.Contains("not found") == true)
+                    {
+                        return NotFound(result);
+                    }
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while changing status for farmer {FarmerId}", farmerId);
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
+
+        /// <summary>
+        /// Get all farmers with filtering and pagination (Admin)
+        /// </summary>
+        [HttpPost("get-all")]
+        [ProducesResponseType(typeof(PagedResult<List<FarmerListResponse>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PagedResult<List<FarmerListResponse>>>> GetAllFarmersForAdmin(
+            [FromBody] FarmerListRequest request)
+        {
+            try
+            {
+                var query = new GetFarmersForAdminQuery
+                {
+                    CurrentPage = request.CurrentPage,
+                    PageSize = request.PageSize,
+                    Search = request.Search,
+                    PhoneNumber = request.PhoneNumber,
+                    ClusterId = request.ClusterId,
+                    FarmerStatus = request.FarmerStatus
+                };
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while getting farmers for admin");
+                return StatusCode(500, "An error occurred while processing your request");
+            }
+        }
     }
-    }
+}
+
+public class GetReportsByFarmerRequest
+{
+    public int CurrentPage { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? SearchTerm { get; set; }
+    public string? Status { get; set; }
+    public string? Severity { get; set; }
+    public string? ReportType { get; set; }
+}

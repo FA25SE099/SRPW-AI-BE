@@ -1,10 +1,7 @@
-﻿using RiceProduction.Application.Common.Models;
+﻿using MediatR;
+using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCurrentPlotCultivation;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetPlotCultivationByGroupAndPlot;
 
@@ -12,4 +9,9 @@ public class GetPlotCultivationByGroupAndPlotQuery : IRequest<Result<CurrentPlot
 {
     public Guid PlotId { get; set; }
     public Guid GroupId { get; set; }
+    
+    /// <summary>
+    /// Optional: Specific version ID to query. If null, returns the latest version (highest VersionOrder).
+    /// </summary>
+    public Guid? VersionId { get; set; }
 }

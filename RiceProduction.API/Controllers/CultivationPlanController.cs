@@ -1,5 +1,5 @@
-
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.CultivationPlanFeature.Queries;
@@ -36,9 +36,25 @@ public class CultivationPlanController : ControllerBase
     }
     
     [HttpGet("by-plot/{plotId}")]
+    [Authorize] // Require authentication
     public async Task<IActionResult> GetCultivationsByPlot(Guid plotId)
     {
-        var query = new GetCultivationsForPlotQuery { PlotId = plotId, FarmerId = (Guid)_currentUser.Id };
+        // Check if user is authenticated
+        if (!_currentUser.Id.HasValue)
+        {
+            return Unauthorized(new { 
+                succeeded = false,
+                message = "User not authenticated. Please login first.",
+                errors = new[] { "Unauthorized" }
+            });
+        }
+
+        var query = new GetCultivationsForPlotQuery 
+        { 
+            PlotId = plotId, 
+            FarmerId = _currentUser.Id.Value 
+        };
+        
         var result = await _mediator.Send(query);
 
         if (!result.Succeeded)
@@ -48,6 +64,7 @@ public class CultivationPlanController : ControllerBase
 
         return Ok(result);
     }
+    
     [HttpGet("{planId}")]
     public async Task<IActionResult> GetCultivationPlanById(Guid planId)
     {
@@ -79,11 +96,6 @@ public class CultivationPlanController : ControllerBase
     [HttpPost("by-group-plot")]
     public async Task<IActionResult> GetCurrentPlotCultivationByGroup([FromBody] GetPlotCultivationByGroupAndPlotQuery query)
     {
-        //var query = new GetPlotCultivationByGroupAndPlotQuery
-        //{
-        //    PlotId = plotId,
-        //    GroupId = groupId
-        //};
         var result = await _mediator.Send(query);
 
         if (!result.Succeeded)
@@ -93,6 +105,5 @@ public class CultivationPlanController : ControllerBase
 
         return Ok(result);
     }
-
 }
 

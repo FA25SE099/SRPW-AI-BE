@@ -107,17 +107,17 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                 var currentStatus = ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft); 
 
                 // Ánh xạ vật tư dự kiến
-                var materialsResponse = ct.ProductionPlanTask!.ProductionPlanTaskMaterials
+                var materialsResponse = ct.CultivationTaskMaterials
                     .Select(pptm => new TodayTaskMaterialResponse
                     {
                         MaterialId = pptm.MaterialId,
                         MaterialName = pptm.Material.Name,
                         MaterialUnit = pptm.Material.Unit,
                         
-                        PlannedQuantityTotal = pptm.QuantityPerHa * plotArea,
+                        PlannedQuantityTotal = (pptm.ActualQuantity / plotArea) * plotArea,
                         
-                        EstimatedAmount = pptm.EstimatedAmount.GetValueOrDefault(0M) > 0 
-                            ? (pptm.EstimatedAmount.GetValueOrDefault(0M) * plotArea / plot.Area) 
+                        EstimatedAmount = pptm.ActualCost > 0 
+                            ? (pptm.ActualCost * plotArea / plot.Area) 
                             : 0M
                     })
                     .ToList();

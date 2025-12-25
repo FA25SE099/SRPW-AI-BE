@@ -35,5 +35,4 @@ public class Plot : BaseAuditableEntity
     public ICollection<GroupPlot> GroupPlots { get; set; } = new List<GroupPlot>();
     public ICollection<PlotCultivation> PlotCultivations { get; set; } = new List<PlotCultivation>();
     public ICollection<Alert> Alerts { get; set; } = new List<Alert>();
-    public ICollection<LateFarmerRecord> LateFarmerRecords { get; set; } = new List<LateFarmerRecord>();
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateGroupMaterialCost;
+
 /// <summary>
 /// Chi tiết chi phí vật tư đã được tính toán cho Group.
 /// </summary>
@@ -60,13 +61,17 @@ public class CalculateGroupMaterialCostResponse
 {
     public Guid GroupId { get; set; }
     public decimal TotalGroupArea { get; set; }
-    
+
     /// <summary>
     /// Tổng chi phí vật tư của toàn bộ Group (tính theo số gói làm tròn).
     /// </summary>
     public decimal TotalGroupCost { get; set; }
-    
-    public List<MaterialCostDetailResponse> MaterialCostDetails { get; set; } = new List<MaterialCostDetailResponse>();
-    public List<PlotCostDetailResponse> PlotCostDetails { get; set; } = new List<PlotCostDetailResponse>();
-    public List<string> PriceWarnings { get; set; } = new List<string>();
+
+    /// <summary>
+    /// All materials aggregated
+    /// </summary>
+    public List<MaterialCostDetailResponse> MaterialCostDetails { get; set; } = new();
+
+    public List<PlotCostDetailResponse> PlotCostDetails { get; set; } = new();
+    public List<string> PriceWarnings { get; set; } = new();
 }

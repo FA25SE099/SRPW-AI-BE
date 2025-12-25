@@ -123,7 +123,7 @@ public class GetFarmerPlanViewQueryHandler :
                 var materialsMap = new Dictionary<Guid, FarmerMaterialComparisonResponse>();
 
                 // 1. Thêm vật tư Kế hoạch (Planned)
-                foreach (var plannedMat in task.ProductionPlanTask!.ProductionPlanTaskMaterials)
+                foreach (var plannedMat in task.CultivationTaskMaterials)
                 {
                     if (!materialsMap.ContainsKey(plannedMat.MaterialId))
                     {
@@ -134,8 +134,10 @@ public class GetFarmerPlanViewQueryHandler :
                             MaterialUnit = plannedMat.Material.Unit
                         };
                     }
-                    materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = plannedMat.QuantityPerHa;
-                    materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.EstimatedAmount.GetValueOrDefault(0);
+                    //materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = plannedMat.QuantityPerHa;
+                    //materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.EstimatedAmount.GetValueOrDefault(0);
+                    materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = Math.Ceiling(plannedMat.ActualQuantity/plotCultivation.Plot.Area);
+                    materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.ActualCost;
                 }
 
                 // 2. Thêm vật tư Thực tế (Actual)

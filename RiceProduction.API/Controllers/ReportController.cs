@@ -2,9 +2,11 @@ using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response.ReportResponses;
 using RiceProduction.Application.ReportFeature.Command;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
 using RiceProduction.Application.ReportFeature.Queries.GetReportById;
+using RiceProduction.Application.ReportFeature.Queries.GetReportWithEmergencyMaterials;
 
 namespace RiceProduction.API.Controllers;
 
@@ -189,6 +191,31 @@ public class ReportController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while resolving report {ReportId}", reportId);
+            return StatusCode(500, "An error occurred while processing your request");
+        }
+    }
+
+    [HttpGet("{reportId}/emergency-materials")]
+    [ProducesResponseType(typeof(Result<ReportWithEmergencyMaterialsResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetReportWithEmergencyMaterials(Guid reportId)
+    {
+        try
+        {
+            var query = new GetReportWithEmergencyMaterialsQuery { ReportId = reportId };
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                return NotFound(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while getting report {ReportId} with emergency materials", reportId);
             return StatusCode(500, "An error occurred while processing your request");
         }
     }

@@ -31,25 +31,34 @@ public class GetLateDetailByFarmerIdQueryHandler : IRequestHandler<GetLateDetail
 
             var lateRecords = await _unitOfWork.LateFarmerRecordRepository.GetLateRecordsByFarmerIdAsync(request.FarmerId, cancellationToken);
 
-            var lateRecordDTOs = lateRecords.Select(lr => new LateFarmerRecordDTO
+            var lateRecordDTOs = lateRecords.Select(lr =>
             {
-                Id = lr.Id,
-                FarmerId = lr.FarmerId,
-                FarmerName = lr.Farmer?.FullName,
-                TaskId = lr.TaskId,
-                TaskName = lr.Task?.CultivationTaskName,
-                PlotId = lr.PlotId,
-                SoThua = lr.Plot?.SoThua,
-                SoTo = lr.Plot?.SoTo,
-                PlotCultivationId = lr.PlotCultivationId,
-                SeasonId = lr.SeasonId,
-                SeasonName = lr.Season?.SeasonName,
-                GroupId = lr.GroupId,
-                GroupName = lr.Group?.GroupName,
-                ClusterId = lr.ClusterId,
-                ClusterName = lr.Cluster?.ClusterName,
-                RecordedAt = lr.RecordedAt,
-                Notes = lr.Notes
+                // Extract data from navigation properties
+                var plot = lr.CultivationTask?.PlotCultivation?.Plot;
+                var season = lr.CultivationTask?.PlotCultivation?.Season;
+                var group = plot?.GroupPlots?.OrderByDescending(gp => gp.CreatedAt).FirstOrDefault()?.Group;
+                var cluster = group?.Cluster;
+
+                return new LateFarmerRecordDTO
+                {
+                    Id = lr.Id,
+                    FarmerId = lr.FarmerId,
+                    FarmerName = lr.Farmer?.FullName,
+                    TaskId = lr.CultivationTaskId,
+                    TaskName = lr.CultivationTask?.CultivationTaskName,
+                    PlotId = plot?.Id ?? Guid.Empty,
+                    SoThua = plot?.SoThua,
+                    SoTo = plot?.SoTo,
+                    PlotCultivationId = lr.CultivationTask?.PlotCultivationId ?? Guid.Empty,
+                    SeasonId = season?.Id ?? Guid.Empty,
+                    SeasonName = season?.SeasonName,
+                    GroupId = group?.Id ?? Guid.Empty,
+                    GroupName = group?.GroupName,
+                    ClusterId = cluster?.Id ?? Guid.Empty,
+                    ClusterName = cluster?.ClusterName,
+                    RecordedAt = lr.RecordedAt,
+                    Notes = lr.Notes
+                };
             }).ToList();
 
             var result = new FarmerLateDetailDTO
