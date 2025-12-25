@@ -240,10 +240,10 @@ if (seedDatabase)
         //}
         if (isProduction)
         {
-            //await initializer.ResetDatabaseAsync();
+            await initializer.ResetDatabaseAsync();
             //await initializer.SeedAsync();
 
-        }       
+        }
         await initializer.SeedAsyncAdminOnly();
         //await initializer.SeedAsync();
     }

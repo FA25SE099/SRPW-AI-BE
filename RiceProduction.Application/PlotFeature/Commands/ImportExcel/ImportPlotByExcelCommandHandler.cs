@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.IO;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequest;
@@ -53,6 +54,9 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 var farmerRepo = _unitOfWork.FarmerRepository;
                 var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
 
+                // Initialize WKT reader for polygon parsing
+                var wktReader = new WKTReader(new GeometryFactory(new PrecisionModel(), 4326));
+
                 // Get current season
                 var (currentSeason, currentYear) = await GetCurrentSeasonAndYear(cancellationToken);
                 
@@ -76,6 +80,9 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 var riceVarieties = await riceVarietyRepo.ListAsync(
                     rv => uniqueVarietyNames.Contains(rv.VarietyName));
                 var varietyLookup = riceVarieties.ToDictionary(rv => rv.VarietyName, rv => rv);
+
+                // Dictionary to store validated polygons per row index
+                var validatedPolygons = new Dictionary<int, (Polygon boundary, Point coordinate)>();
 
                 // Validate
                 var validationErrors = new List<string>();
@@ -133,6 +140,84 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                                 $"Row {rowNumber}: Cannot create cultivation - no current season found");
                         }
                     }
+
+                    // Validate polygon if provided
+                    if (!string.IsNullOrWhiteSpace(row.BoundaryWKT))
+                    {
+                        try
+                        {
+                            var boundary = wktReader.Read(row.BoundaryWKT) as Polygon;
+                            
+                            if (boundary == null)
+                            {
+                                validationErrors.Add(
+                                    $"Row {rowNumber}: Invalid polygon format. Expected WKT POLYGON format.");
+                                continue;
+                            }
+
+                            if (!boundary.IsValid)
+                            {
+                                validationErrors.Add(
+                                    $"Row {rowNumber}: Polygon is not geometrically valid.");
+                                continue;
+                            }
+
+                            boundary.SRID = 4326;
+
+                            // Validate area matches (10% tolerance)
+                            if (row.Area.HasValue)
+                            {
+                                var drawnAreaHa = CalculateAreaInHectares(boundary);
+                                var registeredArea = row.Area.Value;
+                                var differencePercent = Math.Abs((drawnAreaHa - registeredArea) / registeredArea * 100);
+
+                                if (differencePercent > 10)
+                                {
+                                    validationErrors.Add(
+                                        $"Row {rowNumber}: Polygon area ({Math.Round(drawnAreaHa, 2)} ha) differs by {Math.Round(differencePercent, 2)}% from registered area ({Math.Round(registeredArea, 2)} ha). Maximum allowed difference is 10%.");
+                                    continue;
+                                }
+                            }
+
+                            // Parse coordinate or use centroid
+                            Point coordinate;
+                            if (!string.IsNullOrWhiteSpace(row.CoordinateWKT))
+                            {
+                                coordinate = wktReader.Read(row.CoordinateWKT) as Point;
+                                if (coordinate == null)
+                                {
+                                    _logger.LogWarning(
+                                        "Row {RowNumber}: Invalid coordinate format. Using centroid instead.", 
+                                        rowNumber);
+                                    coordinate = boundary.Centroid;
+                                }
+                                else if (!boundary.Contains(coordinate))
+                                {
+                                    _logger.LogWarning(
+                                        "Row {RowNumber}: Coordinate is outside polygon boundary. Using centroid instead.", 
+                                        rowNumber);
+                                    coordinate = boundary.Centroid;
+                                }
+                                else
+                                {
+                                    coordinate.SRID = 4326;
+                                }
+                            }
+                            else
+                            {
+                                coordinate = boundary.Centroid;
+                                coordinate.SRID = 4326;
+                            }
+
+                            // Store validated polygon for this row
+                            validatedPolygons[i] = (boundary, coordinate);
+                        }
+                        catch (Exception ex)
+                        {
+                            validationErrors.Add(
+                                $"Row {rowNumber}: Error parsing polygon - {ex.Message}");
+                        }
+                    }
                 }
 
                 if (validationErrors.Any())
@@ -146,7 +231,9 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 var plotList = new List<Plot>();
                 var plotCultivationsToCreate = new List<PlotCultivation>();
                 var cultivationVersionsToCreate = new List<CultivationVersion>();
+                var plotsNeedingPolygonTasks = new List<Plot>(); // Track plots that need supervisor drawing
                 var skippedRows = 0;
+                var plotsWithImportedPolygons = 0; // Track imported polygons
 
                 foreach (var row in plotImportRows)
                 {
@@ -177,15 +264,39 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                     }
 
                     var plotId = await plotRepo.GenerateNewGuid(Guid.NewGuid());
-                    var coordinates = new[]
+                    
+                    // Determine boundary and status based on whether polygon was imported
+                    Polygon boundary;
+                    Point? coordinate = null;
+                    PlotStatus status;
+                    var rowIndex = plotImportRows.IndexOf(row);
+                    
+                    if (validatedPolygons.TryGetValue(rowIndex, out var polygonData))
                     {
-                        new Coordinate(0, 0),
-                        new Coordinate(0, 0.001),
-                        new Coordinate(0.001, 0.001),
-                        new Coordinate(0.001, 0),
-                        new Coordinate(0, 0)
-                    };
-                    var defaultBoundary = geometryFactory.CreatePolygon(coordinates);
+                        // Use imported polygon
+                        boundary = polygonData.boundary;
+                        coordinate = polygonData.coordinate;
+                        status = PlotStatus.Active; // Plot is complete with polygon
+                        plotsWithImportedPolygons++;
+                        
+                        _logger.LogInformation(
+                            "Plot {FarmCode} #{PlotNumber} (SoThua:{SoThua}, SoTo:{SoTo}) imported with polygon - Status: Active",
+                            row.FarmCode, row.PlotNumber, row.SoThua, row.SoTo);
+                    }
+                    else
+                    {
+                        // Use dummy boundary - will need supervisor to draw
+                        var coordinates = new[]
+                        {
+                            new Coordinate(0, 0),
+                            new Coordinate(0, 0.001),
+                            new Coordinate(0.001, 0.001),
+                            new Coordinate(0.001, 0),
+                            new Coordinate(0, 0)
+                        };
+                        boundary = geometryFactory.CreatePolygon(coordinates);
+                        status = PlotStatus.PendingPolygon; // Needs polygon drawing
+                    }
 
                     var newPlot = new Plot
                     {
@@ -195,11 +306,18 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         Area = row.Area.Value,
                         FarmerId = farmer.Id,
                         SoilType = row.SoilType,
-                        Status = PlotStatus.PendingPolygon,
-                        Boundary = defaultBoundary
+                        Status = status,
+                        Boundary = boundary,
+                        Coordinate = coordinate
                     };
 
                     plotList.Add(newPlot);
+                    
+                    // Only add to polygon task list if no polygon was imported
+                    if (status == PlotStatus.PendingPolygon)
+                    {
+                        plotsNeedingPolygonTasks.Add(newPlot);
+                    }
 
                     // Create PlotCultivation if rice variety specified
                     if (!string.IsNullOrWhiteSpace(row.RiceVarietyName) && 
@@ -285,22 +403,38 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 }
 
                 // Publish event for polygon assignment
-                if (plotCreateSuccessList.Any())
+                if (plotsNeedingPolygonTasks.Any())
                 {
+                    // Only create responses for plots that need polygon drawing
+                    var plotsNeedingTasksResponse = plotCreateSuccessList
+                        .Where(pr => plotsNeedingPolygonTasks.Any(p => p.Id == pr.PlotId))
+                        .ToList();
+                        
                     await _mediator.Publish(new PlotImportedEvent
                     {
-                        ImportedPlots = plotCreateSuccessList,
+                        ImportedPlots = plotsNeedingTasksResponse,
                         ClusterManagerId = request.ClusterManagerId,
                         ImportedAt = DateTime.UtcNow,
-                        TotalPlotsImported = plotCreateSuccessList.Count
+                        TotalPlotsImported = plotsNeedingTasksResponse.Count
                     }, cancellationToken);
                     
                     _logger.LogInformation(
-                        "Published PlotImportedEvent for {PlotCount} plots",
+                        "Published PlotImportedEvent for {PlotCount} plots needing polygon drawing (out of {TotalPlots} total plots imported)",
+                        plotsNeedingTasksResponse.Count,
+                        plotCreateSuccessList.Count);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "All {PlotCount} imported plots have polygons - no polygon drawing tasks created",
                         plotCreateSuccessList.Count);
                 }
 
                 var message = $"Successfully imported {plotCreateSuccessList.Count} plots";
+                if (plotsWithImportedPolygons > 0)
+                {
+                    message += $" ({plotsWithImportedPolygons} with polygons, {plotsNeedingPolygonTasks.Count} pending polygon drawing)";
+                }
                 if (plotCultivationsToCreate.Any())
                 {
                     message += $" with {plotCultivationsToCreate.Count} cultivation records";
@@ -384,6 +518,25 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
             {
                 return false;
             }
+        }
+        
+        /// <summary>
+        /// Calculate area in hectares from a polygon with SRID 4326 (WGS84)
+        /// </summary>
+        private decimal CalculateAreaInHectares(Polygon polygon)
+        {
+            // For SRID 4326 (WGS84 lat/lon), approximate conversion
+            // This uses a simple approximation - area in square degrees * conversion factor
+            var areaInSquareDegrees = polygon.Area;
+            
+            // Approximate meters per degree at equator (111,319.9 meters per degree)
+            var metersPerDegree = 111319.9;
+            var areaInSquareMeters = areaInSquareDegrees * metersPerDegree * metersPerDegree;
+            
+            // Convert to hectares (1 hectare = 10,000 square meters)
+            var hectares = (decimal)(areaInSquareMeters / 10000.0);
+            
+            return Math.Round(hectares, 2);
         }
     }
 }

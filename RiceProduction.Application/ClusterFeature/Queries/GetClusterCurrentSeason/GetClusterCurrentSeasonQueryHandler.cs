@@ -142,7 +142,7 @@ public class GetClusterCurrentSeasonQueryHandler
             .ToList();
 
         var supervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => supervisorIds.Contains(s.Id));
+            .ListAsync(s => supervisorIds.Contains(s.Id) && s.ClusterId == response.ClusterId);
         var supervisorDict = supervisors.ToDictionary(s => s.Id);
 
         // Build group summaries
@@ -200,10 +200,9 @@ public class GetClusterCurrentSeasonQueryHandler
             .ListAsync(p => farmerIds.Contains(p.FarmerId));
         var plotsList = plots.ToList();
 
-        // Get supervisors available
         var allSupervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => s.IsActive);
-        var availableSupervisors = allSupervisors.Where(s => s.CurrentFarmerCount < s.MaxFarmerCapacity).ToList();
+            .ListAsync(s => s.IsActive && s.ClusterId == clusterId);
+        var availableSupervisors = allSupervisors.ToList();
 
         var plotsWithPolygon = plotsList.Count(p => p.Boundary != null && p.Status == PlotStatus.Active);
         var plotsWithoutPolygon = plotsList.Count(p => p.Boundary == null || p.Status == PlotStatus.PendingPolygon);
