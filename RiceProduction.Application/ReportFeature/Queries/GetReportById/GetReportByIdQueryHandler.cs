@@ -76,7 +76,11 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 FarmerName = report.PlotCultivation?.Plot?.Farmer?.FullName,
                 ClusterName = report.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group?.Cluster?.ClusterName
                     ?? report.Group?.Cluster?.ClusterName
-                    ?? report.Cluster?.ClusterName
+                    ?? report.Cluster?.ClusterName,
+                AffectedCultivationTaskId = report.AffectedCultivationTaskId,
+                AffectedTaskName = report.AffectedTask?.CultivationTaskName
+                    ?? report.AffectedTask?.ProductionPlanTask?.TaskName,
+                AffectedTaskType = report.AffectedTask?.TaskType?.ToString()
             };
 
             return Result<ReportItemResponse>.Success(response);

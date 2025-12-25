@@ -97,9 +97,5 @@ public class EmergencyReport : BaseAuditableEntity
     public ApplicationUser? Reporter { get; set; }
 
     [ForeignKey("AffectedCultivationTaskId")]
-    public CultivationTask? AffectedTask { get; set; }
-
-    public List<CultivationTask>? CreatedEmergencyTasks { get; set; }
-    
-    
+    public CultivationTask? AffectedTask { get; set; }   
 }
