@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Ardalis.GuardClauses;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -70,9 +71,9 @@ public static class DependencyInjection
                     SingleReader = false
                 });
         });
-
+        builder.Services.AddHostedService<QueuedEmailBackgroundService>();
         // Then register the BackgroundTaskQueue using the channel
-        builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+        builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();      
 
         // Configure Identity with proper stores
         builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -136,3 +137,4 @@ public static class DependencyInjection
 
     }
 }
+

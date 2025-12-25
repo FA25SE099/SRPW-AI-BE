@@ -113,7 +113,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 // Publish event for email notification (non-blocking)
                 if (!string.IsNullOrWhiteSpace(request.Email))
                 {
-                    await _mediator.Publish(new FarmersImportedEvent
+                    await _mediator.Publish(new FarmerWelcomeImportedEvent
                     {
                         ImportedFarmers = new List<ImportedFarmerData>
                         {
