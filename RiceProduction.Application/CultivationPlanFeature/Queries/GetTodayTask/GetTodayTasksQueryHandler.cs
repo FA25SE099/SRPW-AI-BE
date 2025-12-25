@@ -63,8 +63,8 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                 // Lọc theo Version mới nhất (Updated to use latest version)
                 ct.VersionId.HasValue && latestVersionIds.Contains(ct.VersionId.Value) &&
                 
-                // Lọc theo PlotId (nếu được cung cấp)
-                (!request.PlotId.HasValue || ct.PlotCultivation.PlotId == request.PlotId.Value) &&
+                // Lọc theo PlotCultivationId (nếu được cung cấp)
+                (!request.PlotCultivationId.HasValue || ct.PlotCultivationId == request.PlotCultivationId.Value) &&
                 
                 // Lọc theo Mùa vụ đang hoạt động
                 (ct.PlotCultivation.Status == CultivationStatus.Planned || ct.PlotCultivation.Status == CultivationStatus.InProgress) &&
