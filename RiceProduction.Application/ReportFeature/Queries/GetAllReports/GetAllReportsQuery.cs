@@ -35,5 +35,11 @@ public class ReportItemResponse
     public string? ResolutionNotes { get; set; }
     public string? FarmerName { get; set; }
     public string? ClusterName { get; set; }
+    
+    /// <summary>
+    /// Information about the affected cultivation task where the problem occurred
+    /// </summary>
+    public Guid? AffectedCultivationTaskId { get; set; }
+    public string? AffectedTaskName { get; set; }
+    public string? AffectedTaskType { get; set; }
 }
-

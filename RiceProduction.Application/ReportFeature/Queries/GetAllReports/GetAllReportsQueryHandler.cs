@@ -40,6 +40,7 @@ public class GetAllReportsQueryHandler : IRequestHandler<GetAllReportsQuery, Pag
                 .Include(r => r.Group)
                     .ThenInclude(g => g.Cluster)
                 .Include(r => r.Cluster)
+                .Include(r => r.AffectedTask)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(request.Status))
@@ -113,7 +114,11 @@ public class GetAllReportsQueryHandler : IRequestHandler<GetAllReportsQuery, Pag
                 FarmerName = r.PlotCultivation?.Plot?.Farmer?.FullName,
                 ClusterName = r.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group?.Cluster?.ClusterName
                     ?? r.Group?.Cluster?.ClusterName
-                    ?? r.Cluster?.ClusterName
+                    ?? r.Cluster?.ClusterName,
+                AffectedCultivationTaskId = r.AffectedCultivationTaskId,
+                AffectedTaskName = r.AffectedTask?.CultivationTaskName 
+                    ?? r.AffectedTask?.ProductionPlanTask?.TaskName,
+                AffectedTaskType = r.AffectedTask?.TaskType?.ToString()
             }).ToList();
 
             return PagedResult<List<ReportItemResponse>>.Success(
