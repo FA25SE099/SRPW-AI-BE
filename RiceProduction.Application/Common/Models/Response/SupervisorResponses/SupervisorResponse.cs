@@ -15,5 +15,7 @@ namespace RiceProduction.Application.Common.Models.Response.SupervisorResponses
         public string? PhoneNumber { get; set; }
         public int CurrentFarmerCount { get; set; }
         public DateTime? LastActivityAt { get; set; }
+        public string? ClusterName { get; set; }
+        public Guid? ClusterId { get; set; }
     }
 }
