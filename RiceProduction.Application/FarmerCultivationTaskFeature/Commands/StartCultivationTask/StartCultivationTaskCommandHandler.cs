@@ -161,7 +161,7 @@ public class StartCultivationTaskCommandHandler :
                 ActualStartDate = cultivationTask.ActualStartDate.Value,
                 ScheduledEndDate = cultivationTask.ScheduledEndDate,
                 WeatherConditions = cultivationTask.WeatherConditions,
-                Message = "Task started successfully",
+                Message = "Công việc đã bắt đầu thành công",
                 PlotId = cultivationTask.PlotCultivation.PlotId,
                 PlotReference = $"{cultivationTask.PlotCultivation.Plot.SoThua}/{cultivationTask.PlotCultivation.Plot.SoTo}",
                 SeasonName = cultivationTask.PlotCultivation.Season.SeasonName,
@@ -170,7 +170,7 @@ public class StartCultivationTaskCommandHandler :
 
             return Result<StartCultivationTaskResponse>.Success(
                 response,
-                "Task started successfully. Good luck with your cultivation!");
+                "Công việc đã bắt đầu thành công. Chúc bạn may mắn với việc canh tác!");
         }
         catch (Exception ex)
         {
@@ -179,7 +179,7 @@ public class StartCultivationTaskCommandHandler :
                 "Error starting cultivation task {TaskId}",
                 request.CultivationTaskId);
             return Result<StartCultivationTaskResponse>.Failure(
-                "An error occurred while starting the task");
+                "Đã xảy ra lỗi khi bắt đầu công việc");
         }
     }
 }
