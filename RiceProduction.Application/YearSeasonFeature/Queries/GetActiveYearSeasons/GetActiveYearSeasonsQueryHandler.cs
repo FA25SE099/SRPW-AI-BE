@@ -29,10 +29,17 @@ public class GetActiveYearSeasonsQueryHandler : IRequestHandler<GetActiveYearSea
         {
             var now = DateTime.UtcNow;
 
-            // Build query for active year seasons
+            // Build query for active year seasons available for farmer selection
+            // Active means: Status = PlanningOpen AND AllowFarmerSelection = true 
+            // AND current date is within FarmerSelectionWindow
             var query = _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
-                .Where(ys => ys.StartDate <= now && ys.EndDate >= now); // Active means current date is within start and end date
+                .Where(ys => ys.Status == SeasonStatus.PlanningOpen 
+                    && ys.AllowFarmerSelection == true
+                    && ys.FarmerSelectionWindowStart.HasValue 
+                    && ys.FarmerSelectionWindowEnd.HasValue
+                    && now >= ys.FarmerSelectionWindowStart.Value 
+                    && now <= ys.FarmerSelectionWindowEnd.Value);
 
             // Apply optional filters
             if (request.ClusterId.HasValue)
@@ -63,7 +70,7 @@ public class GetActiveYearSeasonsQueryHandler : IRequestHandler<GetActiveYearSea
                 TotalCount = activeSeasons.Count
             };
 
-            _logger.LogInformation("Retrieved {Count} active year seasons", activeSeasons.Count);
+            _logger.LogInformation("Retrieved {Count} active year seasons available for farmer selection", activeSeasons.Count);
 
             return Result<ActiveYearSeasonsResponse>.Success(response);
         }

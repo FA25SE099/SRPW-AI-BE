@@ -50,7 +50,7 @@ public class GetYearSeasonDetailQueryHandler : IRequestHandler<GetYearSeasonDeta
                 ClusterId = yearSeason.ClusterId,
                 ClusterName = yearSeason.Cluster.ClusterName,
                 Year = yearSeason.Year,
-                RiceVarietyId = (Guid)(yearSeason.RiceVarietyId.HasValue ? yearSeason.RiceVarietyId.Value : (Guid?)null),
+                RiceVarietyId = yearSeason.RiceVarietyId,
                 RiceVarietyName = yearSeason.RiceVariety?.VarietyName,
                 StartDate = yearSeason.StartDate,
                 EndDate = yearSeason.EndDate,

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonReadiness;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SeasonFeature.Queries.GetAvailableRiceVarietiesForSeason;
@@ -28,8 +29,8 @@ public class GetAvailableRiceVarietiesForSeasonQueryHandler
             // Check if season exists
             var season = await _unitOfWork.Repository<Season>()
                 .FindAsync(s => s.Id == request.SeasonId);
-
-            if (season == null)
+            var yearSeason = await _unitOfWork.Repository<YearSeason>().FindAsync(c => c.Id == request.SeasonId);
+            if (yearSeason == null)
             {
                 return Result<List<RiceVarietySeasonDto>>.Failure("Season not found");
             }
@@ -38,7 +39,7 @@ public class GetAvailableRiceVarietiesForSeasonQueryHandler
             var query = _unitOfWork.Repository<RiceVarietySeason>()
                 .GetQueryable()
                 .Include(rvs => rvs.RiceVariety)
-                .Where(rvs => rvs.SeasonId == request.SeasonId);
+                .Where(rvs => rvs.SeasonId == yearSeason.SeasonId);
 
             // Filter by recommended if requested
             if (request.OnlyRecommended)
