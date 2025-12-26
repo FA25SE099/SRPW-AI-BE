@@ -115,6 +115,9 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
             var cultivationTasks = new List<CultivationTask>();
             var plotArea = plot.Area;
+            
+            // Track which tasks are newly created (to skip copying farm logs/late records)
+            var newlyCreatedTaskIndices = new HashSet<int>();
 
             // Get all existing cultivation tasks for the current active version to copy farm logs from
             // (except for Emergency tasks which are brand new problem-solving tasks)
@@ -135,6 +138,16 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             for (int i = 0; i < request.BaseCultivationTasks.Count; i++)
             {
                 var taskRequest = request.BaseCultivationTasks[i];
+                
+                // Check if this is a newly created emergency task
+                bool isNewlyCreated = taskRequest.Status == TaskStatus.NewEmergency;
+                if (isNewlyCreated)
+                {
+                    newlyCreatedTaskIndices.Add(i);
+                    _logger.LogInformation(
+                        "Task at index {Index} is newly created (NewEmergency status). Will skip copying farm logs and late records.",
+                        i);
+                }
 
                 Guid? productionPlanTaskId = null;
                 ProductionPlanTask? productionPlanTask = null;
@@ -166,6 +179,11 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                             taskRequest.CultivationPlanTaskId.Value);
                     }
                 }
+                
+                // Convert NewEmergency status to Emergency for saving
+                var taskStatus = taskRequest.Status == TaskStatus.NewEmergency 
+                    ? TaskStatus.Emergency 
+                    : (taskRequest.Status ?? TaskStatus.Emergency);
 
                 var newTask = new CultivationTask
                 {
@@ -182,7 +200,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                         : taskRequest.Description.Trim(),
 
                     TaskType = taskRequest.TaskType ?? productionPlanTask?.TaskType ?? TaskType.PestControl,
-                    Status = taskRequest.Status ?? TaskStatus.Emergency,
+                    Status = taskStatus,
                     ExecutionOrder = taskRequest.ExecutionOrder ?? (i + 1),
                     ScheduledEndDate = taskRequest.ScheduledEndDate.HasValue
                         ? DateTime.SpecifyKind(taskRequest.ScheduledEndDate.Value, DateTimeKind.Utc)
@@ -229,9 +247,9 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 
                 // Log what we're about to save
                 _logger.LogInformation(
-                    "Creating task {Index}/{Total}: Name='{TaskName}', ProductionPlanTaskId={PPTId}, ExecutionOrder={Order}, Status={Status}",
+                    "Creating task {Index}/{Total}: Name='{TaskName}', ProductionPlanTaskId={PPTId}, ExecutionOrder={Order}, Status={Status}, IsNewlyCreated={IsNewlyCreated}",
                     i + 1, request.BaseCultivationTasks.Count, newTask.CultivationTaskName, 
-                    productionPlanTaskId, newTask.ExecutionOrder, newTask.Status);
+                    productionPlanTaskId, newTask.ExecutionOrder, newTask.Status, isNewlyCreated);
             }
 
             await _unitOfWork.Repository<CultivationTask>().AddRangeAsync(cultivationTasks);
@@ -265,19 +283,22 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 cancellationToken);
 
             // Copy farm logs from old cultivation tasks to new tasks
-            // (including Emergency status tasks which are brand new problem-solving tasks)
+            // Skip copying for newly created emergency tasks (NewEmergency status)
             if (oldCultivationTasks.Any())
             {
                 await CopyFarmLogsToNewTasks(
                     oldCultivationTasks,
                     cultivationTasks,
+                    newlyCreatedTaskIndices,
                     plotCultivation.Id,
                     cancellationToken);
                 
                 // Also copy late farmer records to new tasks
+                // Skip copying for newly created emergency tasks (NewEmergency status)
                 await CopyLateFarmerRecordsToNewTasks(
                     oldCultivationTasks,
                     cultivationTasks,
+                    newlyCreatedTaskIndices,
                     cancellationToken);
             }
 
@@ -330,11 +351,12 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
     /// <summary>
     /// Copies farm logs from old cultivation tasks to new cultivation tasks based on ProductionPlanTaskId matching.
-    /// Copies for ALL tasks including Emergency status tasks.
+    /// Skips copying for newly created emergency tasks (those sent with NewEmergency status).
     /// </summary>
     private async Task CopyFarmLogsToNewTasks(
         IReadOnlyList<CultivationTask> oldCultivationTasks,
         List<CultivationTask> newCultivationTasks,
+        HashSet<int> newlyCreatedTaskIndices,
         Guid plotCultivationId,
         CancellationToken cancellationToken)
     {
@@ -342,9 +364,22 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         {
             var newFarmLogs = new List<FarmLog>();
             int copiedLogsCount = 0;
+            int skippedNewTasksCount = 0;
 
-            foreach (var newTask in newCultivationTasks)
+            for (int i = 0; i < newCultivationTasks.Count; i++)
             {
+                var newTask = newCultivationTasks[i];
+                
+                // Skip newly created emergency tasks - they shouldn't have farm logs copied
+                if (newlyCreatedTaskIndices.Contains(i))
+                {
+                    skippedNewTasksCount++;
+                    _logger.LogInformation(
+                        "Skipping farm log copy for newly created task {TaskId} at index {Index} (Name: '{TaskName}')",
+                        newTask.Id, i, newTask.CultivationTaskName);
+                    continue;
+                }
+
                 // Skip tasks without ProductionPlanTaskId
                 if (!newTask.ProductionPlanTaskId.HasValue)
                 {
@@ -375,7 +410,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     continue;
                 }
 
-                // Copy all farm logs from old task to new task (including for Emergency tasks)
+                // Copy all farm logs from old task to new task
                 foreach (var oldLog in oldTask.FarmLogs)
                 {
                     var newLog = new FarmLog
@@ -425,12 +460,14 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
-                    "Successfully copied total {Count} farm logs to {TaskCount} new tasks",
-                    copiedLogsCount, newCultivationTasks.Count);
+                    "Successfully copied total {Count} farm logs to {TaskCount} tasks. Skipped {SkippedCount} newly created tasks.",
+                    copiedLogsCount, newCultivationTasks.Count - skippedNewTasksCount, skippedNewTasksCount);
             }
             else
             {
-                _logger.LogInformation("No farm logs were copied - no matching old tasks with logs found");
+                _logger.LogInformation(
+                    "No farm logs were copied - no matching old tasks with logs found. Skipped {SkippedCount} newly created tasks.",
+                    skippedNewTasksCount);
             }
         }
         catch (Exception ex)
@@ -443,20 +480,35 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
     /// <summary>
     /// Copies late farmer records from old cultivation tasks to new cultivation tasks based on ProductionPlanTaskId matching.
+    /// Skips copying for newly created emergency tasks (those sent with NewEmergency status).
     /// This preserves the lateness history when creating new versions.
     /// </summary>
     private async Task CopyLateFarmerRecordsToNewTasks(
         IReadOnlyList<CultivationTask> oldCultivationTasks,
         List<CultivationTask> newCultivationTasks,
+        HashSet<int> newlyCreatedTaskIndices,
         CancellationToken cancellationToken)
     {
         try
         {
             var newLateRecords = new List<LateFarmerRecord>();
             int copiedRecordsCount = 0;
+            int skippedNewTasksCount = 0;
 
-            foreach (var newTask in newCultivationTasks)
+            for (int i = 0; i < newCultivationTasks.Count; i++)
             {
+                var newTask = newCultivationTasks[i];
+                
+                // Skip newly created emergency tasks - they shouldn't have late records copied
+                if (newlyCreatedTaskIndices.Contains(i))
+                {
+                    skippedNewTasksCount++;
+                    _logger.LogInformation(
+                        "Skipping late record copy for newly created task {TaskId} at index {Index} (Name: '{TaskName}')",
+                        newTask.Id, i, newTask.CultivationTaskName);
+                    continue;
+                }
+
                 // Skip tasks without ProductionPlanTaskId
                 if (!newTask.ProductionPlanTaskId.HasValue)
                 {
@@ -514,12 +566,14 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
-                    "Successfully copied total {Count} late farmer records to {TaskCount} new tasks",
-                    copiedRecordsCount, newCultivationTasks.Count);
+                    "Successfully copied total {Count} late farmer records to {TaskCount} tasks. Skipped {SkippedCount} newly created tasks.",
+                    copiedRecordsCount, newCultivationTasks.Count - skippedNewTasksCount, skippedNewTasksCount);
             }
             else
             {
-                _logger.LogInformation("No late farmer records were copied - no matching old tasks with records found");
+                _logger.LogInformation(
+                    "No late farmer records were copied - no matching old tasks with records found. Skipped {SkippedCount} newly created tasks.",
+                    skippedNewTasksCount);
             }
         }
         catch (Exception ex)

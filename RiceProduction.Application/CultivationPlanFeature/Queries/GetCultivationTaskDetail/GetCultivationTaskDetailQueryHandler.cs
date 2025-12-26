@@ -50,25 +50,60 @@ public class GetCultivationTaskDetailQueryHandler :
             var plannedTask = task.ProductionPlanTask;
             var plotArea = task.PlotCultivation.Area.GetValueOrDefault(0M);
 
-            // 2. Ánh xạ chi tiết vật tư (kết hợp dự kiến và thực tế)
-            var materialDetails = plannedTask.ProductionPlanTaskMaterials.Select(pptm =>
+            // 2. Ánh xạ chi tiết vật tư - Fixed to handle emergency tasks correctly
+            List<TaskMaterialDetailResponse> materialDetails;
+            
+            if (task.IsContingency || task.ProductionPlanTaskId == null)
             {
-                var actualMat = task.CultivationTaskMaterials.FirstOrDefault(ctm => ctm.MaterialId == pptm.MaterialId);
-                
-                return new TaskMaterialDetailResponse
+                // For contingency/emergency tasks or tasks without ProductionPlanTask,
+                // only show materials from CultivationTaskMaterials (actual materials used)
+                materialDetails = task.CultivationTaskMaterials
+                    .Select(ctm => new TaskMaterialDetailResponse
+                    {
+                        MaterialId = ctm.MaterialId,
+                        MaterialName = ctm.Material.Name,
+                        MaterialUnit = ctm.Material.Unit,
+                        
+                        PlannedQuantityPerHa = 0M, // Emergency tasks don't have planned quantities per ha
+                        PlannedTotalEstimatedCost = 0M,
+                        
+                        ActualQuantityUsed = ctm.ActualQuantity,
+                        ActualCost = ctm.ActualCost,
+                        LogNotes = ctm.Notes
+                    })
+                    .ToList();
+            }
+            else
+            {
+                // For normal tasks with ProductionPlanTask, show both planned and actual materials
+                var allMaterialIds = task.CultivationTaskMaterials
+                    .Select(ctm => ctm.MaterialId)
+                    .Union(plannedTask.ProductionPlanTaskMaterials.Select(pptm => pptm.MaterialId))
+                    .Distinct();
+
+                materialDetails = allMaterialIds.Select(materialId =>
                 {
-                    MaterialId = pptm.MaterialId,
-                    MaterialName = pptm.Material.Name,
-                    MaterialUnit = pptm.Material.Unit,
+                    var actualMat = task.CultivationTaskMaterials.FirstOrDefault(ctm => ctm.MaterialId == materialId);
+                    var plannedMat = plannedTask.ProductionPlanTaskMaterials.FirstOrDefault(pptm => pptm.MaterialId == materialId);
                     
-                    PlannedQuantityPerHa = pptm.QuantityPerHa,
-                    PlannedTotalEstimatedCost = pptm.EstimatedAmount.GetValueOrDefault(0M),
+                    // Use actual material if exists, otherwise fallback to planned
+                    var material = actualMat?.Material ?? plannedMat?.Material;
                     
-                    ActualQuantityUsed = actualMat?.ActualQuantity ?? 0M,
-                    ActualCost = actualMat?.ActualCost ?? 0M,
-                    LogNotes = actualMat?.Notes
-                };
-            }).ToList();
+                    return new TaskMaterialDetailResponse
+                    {
+                        MaterialId = materialId,
+                        MaterialName = material?.Name ?? string.Empty,
+                        MaterialUnit = material?.Unit ?? string.Empty,
+                        
+                        PlannedQuantityPerHa = plannedMat?.QuantityPerHa ?? 0M,
+                        PlannedTotalEstimatedCost = plannedMat?.EstimatedAmount.GetValueOrDefault(0M) ?? 0M,
+                        
+                        ActualQuantityUsed = actualMat?.ActualQuantity ?? 0M,
+                        ActualCost = actualMat?.ActualCost ?? 0M,
+                        LogNotes = actualMat?.Notes
+                    };
+                }).ToList();
+            }
 
             // 3. Ánh xạ các Farm Log
             var logsResponse = task.FarmLogs.Select(fl => new FarmLogSummaryResponse

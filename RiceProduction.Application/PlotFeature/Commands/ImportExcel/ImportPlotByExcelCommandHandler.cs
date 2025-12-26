@@ -429,7 +429,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                         var firstVersion = new CultivationVersion
                         {
                             PlotCultivationId = plotCultivationId,
-                            VersionName = "Initial Version",
+                            VersionName = "0",
                             VersionOrder = 1,
                             IsActive = true,
                             Reason = $"Created during plot import for {seasonToUse.SeasonName} {cultivationYear}",
@@ -480,7 +480,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                     await cultivationVersionRepo.AddRangeAsync(cultivationVersionsToCreate);
                     
                     _logger.LogInformation(
-                        "Creating {Count} CultivationVersion records (initial versions)",
+                        "Creating {Count} CultivationVersion records (0)",
                         cultivationVersionsToCreate.Count);
                 }
 
