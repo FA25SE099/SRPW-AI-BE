@@ -18,6 +18,8 @@ public class ReportItemResponse
     public Guid? PlotId { get; set; }
     public string? PlotName { get; set; }
     public decimal? PlotArea { get; set; }
+    public Guid? GroupId { get; set; }
+    public string? GroupName { get; set; }
     public Guid? CultivationPlanId { get; set; }
     public string? CultivationPlanName { get; set; }
     public string ReportType { get; set; } = string.Empty;
@@ -35,5 +37,13 @@ public class ReportItemResponse
     public string? ResolutionNotes { get; set; }
     public string? FarmerName { get; set; }
     public string? ClusterName { get; set; }
+    
+    /// <summary>
+    /// Information about the affected cultivation task where the problem occurred
+    /// </summary>
+    public Guid? AffectedCultivationTaskId { get; set; }
+    public string? AffectedTaskName { get; set; }
+    public string? AffectedTaskType { get; set; }
+    public string? AffectedTaskVersionName { get; set; }
+    public Guid? AffectedTaskVersionId { get; set; }
 }
-

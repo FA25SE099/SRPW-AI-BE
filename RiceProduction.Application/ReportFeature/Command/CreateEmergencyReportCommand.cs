@@ -10,6 +10,14 @@ public class CreateEmergencyReportCommand : IRequest<Result<Guid>>
     public Guid? PlotCultivationId { get; set; }
     public Guid? GroupId { get; set; }
     public Guid? ClusterId { get; set; }
+    
+    /// <summary>
+    /// The cultivation task where the problem occurred (optional).
+    /// Helps identify at which stage/task the issue happened.
+    /// Example: If pest issue occurred during "Bón phân lần 2", provide that task's ID.
+    /// </summary>
+    public Guid? AffectedCultivationTaskId { get; set; }
+    
     public string AlertType { get; set; } = string.Empty;
 
     public string Title { get; set; } = string.Empty;

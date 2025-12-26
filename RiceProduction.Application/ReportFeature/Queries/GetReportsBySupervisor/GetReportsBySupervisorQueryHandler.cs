@@ -90,6 +90,10 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                 .Include(r => r.Group)
                     .ThenInclude(g => g.Cluster)
                 .Include(r => r.Cluster)
+                .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.ProductionPlanTask)
+                .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.Version)
                 .AsQueryable();
 
             // Apply filters
@@ -146,6 +150,8 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                     ? $"{r.PlotCultivation.Plot.SoThua}/{r.PlotCultivation.Plot.SoTo}"
                     : null,
                 PlotArea = r.PlotCultivation?.Plot?.Area,
+                GroupId = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.Id,
+                GroupName = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.GroupName,
                 CultivationPlanId = r.PlotCultivationId,
                 CultivationPlanName = r.PlotCultivation != null
                     ? $"Plan {r.PlotCultivation.PlantingDate:yyyy-MM-dd}"
@@ -166,7 +172,13 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                 FarmerName = r.PlotCultivation?.Plot?.Farmer?.FullName,
                 ClusterName = r.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group?.Cluster?.ClusterName
                     ?? r.Group?.Cluster?.ClusterName
-                    ?? r.Cluster?.ClusterName
+                    ?? r.Cluster?.ClusterName,
+                AffectedCultivationTaskId = r.AffectedCultivationTaskId,
+                AffectedTaskName = r.AffectedTask?.CultivationTaskName 
+                    ?? r.AffectedTask?.ProductionPlanTask?.TaskName,
+                AffectedTaskType = r.AffectedTask?.TaskType?.ToString(),
+                AffectedTaskVersionName = r.AffectedTask?.Version?.VersionName,
+                AffectedTaskVersionId = r.AffectedTask?.VersionId
             }).ToList();
 
             _logger.LogInformation(

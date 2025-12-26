@@ -134,25 +134,26 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
                 }
 
                 // Handle Supervisor changes
-                if (request.SupervisorIds != null)
+                // Both null and empty list mean: remove all supervisors
+                // Get current supervisors for this cluster
+                var currentSupervisors = cluster.SupervisorsInCluster?.ToList() ?? new List<Supervisor>();
+                var currentSupervisorIds = currentSupervisors.Select(s => s.Id).ToHashSet();
+                var newSupervisorIds = request.SupervisorIds?.ToHashSet() ?? new HashSet<Guid>();
+
+                // Remove supervisors that are no longer in the list
+                var supervisorsToRemove = currentSupervisors.Where(s => !newSupervisorIds.Contains(s.Id)).ToList();
+                foreach (var supervisor in supervisorsToRemove)
                 {
-                    // Get current supervisors for this cluster
-                    var currentSupervisors = cluster.SupervisorsInCluster?.ToList() ?? new List<Supervisor>();
-                    var currentSupervisorIds = currentSupervisors.Select(s => s.Id).ToHashSet();
-                    var newSupervisorIds = request.SupervisorIds.ToHashSet();
+                    supervisor.ClusterId = null;
+                    supervisor.AssignedDate = null;
+                    _unitOfWork.SupervisorRepository.Update(supervisor);
+                    _logger.LogInformation("Removed supervisor {SupervisorId} from cluster {ClusterId}", 
+                        supervisor.Id, cluster.Id);
+                }
 
-                    // Remove supervisors that are no longer in the list
-                    var supervisorsToRemove = currentSupervisors.Where(s => !newSupervisorIds.Contains(s.Id)).ToList();
-                    foreach (var supervisor in supervisorsToRemove)
-                    {
-                        supervisor.ClusterId = null;
-                        supervisor.AssignedDate = null;
-                        _unitOfWork.SupervisorRepository.Update(supervisor);
-                        _logger.LogInformation("Removed supervisor {SupervisorId} from cluster {ClusterId}", 
-                            supervisor.Id, cluster.Id);
-                    }
-
-                    // Add new supervisors
+                // Add new supervisors (only if SupervisorIds is not null and has items)
+                if (request.SupervisorIds != null && request.SupervisorIds.Count > 0)
+                {
                     var supervisorIdsToAdd = newSupervisorIds.Where(id => !currentSupervisorIds.Contains(id)).ToList();
                     foreach (var supervisorId in supervisorIdsToAdd)
                     {
