@@ -74,6 +74,54 @@ public class FarmerCultivationController : ControllerBase
     }
 
     /// <summary>
+    /// Get available rice varieties for a specific year season (extracts seasonId automatically)
+    /// </summary>
+    /// <param name="yearSeasonId">Year Season ID</param>
+    /// <param name="onlyRecommended">Filter to show only recommended varieties (default: true)</param>
+    /// <returns>List of available rice varieties</returns>
+    [HttpGet("year-season/{yearSeasonId}/available-varieties")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAvailableVarietiesForYearSeason(
+        Guid yearSeasonId,
+        [FromQuery] bool onlyRecommended = true)
+    {
+        try
+        {
+            // Get the YearSeason to extract the SeasonId
+            var yearSeason = await _unitOfWork.Repository<YearSeason>()
+                .FindAsync(ys => ys.Id == yearSeasonId);
+
+            if (yearSeason == null)
+            {
+                return NotFound(new { message = "Year Season not found" });
+            }
+
+            var query = new GetAvailableRiceVarietiesForSeasonQuery
+            {
+                SeasonId = yearSeason.SeasonId,
+                OnlyRecommended = onlyRecommended
+            };
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving available varieties for year season {YearSeasonId}", yearSeasonId);
+            return StatusCode(StatusCodes.Status500InternalServerError, 
+                new { message = "An error occurred while retrieving available varieties" });
+        }
+    }
+
+    /// <summary>
     /// Validate cultivation preferences before confirmation
     /// </summary>
     /// <param name="query">Validation query parameters</param>

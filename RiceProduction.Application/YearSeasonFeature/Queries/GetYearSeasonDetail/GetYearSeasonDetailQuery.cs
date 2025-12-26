@@ -16,8 +16,8 @@ public class YearSeasonDetailDTO
     public Guid ClusterId { get; set; }
     public string ClusterName { get; set; } = string.Empty;
     public int Year { get; set; }
-    public Guid RiceVarietyId { get; set; }
-    public string RiceVarietyName { get; set; } = string.Empty;
+    public Guid? RiceVarietyId { get; set; }
+    public string? RiceVarietyName { get; set; }
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
     public DateTime? BreakStartDate { get; set; }
