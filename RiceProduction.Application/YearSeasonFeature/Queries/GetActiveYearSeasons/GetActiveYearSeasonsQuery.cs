@@ -4,7 +4,9 @@ using RiceProduction.Application.Common.Models;
 namespace RiceProduction.Application.YearSeasonFeature.Queries.GetActiveYearSeasons;
 
 /// <summary>
-/// Query to get all active year seasons across all clusters
+/// Query to get all year seasons available for farmer cultivation selection.
+/// Returns year seasons where Status=PlanningOpen, AllowFarmerSelection=true, 
+/// and current date is within FarmerSelectionWindow.
 /// </summary>
 public class GetActiveYearSeasonsQuery : IRequest<Result<ActiveYearSeasonsResponse>>
 {

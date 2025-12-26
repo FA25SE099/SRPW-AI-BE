@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmerCultivationSelections;
 
@@ -36,22 +37,38 @@ public class GetFarmerCultivationSelectionsQueryHandler
                 return Result<FarmerCultivationSelectionsDto>.Failure("Year Season not found");
             }
 
-            // 2. Get all plots belonging to the farmer in the cluster
+            // 2. Get the farmer to check their cluster
+            var farmer = await _unitOfWork.FarmerRepository
+                .GetFarmerByIdAsync(request.FarmerId, cancellationToken);
+
+            if (farmer == null)
+            {
+                return Result<FarmerCultivationSelectionsDto>.Failure("Farmer not found");
+            }
+
+            // Verify farmer is in the same cluster as the year season
+            if (farmer.ClusterId != yearSeason.ClusterId)
+            {
+                _logger.LogWarning(
+                    "Farmer {FarmerId} in cluster {FarmerClusterId} attempted to access YearSeason {YearSeasonId} in cluster {YearSeasonClusterId}",
+                    request.FarmerId, farmer.ClusterId, request.YearSeasonId, yearSeason.ClusterId);
+                return Result<FarmerCultivationSelectionsDto>.Failure(
+                    "This season is not available in your cluster");
+            }
+
+            // 3. Get all plots belonging to the farmer (no group requirement)
             var farmerPlots = await _unitOfWork.Repository<Plot>()
                 .GetQueryable()
-                .Include(p => p.GroupPlots)
-                    .ThenInclude(gp => gp.Group)
-                .Where(p => p.FarmerId == request.FarmerId && 
-                           p.GroupPlots.Any(gp => gp.Group.ClusterId == yearSeason.ClusterId))
+                .Where(p => p.FarmerId == request.FarmerId && p.Status == PlotStatus.Active)
                 .ToListAsync(cancellationToken);
 
             if (!farmerPlots.Any())
             {
                 return Result<FarmerCultivationSelectionsDto>.Failure(
-                    "No plots found for this farmer in the cluster");
+                    "No plots found for this farmer");
             }
 
-            // 3. Get existing cultivations for these plots
+            // 4. Get existing cultivations for these plots
             var plotIds = farmerPlots.Select(p => p.Id).ToList();
             var cultivations = await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
@@ -61,7 +78,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
                             pc.YearSeasonId == request.YearSeasonId)
                 .ToListAsync(cancellationToken);
 
-            // 4. Create selection DTOs
+            // 5. Create selection DTOs
             var selections = new List<PlotCultivationSelectionDto>();
 
             foreach (var plot in farmerPlots)
@@ -71,7 +88,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
                 var selection = new PlotCultivationSelectionDto
                 {
                     PlotId = plot.Id,
-                    PlotName = "",
+                    PlotName ="Thửa "+plot.SoThua+"/"+plot.SoTo,
                     PlotArea = plot.Area,
                     IsConfirmed = cultivation?.FarmerSelectionDate != null,
                     RiceVarietyId = cultivation?.RiceVarietyId,
@@ -80,7 +97,6 @@ public class GetFarmerCultivationSelectionsQueryHandler
                     SelectionDate = cultivation?.FarmerSelectionDate
                 };
 
-                // Calculate estimated harvest date if we have planting date and variety
                 if (cultivation?.PlantingDate != null && cultivation.RiceVariety != null)
                 {
                     selection.EstimatedHarvestDate = cultivation.PlantingDate
@@ -104,11 +120,11 @@ public class GetFarmerCultivationSelectionsQueryHandler
                 selections.Add(selection);
             }
 
-            // 5. Calculate summary statistics
+            // 6. Calculate summary statistics
             var confirmedPlots = selections.Count(s => s.IsConfirmed);
             var pendingPlots = selections.Count - confirmedPlots;
 
-            // 6. Calculate days until deadline
+            // 7. Calculate days until deadline
             var daysUntilDeadline = 0;
             if (yearSeason.FarmerSelectionWindowEnd.HasValue)
             {
@@ -116,7 +132,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
                 daysUntilDeadline = (int)Math.Max(0, Math.Ceiling(timeSpan.TotalDays));
             }
 
-            // 7. Create result DTO
+            // 8. Create result DTO
             var result = new FarmerCultivationSelectionsDto
             {
                 YearSeasonId = yearSeason.Id,

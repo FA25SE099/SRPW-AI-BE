@@ -29,12 +29,15 @@ public class YearSeasonController : ControllerBase
     }
 
     /// <summary>
-    /// Get all active year seasons across all clusters.
-    /// Active means the current date is within the season's start and end dates.
+    /// Get all active year seasons available for farmer cultivation selection.
+    /// Returns year seasons where:
+    /// - Status = PlanningOpen
+    /// - AllowFarmerSelection = true
+    /// - Current date is within FarmerSelectionWindow
     /// </summary>
     /// <param name="clusterId">Optional filter by cluster ID</param>
     /// <param name="year">Optional filter by year</param>
-    /// <returns>List of active year seasons</returns>
+    /// <returns>List of year seasons available for farmer selection</returns>
     [HttpGet("active")]
     public async Task<IActionResult> GetActiveYearSeasons([FromQuery] Guid? clusterId, [FromQuery] int? year)
     {
@@ -63,7 +66,7 @@ public class YearSeasonController : ControllerBase
         return Ok(result);
     }
 
-    [HttpPut("{id}")]
+    [HttpPut("{id:guid}")]
     [Authorize(Roles = "AgronomyExpert")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateYearSeasonCommand command)
     {
@@ -79,7 +82,7 @@ public class YearSeasonController : ControllerBase
         return Ok(result);
     }
 
-    [HttpPatch("{id}/status")]
+    [HttpPatch("{id:guid}/status")]
     [Authorize(Roles = "AgronomyExpert")]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateYearSeasonStatusCommand command)
     {
@@ -95,7 +98,7 @@ public class YearSeasonController : ControllerBase
         return Ok(result);
     }
 
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:guid}")]
     [Authorize(Roles = "AgronomyExpert")]
     public async Task<IActionResult> Delete(Guid id)
     {
@@ -108,7 +111,7 @@ public class YearSeasonController : ControllerBase
         return Ok(result);
     }
 
-    [HttpGet("cluster/{clusterId}")]
+    [HttpGet("cluster/{clusterId:guid}")]
     public async Task<IActionResult> GetByCluster(Guid clusterId, [FromQuery] int? year)
     {
         var query = new GetYearSeasonsByClusterQuery { ClusterId = clusterId, Year = year };
@@ -120,7 +123,7 @@ public class YearSeasonController : ControllerBase
         return Ok(result);
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetDetail(Guid id)
     {
         var query = new GetYearSeasonDetailQuery { Id = id };
@@ -135,7 +138,7 @@ public class YearSeasonController : ControllerBase
     /// <summary>
     /// Get comprehensive dashboard for a YearSeason including groups, plans, materials, and timeline
     /// </summary>
-    [HttpGet("{id}/dashboard")]
+    [HttpGet("{id:guid}/dashboard")]
     public async Task<IActionResult> GetDashboard(Guid id)
     {
         var query = new GetYearSeasonDashboardQuery { YearSeasonId = id };
@@ -190,7 +193,7 @@ public class YearSeasonController : ControllerBase
     /// </summary>
     /// <param name="id">YearSeason ID</param>
     /// <returns>Readiness information including blocking issues and recommendations</returns>
-    [HttpGet("{id}/readiness")]
+    [HttpGet("{id:guid}/readiness")]
     public async Task<IActionResult> GetReadiness(Guid id)
     {
         var query = new GetYearSeasonReadinessQuery { YearSeasonId = id };
@@ -208,7 +211,7 @@ public class YearSeasonController : ControllerBase
     /// </summary>
     /// <param name="id">YearSeason ID</param>
     /// <returns>Farmer selection status including variety breakdown and pending farmers</returns>
-    [HttpGet("{id}/farmer-selections")]
+    [HttpGet("{id:guid}/farmer-selections")]
     public async Task<IActionResult> GetFarmerSelections(Guid id)
     {
         var query = new GetYearSeasonFarmerSelectionsQuery { YearSeasonId = id };
@@ -226,7 +229,7 @@ public class YearSeasonController : ControllerBase
     /// </summary>
     /// <param name="id">YearSeason ID</param>
     /// <returns>List of groups with detailed information and status summary</returns>
-    [HttpGet("{id}/groups")]
+    [HttpGet("{id:guid}/groups")]
     public async Task<IActionResult> GetGroupsByYearSeason(Guid id)
     {
         var query = new GetGroupsByYearSeasonQuery { YearSeasonId = id };
