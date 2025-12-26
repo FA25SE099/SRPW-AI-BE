@@ -131,13 +131,25 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
                 }
             }
 
+            // Get or verify YearSeason exists
+            var yearSeason = await _unitOfWork.Repository<YearSeason>()
+                .FindAsync(ys => ys.ClusterId == request.ClusterId && 
+                                ys.SeasonId == request.SeasonId && 
+                                ys.Year == request.Year);
+
+            if (yearSeason == null)
+            {
+                return Result<Guid>.Failure(
+                    $"YearSeason not found for cluster {request.ClusterId}, season {request.SeasonId}, year {request.Year}. " +
+                    "Please create a YearSeason first.");
+            }
+
             // Create group
             var group = new Group
             {
                 ClusterId = request.ClusterId,
                 SupervisorId = request.SupervisorId,
-                RiceVarietyId = request.RiceVarietyId,
-                SeasonId = request.SeasonId,
+                YearSeasonId = yearSeason.Id,
                 Year = request.Year,
                 PlantingDate = request.PlantingDate,
                 Status = GroupStatus.Draft,

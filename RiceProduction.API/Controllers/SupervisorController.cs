@@ -19,8 +19,8 @@ using RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSeason;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPlanDetails;
 using RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorAvailableSeasons;
-using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorProfile;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorByClusterId;
+using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorProfile;
 using RiceProduction.Application.SupervisorFeature.Queries.ValidatePolygonArea;
 using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
@@ -429,6 +429,7 @@ public class SupervisorController : Controller
 
         return Ok(result);
     }
+
     [HttpGet("by-cluster/{clusterId:guid}")]
     [ProducesResponseType(typeof(Result<List<SupervisorDTO>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status404NotFound)]
@@ -491,7 +492,6 @@ public class SupervisorController : Controller
             return StatusCode(500, Result.Failure("An error occurred while retrieving supervisors"));
         }
     }
-
 }
 
 public class ValidatePolygonAreaRequest

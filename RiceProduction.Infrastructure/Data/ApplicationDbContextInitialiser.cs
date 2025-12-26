@@ -128,6 +128,7 @@ namespace RiceProduction.Infrastructure.Data
         {
             await SeedRolesAsync();
             await SeedAdmin();
+            await SeedSystemSettingsAsync();
 
             await SeedRiceVarietyCategoriesAsync();
             await SeedVietnameseRiceDataAsync();
@@ -144,6 +145,7 @@ namespace RiceProduction.Infrastructure.Data
             // Seed in dependency order
             await SeedRolesAsync();
             await SeedUsersAsync();
+            await SeedSystemSettingsAsync();
             await SeedRiceVarietyCategoriesAsync();
             await SeedVietnameseRiceDataAsync();
             await SeedMaterialDataAsync();
@@ -187,6 +189,117 @@ namespace RiceProduction.Infrastructure.Data
                     }
                 }
             }
+        }
+        #endregion
+
+        #region SystemSettings Seeding
+        private async Task SeedSystemSettingsAsync()
+        {
+            var settings = new[]
+            {
+                new SystemSetting
+                {
+                    SettingKey = "SupervisorMaxAreaCapacity",
+                    SettingValue = "100",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Maximum total area (in hectares) that a supervisor can manage per season"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultProximityThreshold",
+                    SettingValue = "100",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default proximity threshold in meters for group formation"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultPlantingDateTolerance",
+                    SettingValue = "2",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default planting date tolerance in days for group formation"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMinGroupArea",
+                    SettingValue = "5.0",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default minimum group area in hectares"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMaxGroupArea",
+                    SettingValue = "15.0",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default maximum group area in hectares"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMinPlotsPerGroup",
+                    SettingValue = "3",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default minimum number of plots per group"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMaxPlotsPerGroup",
+                    SettingValue = "10",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default maximum number of plots per group"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "MaterialDistributionDaysBeforeTask",
+                    SettingValue = "7",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "How many days before task start date should materials be distributed"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "SupervisorConfirmationWindowDays",
+                    SettingValue = "2",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "Days after scheduled distribution date for supervisor to confirm"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "FarmerConfirmationWindowDays",
+                    SettingValue = "3",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "Days after supervisor confirmation for farmer to confirm receipt"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "MaterialDistributionGracePeriodDays",
+                    SettingValue = "1",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "Grace period after deadline before marking as critically overdue"
+                }
+            };
+
+            foreach (var setting in settings)
+            {
+                var existingSetting = _context.SystemSettings
+                    .FirstOrDefault(s => s.SettingKey == setting.SettingKey);
+                
+                if (existingSetting == null)
+                {
+                    _context.SystemSettings.Add(setting);
+                    _logger.LogInformation("Seeded system setting: {SettingKey} = {SettingValue}", 
+                        setting.SettingKey, setting.SettingValue);
+                }
+                else
+                {
+                    // Optionally update description if changed
+                    if (existingSetting.SettingDescription != setting.SettingDescription)
+                    {
+                        existingSetting.SettingDescription = setting.SettingDescription;
+                        _logger.LogInformation("Updated system setting description: {SettingKey}", setting.SettingKey);
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("System settings seeding completed");
         }
         #endregion
 
@@ -429,8 +542,8 @@ namespace RiceProduction.Infrastructure.Data
 
             _logger.LogInformation($"Using current season: {currentSeasonName} ({currentSeasonId}), Planting date: {plantingDate:yyyy-MM-dd}");
 
-            // Create Demo Cluster
-            var demoClusterId = Guid.NewGuid();
+            // Create Demo Cluster with FIXED ID for consistency
+            var demoClusterId = new Guid("883c7c49-eaf7-67a6-ad8b-2f957dce3ea4");
             var polygonDemoCluster = CreatePolygonFromWkt("POLYGON((106.710 10.880, 106.710 10.890, 106.720 10.890, 106.720 10.880, 106.710 10.880))");
 
             var demoCluster = new Cluster
@@ -445,6 +558,23 @@ namespace RiceProduction.Infrastructure.Data
 
             await _context.Clusters.AddAsync(demoCluster);
             await _context.SaveChangesAsync();
+
+            // Create YearSeason for the current season
+            var yearSeason = new YearSeason
+            {
+                SeasonId = currentSeasonId,
+                ClusterId = demoClusterId,
+                Year = currentYear,
+                RiceVarietyId = st25.Id,
+                StartDate = plantingDate,
+                EndDate = plantingDate.AddDays(120),
+                Status = SeasonStatus.Active,
+                AllowedPlantingFlexibilityDays = 7
+            };
+            await _context.YearSeasons.AddAsync(yearSeason);
+            await _context.SaveChangesAsync();
+            
+            _logger.LogInformation($"Created YearSeason for {currentSeasonName} {currentYear} in Demo Cluster");
 
             // Update cluster manager
             clusterManager.ClusterId = demoClusterId;
@@ -909,9 +1039,9 @@ namespace RiceProduction.Infrastructure.Data
             // Seed Seasons
             var seasonsData = new[]
             {
-                ("Đông Xuân", "Winter-Spring", "12/01", "04/30"),
-                ("Hè Thu", "Summer-Autumn", "05/01", "08/31"),
-                ("Thu Đông", "Autumn-Winter", "09/01", "11/30")
+                ("Đông Xuân", "Winter-Spring", "01/12", "30/04"),
+                ("Hè Thu", "Summer-Autumn", "01/05", "31/08"),
+                ("Thu Đông", "Autumn-Winter", "01/09", "30/11")
             };
 
             foreach (var (name, type, startDate, endDate) in seasonsData)
@@ -1842,9 +1972,9 @@ namespace RiceProduction.Infrastructure.Data
                 return;
             }
 
-            // Create Clusters
-            var cluster1Id = Guid.NewGuid();
-            var cluster2Id = Guid.NewGuid();
+            // Create Clusters with FIXED IDs for consistency
+            var cluster1Id = new Guid("661a5a27-c8d5-45f4-8469-5a02ec6c5fe0");
+            var cluster2Id = new Guid("772b6b38-d9e6-56f5-9c7a-1e846cbd2df3");
 
             var polygonCluster1 = CreatePolygonFromWkt("POLYGON((1196936.46062617 608865.269417751, 1196936.91062585 608857.799417709, 1196937.4406257 608854.249417673,1196937.11062567 608853.609417687,1196960.63062598 608855.569416764,1196960.5706265 608867.849416807,1196936.46062617 608865.269417751))");
             var polygonCluster2 = CreatePolygonFromWkt("POLYGON((1196959.19062734 608887.939416929,1196934.67062708 608887.029417897,1196935.46062667 608877.419417831,1196959.61062698 608879.409416884,1196959.19062734 608887.939416929))");
@@ -2192,16 +2322,75 @@ namespace RiceProduction.Infrastructure.Data
             if (farmer4 != null) { farmer4.ClusterId = cluster2Id; _context.Update(farmer4); }
             if (farmer5 != null) { farmer5.ClusterId = cluster2Id; _context.Update(farmer5); }
             await _context.SaveChangesAsync();
-            // Create Groups with plots
+            
+            // Create YearSeasons for the groups
             var todayUtc = DateTime.UtcNow.Date;
+            var yearSeasons = new List<YearSeason>
+            {
+                new YearSeason
+                {
+                    SeasonId = dongXuan!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    EndDate = new DateTime(2025, 4, 30, 0, 0, 0, DateTimeKind.Utc),
+                    Status = SeasonStatus.Active,
+                    AllowedPlantingFlexibilityDays = 7
+                },
+                new YearSeason
+                {
+                    SeasonId = thuDong!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-20),
+                    EndDate = todayUtc.AddDays(90),
+                    Status = SeasonStatus.Active
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-30),
+                    EndDate = todayUtc.AddDays(80),
+                    Status = SeasonStatus.Completed
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu.Id,
+                    ClusterId = cluster2Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-5),
+                    EndDate = todayUtc.AddDays(105),
+                    Status = SeasonStatus.Active
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2024,
+                    RiceVarietyId = om5451?.Id ?? st25.Id,
+                    StartDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
+                    EndDate = new DateTime(2024, 8, 20, 0, 0, 0, DateTimeKind.Utc),
+                    Status = SeasonStatus.Completed
+                }
+            };
+            
+            await _context.YearSeasons.AddRangeAsync(yearSeasons);
+            await _context.SaveChangesAsync();
+            
+            // Create Groups with plots
             var groups = new List<Group>
             {
                 new Group
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = thuDong.Id,
+                    YearSeasonId = yearSeasons[0].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-20),
                     Status = GroupStatus.Active,
@@ -2212,8 +2401,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[1].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-30),
                     Status = GroupStatus.Completed,
@@ -2224,8 +2412,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster2Id,
                     SupervisorId = supervisor2?.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[2].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-5),
                     Status = GroupStatus.Active,
@@ -2236,8 +2423,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = om5451?.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[3].Id,
                     Year = 2024,
                     PlantingDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
                     Status = GroupStatus.Completed,
@@ -2443,6 +2629,7 @@ namespace RiceProduction.Infrastructure.Data
 
             var pastGroup2024 = await _context.Groups
                 .Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot)
+                .Include(g => g.YearSeason)
                 .FirstOrDefaultAsync(g => g.Year == 2024 && g.Status == GroupStatus.Completed);
 
             if (pastGroup2024 == null)
@@ -2516,7 +2703,7 @@ namespace RiceProduction.Infrastructure.Data
             {
                 var plot = groupPlot.Plot;
                 var existingPlotCultivation = await _context.PlotCultivations
-                    .AnyAsync(pc => pc.PlotId == plot.Id && pc.SeasonId == group.SeasonId!.Value);
+                    .AnyAsync(pc => pc.PlotId == plot.Id && pc.SeasonId == group.YearSeasonId!.Value);
                 if (existingPlotCultivation)
                 {
                     continue;
@@ -2535,8 +2722,8 @@ namespace RiceProduction.Infrastructure.Data
                     PlotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
-                        RiceVarietyId = group.RiceVarietyId!.Value,
-                        SeasonId = group.SeasonId!.Value,
+                        RiceVarietyId = group.YearSeason!.RiceVarietyId ?? Guid.Empty,
+                        SeasonId = group.YearSeason!.SeasonId,
                         PlantingDate = plantingDate,
                         Status = CultivationStatus.Planned,
                         ActualYield = plot.Area * 7.2m

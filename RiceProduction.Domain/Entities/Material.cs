@@ -29,5 +29,6 @@ public class Material : BaseAuditableEntity
     public ICollection<StandardPlanTaskMaterial> StandardPlanTaskMaterials { get; set; } = new List<StandardPlanTaskMaterial>();
     public ICollection<ProductionPlanTaskMaterial> ProductionPlanTaskMaterials { get; set; } = new List<ProductionPlanTaskMaterial>();
     public ICollection<CultivationTaskMaterial> CultivationTaskMaterials { get; set; } = new List<CultivationTaskMaterial>();
+    public ICollection<MaterialDistribution> MaterialDistributions { get; set; } = new List<MaterialDistribution>();
 
 }

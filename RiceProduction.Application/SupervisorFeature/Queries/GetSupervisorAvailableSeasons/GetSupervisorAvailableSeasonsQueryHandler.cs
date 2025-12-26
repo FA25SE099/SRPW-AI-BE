@@ -58,7 +58,7 @@ public class GetSupervisorAvailableSeasonsQueryHandler
 
                 // Check if supervisor already has a group for this season+year
                 bool hasGroupForSeason = supervisorGroups.Any(g =>
-                    g.SeasonId == currentSeason.Id && g.Year == seasonYear);
+                    g.YearSeason != null && g.YearSeason.SeasonId == currentSeason.Id && g.Year == seasonYear);
 
                 if (!hasGroupForSeason)
                 {
@@ -90,7 +90,7 @@ public class GetSupervisorAvailableSeasonsQueryHandler
             {
                 // Group by SeasonId + Year
                 var groupedBySeasonYear = supervisorGroups
-                    .GroupBy(g => new { g.SeasonId, g.Year })
+                    .GroupBy(g => new { SeasonId = g.YearSeason?.SeasonId, g.Year })
                     .ToList();
 
                 // Load all seasons for these groups

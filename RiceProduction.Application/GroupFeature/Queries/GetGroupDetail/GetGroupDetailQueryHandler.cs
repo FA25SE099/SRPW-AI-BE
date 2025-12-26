@@ -32,7 +32,8 @@ public class GetGroupDetailQueryHandler :
                 includeProperties: q => q
                     .Include(g => g.Cluster)
                     .Include(g => g.Supervisor)
-                    .Include(g => g.RiceVariety)
+                    .Include(g => g.YearSeason)
+                        .ThenInclude(ys => ys.RiceVariety)
                     .Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.Farmer) // Plots và Farmer
                     .Include(g => g.ProductionPlans).ThenInclude(pp => pp.StandardPlan) // Plans và Standard Plan
                     .Include(g => g.UavServiceOrders).ThenInclude(uav => uav.UavVendor) // UAV Orders và Vendor
@@ -93,11 +94,11 @@ public class GetGroupDetailQueryHandler :
             {
                 Id = group.Id,
                 ClusterName = group.Cluster.ClusterName,
-                SeasonId = group.SeasonId,
+                SeasonId = group.YearSeason?.SeasonId,
                 PlantingDate = group.PlantingDate,
                 Status = group.Status,
                 TotalArea = group.TotalArea,
-                RiceVarietyName = group.RiceVariety?.VarietyName, // Giả định RiceVariety có VarietyName
+                RiceVarietyName = group.YearSeason?.RiceVariety?.VarietyName,
                 SupervisorName = group.Supervisor?.FullName, // Giả định Supervisor có FullName
 
                 Plots = plotsResponse,

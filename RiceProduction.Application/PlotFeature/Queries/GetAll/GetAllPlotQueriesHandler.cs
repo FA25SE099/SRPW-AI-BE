@@ -208,8 +208,9 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
             {
                 if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
                 {
+                    // Parse DD/MM format
                     var startParts = season.StartDate.Split('/');
-                    int startMonth = int.Parse(startParts[0]);
+                    int startMonth = int.Parse(startParts[1]);
 
                     int year = today.Year;
                     if (currentMonth < startMonth && startMonth > 6)
@@ -231,10 +232,11 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                 var startParts = startDateStr.Split('/');
                 var endParts = endDateStr.Split('/');
 
-                int startMonth = int.Parse(startParts[0]);
-                int startDay = int.Parse(startParts[1]);
-                int endMonth = int.Parse(endParts[0]);
-                int endDay = int.Parse(endParts[1]);
+                // Parse DD/MM format
+                int startDay = int.Parse(startParts[0]);
+                int startMonth = int.Parse(startParts[1]);
+                int endDay = int.Parse(endParts[0]);
+                int endMonth = int.Parse(endParts[1]);
 
                 int currentDate = month * 100 + day;
                 int seasonStart = startMonth * 100 + startDay;

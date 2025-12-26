@@ -17,47 +17,28 @@ public class YearSeason : BaseAuditableEntity
 
     public Guid? ManagedByExpertId { get; set; }
 
-    /// <summary>
-    /// The rice variety determined by the expert for this entire cluster season
-    /// </summary>
-    [Required]
-    public Guid RiceVarietyId { get; set; }
+    public Guid? RiceVarietyId { get; set; }
+    
+    public bool AllowFarmerSelection { get; set; } = false;
+    public DateTime? FarmerSelectionWindowStart { get; set; }
+    public DateTime? FarmerSelectionWindowEnd { get; set; }
 
-    /// <summary>
-    /// Actual start date for this season instance
-    /// </summary>
     [Required]
     public DateTime StartDate { get; set; }
-
-    /// <summary>
-    /// Actual end date for this season instance
-    /// </summary>
+    public int? MaterialConfirmationDaysBeforePlanting { get; set; }
+    
     [Required]
     public DateTime EndDate { get; set; }
 
-    /// <summary>
-    /// Break period start (between this and next season)
-    /// </summary>
     public DateTime? BreakStartDate { get; set; }
+    public int AllowedPlantingFlexibilityDays { get; set; } = 0;
 
-    /// <summary>
-    /// Break period end
-    /// </summary>
     public DateTime? BreakEndDate { get; set; }
 
-    /// <summary>
-    /// When supervisors should start creating production plans
-    /// </summary>
     public DateTime? PlanningWindowStart { get; set; }
 
-    /// <summary>
-    /// Deadline for production plan creation
-    /// </summary>
     public DateTime? PlanningWindowEnd { get; set; }
 
-    /// <summary>
-    /// Status of this season instance
-    /// </summary>
     public SeasonStatus Status { get; set; } = SeasonStatus.Draft;
 
     public string? Notes { get; set; }
@@ -72,7 +53,7 @@ public class YearSeason : BaseAuditableEntity
     public AgronomyExpert? ManagedByExpert { get; set; }
 
     [ForeignKey("RiceVarietyId")]
-    public RiceVariety RiceVariety { get; set; } = null!;
+    public RiceVariety? RiceVariety { get; set; }
     
     public ICollection<Group> Groups { get; set; } = new List<Group>();
 }

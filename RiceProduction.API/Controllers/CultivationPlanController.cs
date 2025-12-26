@@ -43,11 +43,7 @@ public class CultivationPlanController : ControllerBase
         // Check if user is authenticated
         if (!_currentUser.Id.HasValue)
         {
-            return Unauthorized(new { 
-                succeeded = false,
-                message = "User not authenticated. Please login first.",
-                errors = new[] { "Unauthorized" }
-            });
+            return Unauthorized(Result<object>.Failure("User not authenticated", "AuthenticationRequired"));
         }
 
         var query = new GetCultivationsForPlotQuery 

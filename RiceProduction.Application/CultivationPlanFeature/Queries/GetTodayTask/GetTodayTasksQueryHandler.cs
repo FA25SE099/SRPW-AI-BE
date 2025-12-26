@@ -58,7 +58,7 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
 
             var includesDraft = statusesToFilter.Contains(RiceProduction.Domain.Enums.TaskStatus.Draft);
 
-            // 2. Xây dựng biểu thức lọc:
+            
             Expression<Func<CultivationTask, bool>> filter = ct =>
                 // Lọc theo Version mới nhất (Updated to use latest version)
                 ct.VersionId.HasValue && latestVersionIds.Contains(ct.VersionId.Value) &&
@@ -73,11 +73,7 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                 (request.StatusFilter.HasValue 
                     ? ct.Status == request.StatusFilter.Value 
                     : defaultOutstandingStatuses.Contains(ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft))); 
-                    // &&
-
-                // Điều kiện tồn đọng
-                // (ct.ScheduledEndDate.HasValue && ct.ScheduledEndDate.Value.Date <= todayUtc || 
-                //  !ct.ScheduledEndDate.HasValue && ct.ProductionPlanTask.ScheduledDate.Date <= todayUtc);
+                    
 
             // 3. Định nghĩa các Includes sâu
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
@@ -90,6 +86,7 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                     .Include(ct => ct.ProductionPlanTask)
                         .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
                             .ThenInclude(pptm => pptm.Material)
+                    .Include(ct => ct.AssignedVendor)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
             );
 
@@ -132,9 +129,11 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                     Status = currentStatus, 
                     
                     ScheduledDate = ct.ProductionPlanTask.ScheduledDate,
+                    ScheduledEndDate = targetCompletionDate,
                     Priority = ct.ProductionPlanTask.Priority,
                     
                     IsOverdue = isOverdue,
+                    IsUav = ct.AssignedToVendorId.HasValue, // True if UAV vendor is assigned
                     
                     PlotArea = plotArea,
                     PlotSoThuaSoTo = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",

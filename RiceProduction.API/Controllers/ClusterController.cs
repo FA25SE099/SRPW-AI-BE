@@ -82,6 +82,7 @@ public class ClusterController : Controller
     }
 
     [HttpGet("{clusterId}/history")]
+    [Obsolete("This endpoint is deprecated. Use GET /api/YearSeason/cluster/{clusterId} instead to get past YearSeasons.", false)]
     public async Task<ActionResult<Result<ClusterHistoryResponse>>> GetClusterHistory(
         Guid clusterId,
         [FromQuery] Guid? seasonId = null,
@@ -90,6 +91,10 @@ public class ClusterController : Controller
     {
         try
         {
+            Response.Headers.Add("X-Deprecated", "true");
+            Response.Headers.Add("X-Deprecated-Message", "Use GET /api/YearSeason/cluster/{clusterId} instead");
+            Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
+
             var query = new GetClusterHistoryQuery
             {
                 ClusterId = clusterId,
@@ -113,10 +118,15 @@ public class ClusterController : Controller
     }
 
     [HttpGet("{clusterId}/current-season")]
+    [Obsolete("This endpoint is deprecated. Use GET /api/YearSeason/cluster/{clusterId} to get current season, then GET /api/YearSeason/{id}/dashboard for details.", false)]
     public async Task<ActionResult<Result<ClusterCurrentSeasonResponse>>> GetClusterCurrentSeason(Guid clusterId)
     {
         try
         {
+            Response.Headers.Add("X-Deprecated", "true");
+            Response.Headers.Add("X-Deprecated-Message", "Use GET /api/YearSeason/cluster/{clusterId} and /api/YearSeason/{id}/dashboard instead");
+            Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
+
             var query = new GetClusterCurrentSeasonQuery
             {
                 ClusterId = clusterId
@@ -137,6 +147,7 @@ public class ClusterController : Controller
     }
 
     [HttpGet("{clusterId}/seasons")]
+    [Obsolete("This endpoint is deprecated. Use GET /api/YearSeason/cluster/{clusterId} instead to get all YearSeasons categorized as current/past/upcoming.", false)]
     public async Task<ActionResult<Result<ClusterSeasonsResponse>>> GetClusterAvailableSeasons(
         Guid clusterId,
         [FromQuery] bool includeEmpty = true,
@@ -144,6 +155,10 @@ public class ClusterController : Controller
     {
         try
         {
+            Response.Headers.Add("X-Deprecated", "true");
+            Response.Headers.Add("X-Deprecated-Message", "Use GET /api/YearSeason/cluster/{clusterId} instead");
+            Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
+
             var query = new GetClusterAvailableSeasonsQuery
             {
                 ClusterId = clusterId,

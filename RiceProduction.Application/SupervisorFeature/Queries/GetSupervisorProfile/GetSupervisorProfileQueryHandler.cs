@@ -54,14 +54,14 @@ public class GetSupervisorProfileQueryHandler : IRequestHandler<GetSupervisorPro
             var totalGroupsSupervised = allGroups.Count;
 
             // Step 3: Get active groups this season
-            var currentDateString = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var currentDate = DateTime.UtcNow.Date;
             var activeGroupsThisSeason = 0;
             
             foreach (var group in allGroups)
             {
-                if (group.Season != null &&
-                    string.Compare(group.Season.StartDate, currentDateString) <= 0 &&
-                    string.Compare(group.Season.EndDate, currentDateString) >= 0 &&
+                if (group.YearSeason != null &&
+                    group.YearSeason.StartDate.Date <= currentDate &&
+                    group.YearSeason.EndDate.Date >= currentDate &&
                     group.Status == GroupStatus.Active)
                 {
                     activeGroupsThisSeason++;

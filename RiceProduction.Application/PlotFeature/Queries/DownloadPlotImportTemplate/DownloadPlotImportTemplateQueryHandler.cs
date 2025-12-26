@@ -84,7 +84,9 @@ public class DownloadPlotImportTemplateQueryHandler
                         SoTo = null,
                         Area = null,
                         SoilType = null,
-                        RiceVarietyName = null
+                        RiceVarietyName = null,
+                        BoundaryWKT = null,  // Optional polygon field
+                        CoordinateWKT = null // Optional coordinate field
                     };
 
                     templateRows.Add(row);

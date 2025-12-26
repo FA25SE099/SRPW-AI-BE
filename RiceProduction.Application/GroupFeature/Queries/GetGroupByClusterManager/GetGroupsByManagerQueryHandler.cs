@@ -44,7 +44,8 @@ public class GetGroupsByManagerQueryHandler : IRequestHandler<GetGroupsByManager
                 filter: filter,
                 orderBy: q => q.OrderBy(g => g.PlantingDate),
                 includeProperties: q => q
-                    .Include(g => g.RiceVariety)
+                    .Include(g => g.YearSeason)
+                        .ThenInclude(ys => ys.RiceVariety)
                     .Include(g => g.Supervisor)
                     .Include(g => g.GroupPlots) // Để đếm Plots
                     .Include(g => g.ProductionPlans.Where(pp => pp.Status != RiceProduction.Domain.Enums.TaskStatus.Cancelled)) // Để đếm Active Plans
@@ -66,7 +67,7 @@ public class GetGroupsByManagerQueryHandler : IRequestHandler<GetGroupsByManager
                 // Tạo tên Group mô phỏng
                 GroupName = $"{managedCluster.ClusterName} / Group {g.Id.ToString().Substring(0, 4)}", 
                 PlantingDate = g.PlantingDate,
-                RiceVarietyName = g.RiceVariety?.VarietyName ?? "N/A",
+                RiceVarietyName = g.YearSeason?.RiceVariety?.VarietyName ?? "N/A",
                 SupervisorName = g.Supervisor?.FullName ?? "Chưa phân công",
                 TotalPlots = g.GroupPlots.Count,
                 ActivePlans = g.ProductionPlans.Count

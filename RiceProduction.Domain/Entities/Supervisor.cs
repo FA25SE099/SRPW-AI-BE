@@ -19,4 +19,5 @@ public class Supervisor : ApplicationUser
     public ICollection<Group> SupervisedGroups { get; set; } = new List<Group>();
     public ICollection<CultivationTask> AssignedTasks { get; set; } = new List<CultivationTask>();
     public ICollection<SupervisorFarmerAssignment> SupervisorAssignments { get; set; } = new List<SupervisorFarmerAssignment>();
+    public ICollection<MaterialDistribution> DistributedMaterials { get; set; } = new List<MaterialDistribution>();
 }
