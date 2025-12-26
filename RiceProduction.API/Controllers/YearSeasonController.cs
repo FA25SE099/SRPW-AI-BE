@@ -13,6 +13,7 @@ using RiceProduction.Application.YearSeasonFeature.Queries.CalculateSeasonDates;
 using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonReadiness;
 using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonFarmerSelections;
 using RiceProduction.Application.YearSeasonFeature.Queries.GetGroupsByYearSeason;
+using RiceProduction.Application.YearSeasonFeature.Queries.GetActiveYearSeasons;
 
 namespace RiceProduction.API.Controllers;
 
@@ -25,6 +26,29 @@ public class YearSeasonController : ControllerBase
     public YearSeasonController(IMediator mediator)
     {
         _mediator = mediator;
+    }
+
+    /// <summary>
+    /// Get all active year seasons across all clusters.
+    /// Active means the current date is within the season's start and end dates.
+    /// </summary>
+    /// <param name="clusterId">Optional filter by cluster ID</param>
+    /// <param name="year">Optional filter by year</param>
+    /// <returns>List of active year seasons</returns>
+    [HttpGet("active")]
+    public async Task<IActionResult> GetActiveYearSeasons([FromQuery] Guid? clusterId, [FromQuery] int? year)
+    {
+        var query = new GetActiveYearSeasonsQuery 
+        { 
+            ClusterId = clusterId, 
+            Year = year 
+        };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
     }
 
     [HttpPost]
