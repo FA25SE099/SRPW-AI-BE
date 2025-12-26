@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
@@ -88,7 +88,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
                 var selection = new PlotCultivationSelectionDto
                 {
                     PlotId = plot.Id,
-                    PlotName = "",
+                    PlotName ="Thửa "+plot.SoThua+"/"+plot.SoTo,
                     PlotArea = plot.Area,
                     IsConfirmed = cultivation?.FarmerSelectionDate != null,
                     RiceVarietyId = cultivation?.RiceVarietyId,
@@ -97,7 +97,6 @@ public class GetFarmerCultivationSelectionsQueryHandler
                     SelectionDate = cultivation?.FarmerSelectionDate
                 };
 
-                // Calculate estimated harvest date if we have planting date and variety
                 if (cultivation?.PlantingDate != null && cultivation.RiceVariety != null)
                 {
                     selection.EstimatedHarvestDate = cultivation.PlantingDate
