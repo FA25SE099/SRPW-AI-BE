@@ -97,6 +97,18 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                 }
             }
 
+            // Validate AffectedCultivationTaskId if provided
+            if (request.AffectedCultivationTaskId.HasValue)
+            {
+                var taskExists = await _unitOfWork.Repository<CultivationTask>()
+                    .ExistsAsync(t => t.Id == request.AffectedCultivationTaskId.Value);
+
+                if (!taskExists)
+                {
+                    return Result<Guid>.Failure($"Cultivation Task with ID {request.AffectedCultivationTaskId.Value} not found.");
+                }
+            }
+
             // 5. Determine the source based on user role
             var userRoles = _currentUser.Roles ?? new List<string>();
             AlertSource source;
@@ -135,6 +147,7 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                 PlotCultivationId = request.PlotCultivationId,
                 GroupId = request.GroupId,
                 ClusterId = request.ClusterId,
+                AffectedCultivationTaskId = request.AffectedCultivationTaskId,
                 AlertType = normalizedAlertType,
                 Title = request.Title.Trim(),
                 Description = request.Description.Trim(),
@@ -165,8 +178,8 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Emergency report created successfully. ID: {ReportId}, Type: {AlertType}, Source: {Source}, Reporter: {UserId}, Images: {ImageCount}, AI Analysis: {HasAI}",
-                emergencyReport.Id, emergencyReport.AlertType, emergencyReport.Source, userId.Value, uploadedUrls.Count, emergencyReport.HasAiAnalysis);
+                "Emergency report created successfully. ID: {ReportId}, Type: {AlertType}, Source: {Source}, Reporter: {UserId}, Images: {ImageCount}, AI Analysis: {HasAI}, AffectedTask: {TaskId}",
+                emergencyReport.Id, emergencyReport.AlertType, emergencyReport.Source, userId.Value, uploadedUrls.Count, emergencyReport.HasAiAnalysis, emergencyReport.AffectedCultivationTaskId);
 
             var message = hasImages
                 ? $"Emergency report created successfully with {uploadedUrls.Count} image(s) uploaded."

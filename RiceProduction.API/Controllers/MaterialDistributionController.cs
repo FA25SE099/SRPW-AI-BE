@@ -2,10 +2,14 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.MaterialDistributionFeature.Commands.BulkConfirmMaterialDistribution;
+using RiceProduction.Application.MaterialDistributionFeature.Commands.BulkConfirmMaterialReceipt;
 using RiceProduction.Application.MaterialDistributionFeature.Commands.ConfirmMaterialDistribution;
 using RiceProduction.Application.MaterialDistributionFeature.Commands.ConfirmMaterialReceipt;
 using RiceProduction.Application.MaterialDistributionFeature.Commands.InitiateMaterialDistribution;
+using RiceProduction.Application.MaterialDistributionFeature.Queries.GetMaterialDistributionById;
 using RiceProduction.Application.MaterialDistributionFeature.Queries.GetMaterialDistributionsForGroup;
+using RiceProduction.Application.MaterialDistributionFeature.Queries.GetPendingDistributionsForSupervisor;
+using RiceProduction.Application.MaterialDistributionFeature.Queries.GetPendingReceiptsForFarmer;
 
 namespace RiceProduction.API.Controllers;
 
@@ -248,32 +252,115 @@ public class MaterialDistributionController : ControllerBase
     }
 
     /// <summary>
-    /// Get material distributions for a specific farmer (for mobile app)
+    /// Bulk confirm multiple material receipts at once for a farmer
+    /// Farmer confirms receipt of all materials in a single request
+    /// Recommended: Use this for bulk confirmation (e.g., 10 receipts = 1 confirmation)
     /// </summary>
-    /// <param name="farmerId">The farmer ID</param>
-    /// <returns>List of distributions for the farmer</returns>
-    [HttpGet("farmer/{farmerId}")]
+    /// <param name="command">Bulk receipt confirmation details</param>
+    /// <returns>Number of receipts confirmed and any failures</returns>
+    [HttpPost("confirm-receipt-bulk")]
     [Authorize(Roles = "Farmer,Admin")]
-    [ProducesResponseType(typeof(List<MaterialDistributionDetailDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(BulkReceiptConfirmationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetForFarmer(Guid farmerId)
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> BulkConfirmReceipt([FromBody] BulkConfirmMaterialReceiptCommand command)
     {
         try
         {
-            // TODO: Create GetMaterialDistributionsForFarmerQuery if needed
-            // For now, return a message indicating this needs to be implemented
-            _logger.LogInformation("Farmer {FarmerId} requested their distributions", farmerId);
-            
-            return Ok(new 
-            { 
-                message = "Farmer-specific endpoint - use group endpoint and filter on frontend",
-                farmerId = farmerId
-            });
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Farmer {FarmerId} failed to bulk confirm receipts: {Message}",
+                    command.FarmerId, result.Message);
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation(
+                "Farmer {FarmerId} bulk confirmed {Count} receipts ({Failed} failed)",
+                command.FarmerId, result.Data?.TotalReceiptsConfirmed, result.Data?.FailedCount);
+
+            return Ok(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting distributions for farmer {FarmerId}", farmerId);
-            return StatusCode(500, new { message = "An error occurred while retrieving distributions" });
+            _logger.LogError(ex,
+                "Error bulk confirming receipts for farmer {FarmerId}",
+                command.FarmerId);
+            return StatusCode(500, new { message = "An error occurred while bulk confirming receipts" });
+        }
+    }
+
+    /// <summary>
+    /// Get pending material receipts for a specific farmer (for mobile app)
+    /// Returns distributions where supervisor has confirmed but farmer hasn't
+    /// </summary>
+    /// <param name="farmerId">The farmer ID</param>
+    /// <returns>List of pending receipts for the farmer</returns>
+    [HttpGet("farmer/{farmerId}/pending")]
+    [Authorize(Roles = "Farmer,Admin")]
+    [ProducesResponseType(typeof(PendingReceiptsForFarmerResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetPendingForFarmer(Guid farmerId)
+    {
+        try
+        {
+            var query = new GetPendingReceiptsForFarmerQuery { FarmerId = farmerId };
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to get pending receipts for farmer {FarmerId}: {Message}", 
+                    farmerId, result.Message);
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation("Farmer {FarmerId} has {Count} pending receipts", 
+                farmerId, result.Data?.TotalPending);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pending receipts for farmer {FarmerId}", farmerId);
+            return StatusCode(500, new { message = "An error occurred while retrieving pending receipts" });
+        }
+    }
+
+    /// <summary>
+    /// Get pending material distributions for a specific supervisor
+    /// Used for supervisor dashboard and notifications
+    /// </summary>
+    /// <param name="supervisorId">The supervisor ID</param>
+    /// <returns>List of pending distributions for the supervisor</returns>
+    [HttpGet("supervisor/{supervisorId}/pending")]
+    [Authorize(Roles = "Supervisor,Admin")]
+    [ProducesResponseType(typeof(PendingDistributionsForSupervisorResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetPendingForSupervisor(Guid supervisorId)
+    {
+        try
+        {
+            var query = new GetPendingDistributionsForSupervisorQuery { SupervisorId = supervisorId };
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Failed to get pending distributions for supervisor {SupervisorId}: {Message}", 
+                    supervisorId, result.Message);
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation("Supervisor {SupervisorId} has {Count} pending distributions ({Overdue} overdue)", 
+                supervisorId, result.Data?.TotalPending, result.Data?.OverdueCount);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting pending distributions for supervisor {SupervisorId}", supervisorId);
+            return StatusCode(500, new { message = "An error occurred while retrieving pending distributions" });
         }
     }
 
@@ -289,14 +376,17 @@ public class MaterialDistributionController : ControllerBase
     {
         try
         {
-            // TODO: Create GetMaterialDistributionByIdQuery if needed
-            _logger.LogInformation("Requested distribution {DistributionId}", distributionId);
-            
-            return Ok(new 
-            { 
-                message = "Get by ID endpoint - use group endpoint and filter on frontend",
-                distributionId = distributionId
-            });
+            var query = new GetMaterialDistributionByIdQuery { DistributionId = distributionId };
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Distribution {DistributionId} not found: {Message}", 
+                    distributionId, result.Message);
+                return NotFound(result);
+            }
+
+            return Ok(result);
         }
         catch (Exception ex)
         {

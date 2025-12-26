@@ -32,6 +32,7 @@ public class TodayTaskResponse
     public TaskType TaskType { get; set; }
     public RiceProduction.Domain.Enums.TaskStatus Status { get; set; }
     public DateTime ScheduledDate { get; set; }
+    public DateTime ScheduledEndDate { get; set; }
     public TaskPriority Priority { get; set; }
 
     /// <summary>

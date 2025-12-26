@@ -105,7 +105,7 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
                 order.CompletedAt = DateTime.UtcNow;
                 _logger.LogInformation("UAV Order {OrderId} fully completed.", order.Id);
             } 
-            else if (order.Status == RiceProduction.Domain.Enums.TaskStatus.Draft)
+            else if (order.Status == RiceProduction.Domain.Enums.TaskStatus.Approved)
             {
                 // Nếu đây là Plot đầu tiên, đánh dấu Order là InProgress
                 order.Status = RiceProduction.Domain.Enums.TaskStatus.InProgress;

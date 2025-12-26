@@ -100,7 +100,8 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             var totalArea = group.TotalArea.Value;
             var estimatedCost = totalArea * vendor.ServiceRatePerHa;
             var totalPlots = request.SelectedPlotIds.Count; // Tổng Plots được chọn
-            var orderName = request.OrderNameOverride ?? $"{group.Cluster.ClusterName} - Dịch vụ UAV {DateTime.Now:yyyyMMdd}";
+            var cluster = await _unitOfWork.Repository<Cluster>().FindAsync(c => c.Id == group.ClusterId);
+            var orderName = request.OrderNameOverride ?? $"{cluster.ClusterName ?? ""} - Dịch vụ UAV {DateTime.Now:yyyyMMdd}";
 
             var plotCoordinates = selectedPlots
                 .Where(p => p.Coordinate != null)

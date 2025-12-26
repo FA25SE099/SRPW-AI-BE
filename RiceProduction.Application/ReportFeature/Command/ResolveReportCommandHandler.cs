@@ -184,8 +184,15 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     TaskType = taskRequest.TaskType ?? productionPlanTask?.TaskType ?? TaskType.PestControl,
                     Status = taskRequest.Status ?? TaskStatus.Emergency,
                     ExecutionOrder = taskRequest.ExecutionOrder ?? (i + 1),
-                    ScheduledEndDate = taskRequest.ScheduledEndDate ?? DateTime.UtcNow.AddDays(7),
-
+                    ScheduledEndDate = taskRequest.ScheduledEndDate.HasValue
+                        ? DateTime.SpecifyKind(taskRequest.ScheduledEndDate.Value, DateTimeKind.Utc)
+                        : DateTime.UtcNow.AddDays(7),
+                    ActualStartDate = taskRequest.ActualStartDate.HasValue 
+                        ? DateTime.SpecifyKind(taskRequest.ActualStartDate.Value, DateTimeKind.Utc)
+                        : null,
+                    ActualEndDate = taskRequest.ActualEndDate.HasValue 
+                        ? DateTime.SpecifyKind(taskRequest.ActualEndDate.Value, DateTimeKind.Utc)
+                        : null,
                     AssignedToUserId = taskRequest.DefaultAssignedToUserId,
                     AssignedToVendorId = taskRequest.DefaultAssignedToVendorId,
 
@@ -294,6 +301,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             emergencyReport.ResolvedBy = expertId;
             emergencyReport.ResolvedAt = DateTime.UtcNow;
             emergencyReport.ResolutionNotes =
+                $"Emergency resolved with notes from expert: '{request.ResolutionReason}' " +
                 $"Emergency resolved by creating version '{newVersion.VersionName}' with {cultivationTasks.Count} tasks " +
                 $"on plot {plot.SoThua}/{plot.SoTo} ({plotArea:F2} ha).";
 
@@ -311,7 +319,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         catch (DbUpdateException dbEx)
         {
             _logger.LogError(dbEx, "Database error during report resolution");
-            return Result<Guid>. Failure("Database error occurred.", "DatabaseError");
+            return Result<Guid>.Failure("Database error occurred.", "DatabaseError");
         }
         catch (Exception ex)
         {
