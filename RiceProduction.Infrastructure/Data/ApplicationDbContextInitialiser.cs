@@ -136,7 +136,7 @@ namespace RiceProduction.Infrastructure.Data
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
             await SeedEmergencyProtocolDataAsync();
-            await SeedDemoClusterAndFarmersAsync();
+            //await SeedDemoClusterAndFarmersAsync();
             //await SeedEmergencyReportsAsync();
 
         }
