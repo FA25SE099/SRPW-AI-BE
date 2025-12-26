@@ -1036,9 +1036,9 @@ namespace RiceProduction.Infrastructure.Data
             // Seed Seasons
             var seasonsData = new[]
             {
-                ("Đông Xuân", "Winter-Spring", "12/01", "04/30"),
-                ("Hè Thu", "Summer-Autumn", "05/01", "08/31"),
-                ("Thu Đông", "Autumn-Winter", "09/01", "11/30")
+                ("Đông Xuân", "Winter-Spring", "01/12", "30/04"),
+                ("Hè Thu", "Summer-Autumn", "01/05", "31/08"),
+                ("Thu Đông", "Autumn-Winter", "01/09", "30/11")
             };
 
             foreach (var (name, type, startDate, endDate) in seasonsData)
@@ -2555,7 +2555,7 @@ namespace RiceProduction.Infrastructure.Data
                     PlotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
-                        RiceVarietyId = group.YearSeason!.RiceVarietyId,
+                        RiceVarietyId = group.YearSeason!.RiceVarietyId ?? Guid.Empty,
                         SeasonId = group.YearSeason!.SeasonId,
                         PlantingDate = plantingDate,
                         Status = CultivationStatus.Planned,

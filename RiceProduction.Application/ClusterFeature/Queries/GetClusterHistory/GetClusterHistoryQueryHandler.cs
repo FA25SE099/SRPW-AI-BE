@@ -147,7 +147,7 @@ public class GetClusterHistoryQueryHandler
                 // Calculate rice variety breakdown
                 var varietyBreakdown = groupsList
                     .Where(g => g.YearSeason?.RiceVarietyId != null)
-                    .GroupBy(g => g.YearSeason!.RiceVarietyId)
+                    .GroupBy(g => g.YearSeason!.RiceVarietyId!.Value)
                     .Select(g => new RiceVarietyGroupSummary
                     {
                         RiceVarietyId = g.Key,
@@ -178,7 +178,7 @@ public class GetClusterHistoryQueryHandler
                         : null,
                     RiceVarietyId = g.YearSeason?.RiceVarietyId,
                     RiceVarietyName = g.YearSeason?.RiceVarietyId != null 
-                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId)?.VarietyName 
+                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName 
                         : null,
                     PlantingDate = g.PlantingDate,
                     Status = g.Status.ToString(),

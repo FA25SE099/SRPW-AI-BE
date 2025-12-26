@@ -119,8 +119,43 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<Admin>().ToTable("Admins");
         builder.Entity<AgronomyExpert>().ToTable("AgronomyExperts");
         builder.Entity<UavVendor>().ToTable("UavVendors");
+        foreach (var entityType in builder.Model.GetEntityTypes())
+        {
+            var dateTimeProperties = entityType.GetProperties()
+                .Where(p => p.ClrType == typeof(DateTime) || p.ClrType == typeof(DateTime?));
 
-        // Apply all entity configurations from assembly
-        builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+            foreach (var property in dateTimeProperties)
+            {
+                property.SetValueConverter(
+                    new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+                        // When saving: convert to UTC
+                        v => v.Kind == DateTimeKind.Unspecified
+                            ? DateTime.SpecifyKind(v, DateTimeKind.Utc)
+                            : v.ToUniversalTime(),
+
+                        // When reading: keep as UTC (or you can leave as-is since PostgreSQL timestamptz returns UTC)
+                        v => DateTime.SpecifyKind(v, DateTimeKind.Utc)
+                    ));
+
+                // For nullable DateTime?
+                if (property.ClrType == typeof(DateTime?))
+                {
+                    property.SetValueConverter(
+                        new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime?, DateTime?>(
+                            v => v.HasValue
+                                ? (DateTime?)(v.Value.Kind == DateTimeKind.Unspecified
+                                    ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)
+                                    : v.Value.ToUniversalTime())
+                                : null,
+
+                            v => v.HasValue
+                                ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)
+                                : null
+                        ));
+                }
+            }
+        }
+            // Apply all entity configurations from assembly
+            builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
     }
 }

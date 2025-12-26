@@ -57,8 +57,12 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 // Initialize WKT reader for polygon parsing
                 var wktReader = new WKTReader(new GeometryFactory(new PrecisionModel(), 4326));
 
-                // Get current season
+                // Get current season and year (fallback values)
                 var (currentSeason, currentYear) = await GetCurrentSeasonAndYear(cancellationToken);
+                
+                // Cache all seasons by name for lookup
+                var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
+                var seasonLookup = allSeasons.ToDictionary(s => s.SeasonName, s => s, StringComparer.OrdinalIgnoreCase);
                 
                 // Cache farmers by FarmCode
                 var uniqueFarmCodes = plotImportRows
@@ -69,6 +73,16 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                     
                 var farmers = await farmerRepo.ListAsync(f => uniqueFarmCodes.Contains(f.FarmCode));
                 var farmerLookup = farmers.ToDictionary(f => f.FarmCode, f => f);
+                
+                // Get ClusterId from first farmer for YearSeason lookup
+                Guid? firstFarmerClusterId = null;
+                if (farmers.Any())
+                {
+                    firstFarmerClusterId = farmers.First().ClusterId;
+                }
+                
+                // Cache for YearSeasons by (SeasonId, Year, ClusterId) key
+                var yearSeasonCache = new Dictionary<(Guid seasonId, int year, Guid clusterId), YearSeason>();
                 
                 // Cache rice varieties by name
                 var uniqueVarietyNames = plotImportRows
@@ -134,10 +148,33 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                                 $"Row {rowNumber}: Rice variety '{row.RiceVarietyName}' not found. Check 'Rice_Varieties' sheet.");
                         }
 
-                        if (currentSeason == null)
+                        // Validate season name if provided
+                        if (!string.IsNullOrWhiteSpace(row.SeasonName))
+                        {
+                            if (!seasonLookup.ContainsKey(row.SeasonName))
+                            {
+                                var availableSeasons = string.Join(", ", seasonLookup.Keys);
+                                validationErrors.Add(
+                                    $"Row {rowNumber}: Season '{row.SeasonName}' not found. Available seasons: {availableSeasons}");
+                            }
+                        }
+                        else if (currentSeason == null)
                         {
                             validationErrors.Add(
-                                $"Row {rowNumber}: Cannot create cultivation - no current season found");
+                                $"Row {rowNumber}: Cannot create cultivation - no current season found and no season specified");
+                        }
+                        
+                        // Validate year if provided
+                        if (row.Year.HasValue)
+                        {
+                            var minYear = DateTime.Now.Year - 5;
+                            var maxYear = DateTime.Now.Year + 5;
+                            
+                            if (row.Year.Value < minYear || row.Year.Value > maxYear)
+                            {
+                                validationErrors.Add(
+                                    $"Row {rowNumber}: Year must be between {minYear} and {maxYear}");
+                            }
                         }
                     }
 
@@ -321,19 +358,69 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
 
                     // Create PlotCultivation if rice variety specified
                     if (!string.IsNullOrWhiteSpace(row.RiceVarietyName) && 
-                        varietyLookup.TryGetValue(row.RiceVarietyName, out var riceVariety) &&
-                        currentSeason != null)
+                        varietyLookup.TryGetValue(row.RiceVarietyName, out var riceVariety))
                     {
+                        // Determine which season to use: specified or current
+                        Season? seasonToUse = null;
+                        if (!string.IsNullOrWhiteSpace(row.SeasonName) && seasonLookup.TryGetValue(row.SeasonName, out var specifiedSeason))
+                        {
+                            seasonToUse = specifiedSeason;
+                        }
+                        else
+                        {
+                            seasonToUse = currentSeason;
+                        }
+                        
+                        // Skip if no valid season
+                        if (seasonToUse == null)
+                        {
+                            continue;
+                        }
+                        
+                        // Use provided year or fall back to current year
+                        var cultivationYear = row.Year ?? currentYear;
+                        
+                        // Get or create YearSeason for this specific season, year and cluster
+                        YearSeason? yearSeasonForCultivation = null;
+                        if (firstFarmerClusterId.HasValue)
+                        {
+                            var cacheKey = (seasonToUse.Id, cultivationYear, firstFarmerClusterId.Value);
+                            
+                            if (!yearSeasonCache.TryGetValue(cacheKey, out yearSeasonForCultivation))
+                            {
+                                yearSeasonForCultivation = await GetOrCreateYearSeasonAsync(
+                                    seasonToUse,
+                                    cultivationYear,
+                                    firstFarmerClusterId.Value,
+                                    cancellationToken);
+                                    
+                                if (yearSeasonForCultivation != null)
+                                {
+                                    yearSeasonCache[cacheKey] = yearSeasonForCultivation;
+                                }
+                            }
+                        }
+                        
                         var plotCultivationId = Guid.NewGuid();
                         var plotCultivation = new PlotCultivation
                         {
                             Id = plotCultivationId,
                             PlotId = plotId,
-                            SeasonId = currentSeason.Id,
+                            SeasonId = seasonToUse.Id,
                             RiceVarietyId = riceVariety.Id,
-                            PlantingDate = DateTime.UtcNow,
+                            PlantingDate = row.PlantingDate ?? DateTime.UtcNow,
                             Area = row.Area.Value,
-                            Status = CultivationStatus.Planned
+                            Status = CultivationStatus.Planned,
+                            
+                            // Farmer selection fields
+                            YearSeasonId = yearSeasonForCultivation?.Id,
+                            IsFarmerConfirmed = yearSeasonForCultivation?.AllowFarmerSelection == true,
+                            FarmerSelectionDate = yearSeasonForCultivation?.AllowFarmerSelection == true 
+                                ? DateTime.UtcNow 
+                                : null,
+                            FarmerSelectionNotes = yearSeasonForCultivation?.AllowFarmerSelection == true 
+                                ? $"Imported via Excel for {seasonToUse.SeasonName} {cultivationYear}" 
+                                : null
                         };
 
                         plotCultivationsToCreate.Add(plotCultivation);
@@ -345,7 +432,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                             VersionName = "Initial Version",
                             VersionOrder = 1,
                             IsActive = true,
-                            Reason = "Created during plot import",
+                            Reason = $"Created during plot import for {seasonToUse.SeasonName} {cultivationYear}",
                             ActivatedAt = DateTime.UtcNow
                         };
 
@@ -364,11 +451,27 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                     var plotCultivationRepo = _unitOfWork.Repository<PlotCultivation>();
                     await plotCultivationRepo.AddRangeAsync(plotCultivationsToCreate);
                     
+                    // Get unique season-year combinations from the cultivations
+                    var seasonYearCombos = plotCultivationsToCreate
+                        .Select(pc => 
+                        {
+                            var ys = yearSeasonCache.Values.FirstOrDefault(ys => ys.Id == pc.YearSeasonId);
+                            var season = allSeasons.FirstOrDefault(s => s.Id == pc.SeasonId);
+                            var year = ys?.Year ?? currentYear;
+                            return $"{season?.SeasonName} {year}";
+                        })
+                        .Distinct()
+                        .OrderBy(s => s)
+                        .ToList();
+                    
+                    var seasonYearDisplay = seasonYearCombos.Count == 1 
+                        ? seasonYearCombos[0]
+                        : string.Join(", ", seasonYearCombos);
+                    
                     _logger.LogInformation(
-                        "Creating {Count} PlotCultivation records for season {SeasonName} {Year}",
+                        "Creating {Count} PlotCultivation records for: {SeasonYears}",
                         plotCultivationsToCreate.Count,
-                        currentSeason?.SeasonName,
-                        currentYear);
+                        seasonYearDisplay);
                 }
 
                 if (cultivationVersionsToCreate.Any())
@@ -437,12 +540,29 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 }
                 if (plotCultivationsToCreate.Any())
                 {
+                    // Get unique season-year combinations from the cultivations
+                    var seasonYearCombos = plotCultivationsToCreate
+                        .Select(pc => 
+                        {
+                            var ys = yearSeasonCache.Values.FirstOrDefault(ys => ys.Id == pc.YearSeasonId);
+                            var season = allSeasons.FirstOrDefault(s => s.Id == pc.SeasonId);
+                            var year = ys?.Year ?? currentYear;
+                            return $"{season?.SeasonName} {year}";
+                        })
+                        .Distinct()
+                        .OrderBy(s => s)
+                        .ToList();
+                    
+                    var seasonYearDisplay = seasonYearCombos.Count == 1 
+                        ? seasonYearCombos[0]
+                        : string.Join(", ", seasonYearCombos);
+                    
                     message += $" with {plotCultivationsToCreate.Count} cultivation records";
                     if (cultivationVersionsToCreate.Any())
                     {
                         message += $" and {cultivationVersionsToCreate.Count} initial versions";
                     }
-                    message += $" for {currentSeason?.SeasonName} {currentYear}";
+                    message += $" for {seasonYearDisplay}";
                 }
                 if (skippedRows > 0)
                 {
@@ -537,6 +657,103 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
             var hectares = (decimal)(areaInSquareMeters / 10000.0);
             
             return Math.Round(hectares, 2);
+        }
+        
+        /// <summary>
+        /// Get existing YearSeason or create a new one if it doesn't exist
+        /// </summary>
+        private async Task<YearSeason?> GetOrCreateYearSeasonAsync(
+            Season season, 
+            int year, 
+            Guid clusterId, 
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Try to find existing YearSeason
+                var yearSeason = await _unitOfWork.Repository<YearSeason>()
+                    .FindAsync(ys => ys.SeasonId == season.Id && 
+                                    ys.Year == year &&
+                                    ys.ClusterId == clusterId);
+                
+                if (yearSeason != null)
+                {
+                    _logger.LogInformation(
+                        "Found existing YearSeason: {YearSeasonId}, AllowFarmerSelection: {AllowSelection}",
+                        yearSeason.Id,
+                        yearSeason.AllowFarmerSelection);
+                    return yearSeason;
+                }
+                
+                // Auto-create YearSeason if not found
+                _logger.LogInformation(
+                    "YearSeason not found for Season: {SeasonName}, Year: {Year}, Cluster: {ClusterId}. Auto-creating...",
+                    season.SeasonName,
+                    year,
+                    clusterId);
+                
+                // Parse season dates (DD/MM format)
+                var seasonStart = ParseSeasonDate(season.StartDate, year);
+                var seasonEnd = ParseSeasonDate(season.EndDate, year);
+                
+                // Handle year wraparound (e.g., Winter-Spring: 11/01 to 04/30)
+                if (seasonEnd < seasonStart)
+                {
+                    seasonEnd = seasonEnd.AddYears(1);
+                }
+                
+                // Create new YearSeason
+                yearSeason = new YearSeason
+                {
+                    SeasonId = season.Id,
+                    ClusterId = clusterId,
+                    Year = year,
+                    RiceVarietyId = null, // No default variety - farmers will choose
+                    AllowFarmerSelection = true, // Enable farmer selection by default
+                    FarmerSelectionWindowStart = DateTime.UtcNow, // Start now
+                    FarmerSelectionWindowEnd = seasonStart.AddDays(-7), // End 7 days before season
+                    StartDate = seasonStart,
+                    EndDate = seasonEnd,
+                    Status = SeasonStatus.Draft,
+                    Notes = "Auto-created during plot import. Please review and configure settings.",
+                    AllowedPlantingFlexibilityDays = 7, // Default flexibility
+                    PlanningWindowStart = DateTime.UtcNow,
+                    PlanningWindowEnd = seasonStart.AddDays(-3)
+                };
+                
+                await _unitOfWork.Repository<YearSeason>().AddAsync(yearSeason);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                
+                _logger.LogInformation(
+                    "Auto-created YearSeason: {YearSeasonId} for {SeasonName} {Year} in Cluster {ClusterId}",
+                    yearSeason.Id,
+                    season.SeasonName,
+                    year,
+                    clusterId);
+                
+                // TODO: Send notification to cluster's expert about auto-created YearSeason
+                
+                return yearSeason;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, 
+                    "Error getting or creating YearSeason for Season: {SeasonName}, Year: {Year}",
+                    season.SeasonName,
+                    year);
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// Parse season date from DD/MM format to actual DateTime
+        /// </summary>
+        private static DateTime ParseSeasonDate(string ddmmString, int year)
+        {
+            var parts = ddmmString.Split('/');
+            var day = int.Parse(parts[0]);
+            var month = int.Parse(parts[1]);
+            return new DateTime(year, month, day);
         }
     }
 }

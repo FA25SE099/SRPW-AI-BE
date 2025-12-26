@@ -41,10 +41,18 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
                 return Result<Guid>.Failure("Cluster not found");
             }
 
-            var riceVariety = await _unitOfWork.Repository<RiceVariety>().GetEntityByIdAsync(request.RiceVarietyId);
-            if (riceVariety == null)
+            RiceVariety? riceVariety = null;
+            if (request.RiceVarietyId.HasValue)
             {
-                return Result<Guid>.Failure("Rice variety not found");
+                riceVariety = await _unitOfWork.Repository<RiceVariety>().GetEntityByIdAsync(request.RiceVarietyId.Value);
+                if (riceVariety == null)
+                {
+                    return Result<Guid>.Failure("Rice variety not found");
+                }
+            }
+            else if (!request.AllowFarmerSelection)
+            {
+                return Result<Guid>.Failure("Rice variety must be provided when farmer selection is disabled");
             }
 
             var duplicate = await yearSeasonRepo.FindAsync(ys =>
@@ -55,6 +63,37 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
             if (duplicate != null)
             {
                 return Result<Guid>.Failure($"YearSeason already exists for {season.SeasonName} {request.Year} in this cluster");
+            }
+
+            // Use Season dates as default if not provided
+            DateTime startDate;
+            DateTime endDate;
+            
+            if (request.StartDate.HasValue && request.EndDate.HasValue)
+            {
+                // Use provided dates
+                startDate = request.StartDate.Value;
+                endDate = request.EndDate.Value;
+                
+                _logger.LogInformation(
+                    "Using provided dates: {StartDate} to {EndDate}",
+                    startDate, endDate);
+            }
+            else
+            {
+                // Parse from Season's MM/DD format
+                startDate = ParseSeasonDate(season.StartDate, request.Year);
+                endDate = ParseSeasonDate(season.EndDate, request.Year);
+                
+                // Handle year wraparound (e.g., Winter-Spring: 11/01 to 04/30)
+                if (endDate < startDate)
+                {
+                    endDate = endDate.AddYears(1);
+                }
+                
+                _logger.LogInformation(
+                    "Using default dates from Season {SeasonName}: {StartDate} to {EndDate}",
+                    season.SeasonName, startDate, endDate);
             }
 
             var userId = _user.Id;
@@ -77,12 +116,15 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
                 Year = request.Year,
                 RiceVarietyId = request.RiceVarietyId,
                 ManagedByExpertId = expertId,
-                StartDate = request.StartDate,
-                EndDate = request.EndDate,
+                StartDate = startDate,
+                EndDate = endDate,
                 BreakStartDate = request.BreakStartDate,
                 BreakEndDate = request.BreakEndDate,
                 PlanningWindowStart = request.PlanningWindowStart,
                 PlanningWindowEnd = request.PlanningWindowEnd,
+                AllowFarmerSelection = request.AllowFarmerSelection,
+                FarmerSelectionWindowStart = request.FarmerSelectionWindowStart,
+                FarmerSelectionWindowEnd = request.FarmerSelectionWindowEnd,
                 Status = SeasonStatus.Draft,
                 Notes = request.Notes
             };
@@ -100,6 +142,17 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
             _logger.LogError(ex, "Error creating YearSeason");
             return Result<Guid>.Failure("Failed to create YearSeason");
         }
+    }
+    
+    /// <summary>
+    /// Parse season date from MM/DD format to actual DateTime
+    /// </summary>
+    private static DateTime ParseSeasonDate(string mmddString, int year)
+    {
+        var parts = mmddString.Split('/');
+        var month = int.Parse(parts[0]);
+        var day = int.Parse(parts[1]);
+        return new DateTime(year, month, day);
     }
 }
 

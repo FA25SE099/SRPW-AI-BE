@@ -155,7 +155,7 @@ public class GetClusterCurrentSeasonQueryHandler
                 : null,
             RiceVarietyId = g.YearSeason?.RiceVarietyId,
             RiceVarietyName = g.YearSeason?.RiceVarietyId != null
-                ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId)?.VarietyName
+                ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName
                 : null,
             PlantingDate = g.PlantingDate,
             Status = g.Status.ToString(),
@@ -166,7 +166,7 @@ public class GetClusterCurrentSeasonQueryHandler
         // Rice variety breakdown
         response.RiceVarietyBreakdown = groups
             .Where(g => g.YearSeason?.RiceVarietyId != null)
-            .GroupBy(g => g.YearSeason!.RiceVarietyId)
+            .GroupBy(g => g.YearSeason!.RiceVarietyId!.Value)
             .Select(g => new RiceVarietyGroupSummary
             {
                 RiceVarietyId = g.Key,

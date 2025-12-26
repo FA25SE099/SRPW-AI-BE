@@ -44,7 +44,11 @@ public class YearSeasonConfiguration : IEntityTypeConfiguration<YearSeason>
         builder.HasOne(ys => ys.RiceVariety)
             .WithMany(rv => rv.YearSeasons)
             .HasForeignKey(ys => ys.RiceVarietyId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+
+        builder.Property(ys => ys.AllowFarmerSelection)
+            .HasDefaultValue(false);
 
         builder.HasIndex(ys => new { ys.ClusterId, ys.SeasonId, ys.Year })
             .IsUnique()

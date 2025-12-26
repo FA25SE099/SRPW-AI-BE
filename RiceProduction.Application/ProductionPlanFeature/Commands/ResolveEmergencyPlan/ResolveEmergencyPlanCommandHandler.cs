@@ -224,14 +224,14 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                         "Plot {PlotId} (SoThua: {SoThua}, SoTo: {SoTo}) does not have a PlotCultivation. Creating one automatically for Season {SeasonId}, Variety {VarietyId}, PlantingDate {PlantingDate}.",
                         plot.Id, plot.SoThua, plot.SoTo,
                         planWithGroup.Group.YearSeason!.SeasonId,
-                        planWithGroup.Group.YearSeason!.RiceVarietyId,
+                        planWithGroup.Group.YearSeason!.RiceVarietyId ?? Guid.Empty,
                         planWithGroup.Group.PlantingDate);
 
                     plotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
                         SeasonId = planWithGroup.Group.YearSeason!.SeasonId,
-                        RiceVarietyId = planWithGroup.Group.YearSeason!.RiceVarietyId,
+                        RiceVarietyId = planWithGroup.Group.YearSeason!.RiceVarietyId ?? Guid.Empty,
                         PlantingDate = planWithGroup.Group.PlantingDate!.Value,
                         Area = plot.Area,
                         Status = CultivationStatus.Planned,

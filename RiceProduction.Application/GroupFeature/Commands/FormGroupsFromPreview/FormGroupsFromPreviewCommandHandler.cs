@@ -261,8 +261,10 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
                 Groups = createdGroups.Select(g => new CreatedGroupDto
                 {
                     GroupId = g.Id,
-                    RiceVarietyId = g.YearSeason!.RiceVarietyId,
-                    RiceVarietyName = varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId)?.VarietyName ?? "Unknown",
+                    RiceVarietyId = (Guid)(g.YearSeason?.RiceVarietyId),
+                    RiceVarietyName = g.YearSeason?.RiceVarietyId != null && g.YearSeason.RiceVarietyId.HasValue 
+                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName ?? "Unknown" 
+                        : "Not Set",
                     SupervisorId = g.SupervisorId,
                     SupervisorName = g.SupervisorId.HasValue ? supervisorsForResponse.GetValueOrDefault(g.SupervisorId.Value) : null,
                     PlantingDate = g.PlantingDate!.Value,
