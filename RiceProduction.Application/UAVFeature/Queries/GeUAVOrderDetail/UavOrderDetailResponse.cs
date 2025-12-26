@@ -24,7 +24,19 @@ public class UavOrderPlotAssignmentResponse
     public string? PlotBoundaryGeoJson { get; set; } 
 
     // Deserialize từ ProofUrlsJson trong Entity
-    public List<string> ProofUrls { get; set; } = new(); 
+    public List<string> ProofUrls { get; set; } = new();
+    
+    /// <summary>
+    /// Thông tin công việc canh tác được giao cho Plot này
+    /// </summary>
+    public Guid? CultivationTaskId { get; set; }
+    public string? CultivationTaskName { get; set; }
+    public string? TaskType { get; set; }
+    
+    /// <summary>
+    /// Danh sách vật tư cần thiết cho công việc canh tác của Plot này
+    /// </summary>
+    public List<PlannedMaterialDto> Materials { get; set; } = new();
 }
 
 /// <summary>
@@ -80,6 +92,5 @@ public class UavOrderDetailResponse : UavServiceOrderResponse
     /// </summary>
     public string? OptimizedRouteJson { get; set; } 
 
-    public List<PlannedMaterialDto> Materials { get; set; } = new();
     public List<UavOrderPlotAssignmentResponse> PlotAssignments { get; set; } = new(); // Danh sách tiến độ Plot
 }

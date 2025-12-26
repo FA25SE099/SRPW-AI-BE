@@ -121,6 +121,21 @@ public class StartCultivationTaskCommandHandler :
 
                 await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
             }
+            else
+            {
+                var farmLog = new FarmLog
+                {
+                    CultivationTaskId = cultivationTask.Id,
+                    PlotCultivationId = cultivationTask.PlotCultivationId,
+                    LoggedDate = now,
+                    ServiceNotes = "Task started: " + cultivationTask.ProductionPlanTask.TaskName,
+                    WeatherConditions = request.WeatherConditions,
+                    LoggedBy = farmerId.Value,
+                    CreatedAt = now
+                };
+
+                await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
+            }
 
             // Update the PlotCultivation status if it's still in Planned status
             if (cultivationTask.PlotCultivation.Status == Domain.Enums.CultivationStatus.Planned)
