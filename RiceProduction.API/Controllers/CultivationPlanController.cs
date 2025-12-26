@@ -40,11 +40,18 @@ public class CultivationPlanController : ControllerBase
     [Authorize] // Require authentication
     public async Task<IActionResult> GetCultivationsByPlot(Guid plotId)
     {
-        if (_currentUser.Id == null)
+        // Check if user is authenticated
+        if (!_currentUser.Id.HasValue)
         {
             return Unauthorized(Result<object>.Failure("User not authenticated", "AuthenticationRequired"));
         }
-        var query = new GetCultivationsForPlotQuery { PlotId = plotId, FarmerId = (Guid)_currentUser.Id };
+
+        var query = new GetCultivationsForPlotQuery 
+        { 
+            PlotId = plotId, 
+            FarmerId = _currentUser.Id.Value 
+        };
+        
         var result = await _mediator.Send(query);
 
         if (!result.Succeeded)

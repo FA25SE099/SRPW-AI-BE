@@ -170,7 +170,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3000", "https://srpw-ai-fe-phtr.vercel.app") 
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3000", "https://srpw-ai-fe-phtr.vercel.app", "http://riceproduction.online", "https://riceproduction.online", "http://www.riceproduction.online", "https://www.riceproduction.online") 
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()  
@@ -183,6 +183,19 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowAnyMethod()
             .WithExposedHeaders("Content-Disposition");
+    });
+
+    options.AddPolicy("AllowRiceProduction", policy =>
+    {
+        policy.WithOrigins(
+            "http://riceproduction.online",
+            "https://riceproduction.online",
+            "http://www.riceproduction.online",
+            "https://www.riceproduction.online"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials(); 
     });
 });
 builder.Services.AddHttpContextAccessor();
@@ -243,8 +256,8 @@ if (seedDatabase)
         {
             await initializer.ResetDatabaseAsync();
             //await initializer.SeedAsync();
-
         }
+        
         await initializer.SeedAsyncAdminOnly();
         //await initializer.SeedAsync();
     }
