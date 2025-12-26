@@ -69,7 +69,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 }
 
                 // Create farmer
-                const string TEMP_PASSWORD = "Farmer@123";
+                const string TEMP_PASSWORD = "123456";
                 
                 var farmer = new Farmer
                 {
