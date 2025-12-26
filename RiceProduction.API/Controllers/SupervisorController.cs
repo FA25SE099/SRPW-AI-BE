@@ -162,7 +162,7 @@ public class SupervisorController : Controller
         {
             PlotId = request.PlotId,
             PolygonGeoJson = request.PolygonGeoJson,
-            TolerancePercent = request.TolerancePercent ?? 10 // Default 10%
+            TolerancePercent = request.TolerancePercent ?? 10 // Default 10% (will be overridden by system setting if available)
         };
 
         var result = await _mediator.Send(query);

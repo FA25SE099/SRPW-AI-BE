@@ -70,7 +70,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                     clusterId = clusterManager?.ClusterId;
                 }
 
-                const string TEMP_PASSWORD = "Farmer@123";
+                const string TEMP_PASSWORD = "123456";
 
                 var newFarmer = new Farmer
                 {

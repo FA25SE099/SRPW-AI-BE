@@ -12,9 +12,6 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.FarmerFeature.Queries;
-using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
-using RiceProduction.Application.PlotFeature.Queries.GetAll;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
@@ -89,11 +86,8 @@ public static class DependencyInjection
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
 
-        builder.Services.AddMediatR(cfg =>
-        {
-            cfg.RegisterServicesFromAssembly(typeof(GetAllFarmerQueriesHandler).Assembly);
-            cfg.RegisterServicesFromAssembly(typeof(GetAllPlotQueriesHandler).Assembly);
-        });
+        // MediatR registration removed from Infrastructure - it's already registered in Application layer
+        // Duplicate registration was causing event handlers to be invoked twice, leading to duplicate emails
 
         builder.Services.AddScoped<IEmailJobService, EmailJobService>();
         builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();

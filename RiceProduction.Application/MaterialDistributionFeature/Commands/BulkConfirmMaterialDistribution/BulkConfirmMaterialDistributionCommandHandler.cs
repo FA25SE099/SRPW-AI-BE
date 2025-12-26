@@ -75,7 +75,24 @@ public class BulkConfirmMaterialDistributionCommandHandler
                 distribution.SupervisorConfirmedAt = DateTime.UtcNow;
                 distribution.ActualDistributionDate = request.ActualDistributionDate;
                 distribution.SupervisorNotes = request.Notes;
-                distribution.ImageUrls = request.ImageUrls; // Same images for all materials
+                
+                // Use individual distribution images if provided, otherwise fall back to shared images
+                if (request.DistributionImages != null && 
+                    request.DistributionImages.ContainsKey(distribution.Id))
+                {
+                    distribution.ImageUrls = request.DistributionImages[distribution.Id];
+                    _logger.LogDebug(
+                        "Using individual images for distribution {DistributionId}: {ImageCount} images",
+                        distribution.Id, distribution.ImageUrls?.Count ?? 0);
+                }
+                else
+                {
+                    distribution.ImageUrls = request.ImageUrls; // Fallback to shared images
+                    _logger.LogDebug(
+                        "Using shared images for distribution {DistributionId}",
+                        distribution.Id);
+                }
+                
                 distribution.Status = DistributionStatus.PartiallyConfirmed;
                 distribution.FarmerConfirmationDeadline = farmerDeadline;
 

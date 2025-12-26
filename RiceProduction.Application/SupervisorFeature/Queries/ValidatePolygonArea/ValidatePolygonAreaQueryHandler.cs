@@ -26,6 +26,13 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
     {
         try
         {
+            // Get tolerance from system settings if not provided in request
+            var tolerancePercent = request.TolerancePercent;
+            if (tolerancePercent == 10) // Default value, check if we should use system setting
+            {
+                tolerancePercent = await GetToleranceFromSystemSettings();
+            }
+
             // Get the plot
             var plot = await _unitOfWork.Repository<Plot>()
                 .FindAsync(p => p.Id == request.PlotId);
@@ -81,7 +88,7 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
             var differencePercent = plotAreaHa > 0 ? (difference / plotAreaHa) * 100 : 0;
 
             // Check if within tolerance
-            var isValid = differencePercent <= request.TolerancePercent;
+            var isValid = differencePercent <= tolerancePercent;
 
             var response = new PolygonValidationResponse
             {
@@ -89,10 +96,10 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
                 DrawnAreaHa = Math.Round(drawnAreaHa, 2),
                 PlotAreaHa = Math.Round(plotAreaHa, 2),
                 DifferencePercent = Math.Round(differencePercent, 2),
-                TolerancePercent = request.TolerancePercent,
+                TolerancePercent = tolerancePercent,
                 Message = isValid
                     ? "Polygon area is within acceptable tolerance"
-                    : $"Polygon area differs by {Math.Round(differencePercent, 2)}% from registered plot area. Maximum allowed is {request.TolerancePercent}%"
+                    : $"Polygon area differs by {Math.Round(differencePercent, 2)}% from registered plot area. Maximum allowed is {tolerancePercent}%"
             };
 
             return Result<PolygonValidationResponse>.Success(response);
@@ -121,6 +128,29 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
         var areaInHectares = areaInSquareMeters / 10000;
 
         return (decimal)areaInHectares;
+    }
+
+    /// <summary>
+    /// Get tolerance percentage from system settings
+    /// </summary>
+    private async Task<decimal> GetToleranceFromSystemSettings()
+    {
+        try
+        {
+            var setting = await _unitOfWork.Repository<SystemSetting>()
+                .FindAsync(s => s.SettingKey == "PolygonAreaTolerancePercent");
+
+            if (setting != null && decimal.TryParse(setting.SettingValue, out var value))
+            {
+                return value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to retrieve PolygonAreaTolerancePercent from system settings, using default value");
+        }
+
+        return 10; // Default fallback value
     }
 }
 
