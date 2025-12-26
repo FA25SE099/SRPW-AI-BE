@@ -227,7 +227,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                             TaskType = task.TaskType ?? Domain.Enums.TaskType.Sowing,
                             Status = task.Status ?? Domain.Enums.TaskStatus.Draft,
                             Priority = Domain.Enums.TaskPriority.Normal,
-                            PlannedStartDate = null,
+                            PlannedStartDate = task.ProductionPlanTask?.ScheduledDate ?? null,
                             PlannedEndDate = task.ScheduledEndDate,
                             ActualStartDate = task.ActualStartDate,
                             ActualEndDate = task.ActualEndDate,
