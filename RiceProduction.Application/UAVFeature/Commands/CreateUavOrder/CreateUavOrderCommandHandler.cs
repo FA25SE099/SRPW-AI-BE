@@ -71,7 +71,8 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                         (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
-                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed)
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed ||
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
                 );
             }
             else
@@ -87,7 +88,8 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                         (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
-                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed)
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed ||
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
                 );
             }
 
