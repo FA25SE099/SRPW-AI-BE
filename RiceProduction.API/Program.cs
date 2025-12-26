@@ -183,6 +183,19 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod()
             .WithExposedHeaders("Content-Disposition");
     });
+
+    options.AddPolicy("AllowRiceProduction", policy =>
+    {
+        policy.WithOrigins(
+            "http://riceproduction.online",
+            "https://riceproduction.online",
+            "http://www.riceproduction.online",
+            "https://www.riceproduction.online"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials(); 
+    });
 });
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUser, CurrentUser>();

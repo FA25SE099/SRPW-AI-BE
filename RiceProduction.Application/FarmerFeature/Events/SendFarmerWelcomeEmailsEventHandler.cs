@@ -11,7 +11,7 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
     private readonly IBackgroundTaskQueue _backgroundTaskQueue;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<SendFarmerWelcomeEmailsEventHandler> _logger;
-
+    private static readonly HashSet<Guid> ProcessedBatchIds = new();
     public SendFarmerWelcomeEmailsEventHandler(
         IBackgroundTaskQueue backgroundTaskQueue,
         IServiceScopeFactory serviceScopeFactory,
@@ -24,8 +24,10 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
 
     public async Task Handle(FarmerWelcomeImportedEvent notification, CancellationToken cancellationToken)
     {
+        
         try
         {
+            _logger.LogWarning("!!! Handler called at {Time} for {Count} farmers", DateTime.UtcNow, notification.ImportedFarmers.Count);
             // Filter farmers with valid email addresses and deduplicate by email
             var farmersWithEmail = notification.ImportedFarmers
                 .Where(f => !string.IsNullOrWhiteSpace(f.Email))
