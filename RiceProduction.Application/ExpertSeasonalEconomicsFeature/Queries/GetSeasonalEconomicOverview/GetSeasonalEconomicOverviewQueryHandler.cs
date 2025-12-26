@@ -64,12 +64,14 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
 
                 var uavInvoices = await _unitOfWork.Repository<UavInvoice>().ListAsync(
                     filter: inv => inv.UavServiceOrder != null &&
-                                   inv.UavServiceOrder.Group!.SeasonId == request.SeasonId &&
+                                   inv.UavServiceOrder.Group!.YearSeason != null &&
+                                   inv.UavServiceOrder.Group.YearSeason.SeasonId == request.SeasonId &&
                                    (request.GroupId == null || inv.UavServiceOrder.GroupId == request.GroupId) &&
                                    (request.ClusterId == null || inv.UavServiceOrder.Group.ClusterId == request.ClusterId),
                     includeProperties: q => q
                         .Include(inv => inv.UavServiceOrder!)
-                            .ThenInclude(uso => uso.Group));
+                            .ThenInclude(uso => uso.Group)
+                                .ThenInclude(g => g.YearSeason));
 
                 var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
                 var uniqueFarmers = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().Count();

@@ -1,29 +1,38 @@
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Application.FarmerFeature.Events;
 
-public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmersImportedEvent>
+public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWelcomeImportedEvent>
 {
-    private readonly IEmailService _emailService;
+    private readonly IBackgroundTaskQueue _backgroundTaskQueue;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<SendFarmerWelcomeEmailsEventHandler> _logger;
-
+    private static readonly HashSet<Guid> ProcessedBatchIds = new();
     public SendFarmerWelcomeEmailsEventHandler(
-        IEmailService emailService,
+        IBackgroundTaskQueue backgroundTaskQueue,
+        IServiceScopeFactory serviceScopeFactory,
         ILogger<SendFarmerWelcomeEmailsEventHandler> logger)
     {
-        _emailService = emailService;
+        _backgroundTaskQueue = backgroundTaskQueue;
+        _serviceScopeFactory = serviceScopeFactory;
         _logger = logger;
     }
 
-    public async Task Handle(FarmersImportedEvent notification, CancellationToken cancellationToken)
+    public async Task Handle(FarmerWelcomeImportedEvent notification, CancellationToken cancellationToken)
     {
+        
         try
         {
+            _logger.LogWarning("!!! Handler called at {Time} for {Count} farmers", DateTime.UtcNow, notification.ImportedFarmers.Count);
+            // Filter farmers with valid email addresses and deduplicate by email
             var farmersWithEmail = notification.ImportedFarmers
                 .Where(f => !string.IsNullOrWhiteSpace(f.Email))
+                .GroupBy(f => f.Email!.ToLowerInvariant()) // Group by email (case-insensitive)
+                .Select(g => g.First()) // Take only the first farmer for each unique email
                 .ToList();
 
             if (!farmersWithEmail.Any())
@@ -32,49 +41,76 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmersI
                 return;
             }
 
-            _logger.LogInformation("Sending welcome emails to {Count} farmers", farmersWithEmail.Count);
+            var totalFarmers = notification.ImportedFarmers.Count(f => !string.IsNullOrWhiteSpace(f.Email));
+            if (totalFarmers != farmersWithEmail.Count)
+            {
+                _logger.LogWarning(
+                    "Deduplicated {DuplicateCount} farmers with duplicate email addresses. Original: {Total}, Unique: {Unique}",
+                    totalFarmers - farmersWithEmail.Count,
+                    totalFarmers,
+                    farmersWithEmail.Count);
+            }
 
-            var emailRequests = new List<SimpleEmailRequest>();
+            _logger.LogInformation("Queuing welcome emails for {Count} unique email addresses", farmersWithEmail.Count);
+
             
-            foreach (var farmer in farmersWithEmail)
+            _backgroundTaskQueue.QueueEmailTask(async (ct) =>
             {
-                var templateData = new
+                using var scope = _serviceScopeFactory.CreateScope();
+                var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<SendFarmerWelcomeEmailsEventHandler>>();
+
+                try
                 {
-                    FullName = farmer.FullName,
-                    PhoneNumber = farmer.PhoneNumber,
-                    TempPassword = farmer.TempPassword
-                };
+                    var emailRequests = new List<SimpleEmailRequest>();
 
-                var htmlBody = GetEmailTemplate(templateData);
+                    foreach (var farmer in farmersWithEmail)
+                    {
+                        var templateData = new
+                        {
+                            FullName = farmer.FullName,
+                            Email = farmer.Email,
+                            TempPassword = farmer.TempPassword
+                        };
 
-                emailRequests.Add(new SimpleEmailRequest
+                        var htmlBody = GetEmailTemplate(templateData);
+
+                        emailRequests.Add(new SimpleEmailRequest
+                        {
+                            To = farmer.Email!,
+                            Subject = "Tài khoản của bạn đã được tạo - Hệ thống Quản lý Sản xuất Lúa",
+                            HtmlBody = htmlBody,
+                            Priority = 1
+                        });
+                    }
+
+                    logger.LogInformation("Sending {Count} welcome emails via bulk email service", emailRequests.Count);
+
+                    var emailResult = await emailService.SendBulkEmailAsync(emailRequests, ct);
+
+                    if (emailResult.Succeeded)
+                    {
+                        logger.LogInformation(
+                            "Successfully sent welcome emails. Batch ID: {BatchId}, Sent: {Sent}, Failed: {Failed}",
+                            emailResult.Data?.Id,
+                            emailResult.Data?.SentCount,
+                            emailResult.Data?.FailedCount);
+                    }
+                    else
+                    {
+                        logger.LogWarning("Failed to send welcome emails: {Errors}",
+                            string.Join(", ", emailResult.Errors ?? new List<string>()));
+                    }
+                }
+                catch (Exception ex)
                 {
-                    To = farmer.Email!,
-                    Subject = "Tài khoản của bạn đã được tạo - Hệ thống Quản lý Sản xuất Lúa",
-                    HtmlBody = htmlBody,
-                    Priority = 1
-                });
-            }
-
-            var emailResult = await _emailService.SendBulkEmailAsync(emailRequests, cancellationToken);
-            
-            if (emailResult.Succeeded)
-            {
-                _logger.LogInformation(
-                    "Successfully sent welcome emails. Batch ID: {BatchId}, Sent: {Sent}, Failed: {Failed}",
-                    emailResult.Data?.Id,
-                    emailResult.Data?.SentCount,
-                    emailResult.Data?.FailedCount);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to send welcome emails: {Errors}", 
-                    string.Join(", ", emailResult.Errors ?? new List<string>()));
-            }
+                    logger.LogError(ex, "Error occurred while sending welcome emails to farmers");
+                }
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error occurred while sending welcome emails to farmers");
+            _logger.LogError(ex, "Error queuing welcome emails for farmers");
         }
     }
 
@@ -105,7 +141,7 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmersI
                         
                         <div class='credentials'>
                             <h3>Thông tin đăng nhập:</h3>
-                            <p><strong>Số điện thoại (Tài khoản):</strong> {{PhoneNumber}}</p>
+                            <p><strong>Tài khoản:</strong> {{Email}}</p>
                             <p><strong>Mật khẩu tạm thời:</strong> {{TempPassword}}</p>
                         </div>
 
@@ -146,4 +182,3 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmersI
         return result;
     }
 }
-

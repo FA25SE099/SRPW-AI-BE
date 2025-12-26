@@ -1,8 +1,9 @@
-﻿using MediatR; // Cần thêm using này
+﻿using MediatR; 
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Events;
+using static RiceProduction.Application.FarmerFeature.Events.SendEmailEvent.FarmerImportedEvent;
 
 namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
 {
@@ -11,15 +12,18 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
         private readonly IFarmerExcel _farmerExcel;
         private readonly ILogger<ImportFarmerCommandHandler> _logger;
         private readonly IMediator _mediator;
-        
+        private readonly IBackgroundTaskQueue _taskQueue;
+        private readonly IEmailJobService _emailJobService;
         public ImportFarmerCommandHandler(
             IFarmerExcel farmerExcel, 
             ILogger<ImportFarmerCommandHandler> logger, 
-            IMediator mediator)
+            IMediator mediator, IBackgroundTaskQueue taskQueue, IEmailJobService emailJobService)
         {
             _farmerExcel = farmerExcel;
             _logger = logger;
             _mediator = mediator;
+            _taskQueue = taskQueue;
+            _emailJobService = emailJobService;
         }
 
         public async Task<ImportFarmerResult> Handle(ImportFarmerCommand request, CancellationToken cancellationToken)
@@ -52,23 +56,44 @@ namespace RiceProduction.Application.FarmerFeature.Command.ImportFarmer
                 result.SuccessCount,
                 result.FailureCount
             );
-            
+
             // Publish event for async email sending (non-blocking)
             if (result.SuccessCount > 0 && result.ImportedFarmers.Any())
             {
-                await _mediator.Publish(new FarmersImportedEvent
+                // Deduplicate by email, excluding null/empty emails
+                var farmersWithEmail = result.ImportedFarmers
+                    .Where(f => !string.IsNullOrWhiteSpace(f.Email))
+                    .ToList();
+
+                var uniqueFarmers = farmersWithEmail
+                    .GroupBy(f => f.Email!.ToLowerInvariant())
+                    .Select(g => g.First())
+                    .ToList();
+
+                if (farmersWithEmail.Count != uniqueFarmers.Count)
                 {
-                    ImportedFarmers = result.ImportedFarmers,
+                    _logger.LogWarning(
+                        "Found {DuplicateCount} duplicate email addresses in imported farmers. " +
+                        "Total with email: {TotalWithEmail}, Unique emails: {UniqueCount}",
+                        farmersWithEmail.Count - uniqueFarmers.Count,
+                        farmersWithEmail.Count,
+                        uniqueFarmers.Count);
+                }
+
+                await _mediator.Publish(new FarmerWelcomeImportedEvent
+                {
+                    ImportedFarmers = uniqueFarmers,
                     ImportedAt = DateTime.UtcNow
                 }, cancellationToken);
-                
-                var emailCount = result.ImportedFarmers.Count(f => !string.IsNullOrWhiteSpace(f.Email));
-                _logger.LogInformation("Published farmer import event for {EmailCount} email notifications", emailCount);
+
+                _logger.LogInformation(
+                    "Published farmer welcome event for {Count} unique email addresses",
+                    uniqueFarmers.Count);
             }
-            
+
             // Note: Plots are now imported separately using the plot import template
             // No need to publish event for polygon assignment here
-            
+
             return result;
         }
     }

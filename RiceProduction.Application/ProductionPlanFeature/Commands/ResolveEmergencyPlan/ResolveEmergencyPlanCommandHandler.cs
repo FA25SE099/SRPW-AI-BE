@@ -175,6 +175,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             var planWithGroup = await _unitOfWork.Repository<ProductionPlan>()
                 .GetQueryable()
                 .Include(p => p.Group)
+                    .ThenInclude(g => g!.YearSeason)
+                .Include(p => p.Group)
                     .ThenInclude(g => g!.GroupPlots)
                         .ThenInclude(gp => gp.Plot)
                             .ThenInclude(p => p.PlotCultivations)
@@ -211,8 +213,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 // Find the PlotCultivation that matches the group's season, variety, and planting date
                 var plotCultivation = plot.PlotCultivations
                     .FirstOrDefault(pc =>
-                        pc.SeasonId == planWithGroup.Group.SeasonId &&
-                        pc.RiceVarietyId == planWithGroup.Group.RiceVarietyId &&
+                        pc.SeasonId == planWithGroup.Group.YearSeason!.SeasonId &&
+                        pc.RiceVarietyId == planWithGroup.Group.YearSeason!.RiceVarietyId &&
                         pc.PlantingDate.Date == planWithGroup.Group.PlantingDate!.Value.Date);
 
                 if (plotCultivation == null)
@@ -221,15 +223,15 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                     _logger.LogWarning(
                         "Plot {PlotId} (SoThua: {SoThua}, SoTo: {SoTo}) does not have a PlotCultivation. Creating one automatically for Season {SeasonId}, Variety {VarietyId}, PlantingDate {PlantingDate}.",
                         plot.Id, plot.SoThua, plot.SoTo,
-                        planWithGroup.Group.SeasonId,
-                        planWithGroup.Group.RiceVarietyId,
+                        planWithGroup.Group.YearSeason!.SeasonId,
+                        planWithGroup.Group.YearSeason!.RiceVarietyId ?? Guid.Empty,
                         planWithGroup.Group.PlantingDate);
 
                     plotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
-                        SeasonId = planWithGroup.Group.SeasonId!.Value,
-                        RiceVarietyId = planWithGroup.Group.RiceVarietyId!.Value,
+                        SeasonId = planWithGroup.Group.YearSeason!.SeasonId,
+                        RiceVarietyId = planWithGroup.Group.YearSeason!.RiceVarietyId ?? Guid.Empty,
                         PlantingDate = planWithGroup.Group.PlantingDate!.Value,
                         Area = plot.Area,
                         Status = CultivationStatus.Planned,

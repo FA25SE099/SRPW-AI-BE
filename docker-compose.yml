@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  riceproduction-api:
+    image: riceproduction-api:latest
+    container_name: riceproduction-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "5000:5000"
+
+    env_file:
+      - .env
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:5000
+
+      SeedDatabase: "true"
+      ResetDatabase: "false"
+      ConnectionStrings__CleanArchitectureDb: Host=157.66.218.227;Port=5432;Database=RiceProductionDB;Username=appuser;Password=123456
+
+      AzureStorage__ConnectionString: ${AZURE_STORAGE_CONNECTION_STRING}
+      AzureStorage__ContainerName: rice
+
+      Email__SmtpHost: smtp.gmail.com
+      Email__SmtpPort: 587
+      Email__SenderEmail: nguyenndse182830@fpt.edu.vn
+      Email__AppPassword: ${Email__AppPassword}
+      Email_SenderName: RiceProduction API
+      Email__SmtpUseSsl: true
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: RiceProduction.API
+      Jwt__Audience: RiceProduction.API
+      Jwt__AccessTokenExpirationMinutes: "1500"
+      Jwt__RefreshTokenExpirationDays: "7"
+
+      Phone: 3LZJYE89F169H1659AA38JTA
+      Loki__Url: http://loki:3100
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+
+    volumes:
+      - /var/log/riceproduction:/var/log/riceproduction
+
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    external: true
+

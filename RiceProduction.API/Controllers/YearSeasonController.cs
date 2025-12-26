@@ -7,6 +7,12 @@ using RiceProduction.Application.YearSeasonFeature.Commands.UpdateYearSeasonStat
 using RiceProduction.Application.YearSeasonFeature.Commands.DeleteYearSeason;
 using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonsByCluster;
 using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonDetail;
+using RiceProduction.Application.YearSeasonFeature.Queries.ValidateProductionPlanAgainstYearSeason;
+using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonDashboard;
+using RiceProduction.Application.YearSeasonFeature.Queries.CalculateSeasonDates;
+using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonReadiness;
+using RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonFarmerSelections;
+using RiceProduction.Application.YearSeasonFeature.Queries.GetGroupsByYearSeason;
 
 namespace RiceProduction.API.Controllers;
 
@@ -94,6 +100,112 @@ public class YearSeasonController : ControllerBase
     public async Task<IActionResult> GetDetail(Guid id)
     {
         var query = new GetYearSeasonDetailQuery { Id = id };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get comprehensive dashboard for a YearSeason including groups, plans, materials, and timeline
+    /// </summary>
+    [HttpGet("{id}/dashboard")]
+    public async Task<IActionResult> GetDashboard(Guid id)
+    {
+        var query = new GetYearSeasonDashboardQuery { YearSeasonId = id };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Validate if a production plan can be created for a group based on YearSeason constraints
+    /// </summary>
+    [HttpPost("validate-production-plan")]
+    public async Task<IActionResult> ValidateProductionPlan([FromBody] ValidateProductionPlanAgainstYearSeasonQuery query)
+    {
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Calculate actual season dates based on Season's DD/MM format and a specific year.
+    /// Useful for auto-populating start/end dates when creating a YearSeason.
+    /// </summary>
+    /// <param name="seasonId">Season ID to get base dates from</param>
+    /// <param name="year">Year to apply to the season dates</param>
+    /// <returns>Calculated dates with suggestions for selection and planting windows</returns>
+    [HttpGet("calculate-dates")]
+    public async Task<IActionResult> CalculateSeasonDates([FromQuery] Guid seasonId, [FromQuery] int year)
+    {
+        var query = new CalculateSeasonDatesQuery 
+        { 
+            SeasonId = seasonId, 
+            Year = year 
+        };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get readiness information for a YearSeason.
+    /// Shows whether the cluster is ready to form groups or if groups already exist.
+    /// </summary>
+    /// <param name="id">YearSeason ID</param>
+    /// <returns>Readiness information including blocking issues and recommendations</returns>
+    [HttpGet("{id}/readiness")]
+    public async Task<IActionResult> GetReadiness(Guid id)
+    {
+        var query = new GetYearSeasonReadinessQuery { YearSeasonId = id };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get farmer rice variety selection status for a YearSeason.
+    /// Shows which farmers have selected varieties and which are pending.
+    /// </summary>
+    /// <param name="id">YearSeason ID</param>
+    /// <returns>Farmer selection status including variety breakdown and pending farmers</returns>
+    [HttpGet("{id}/farmer-selections")]
+    public async Task<IActionResult> GetFarmerSelections(Guid id)
+    {
+        var query = new GetYearSeasonFarmerSelectionsQuery { YearSeasonId = id };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get all groups for a specific YearSeason.
+    /// Returns comprehensive group information including plots, farmers, production plans, and status summary.
+    /// </summary>
+    /// <param name="id">YearSeason ID</param>
+    /// <returns>List of groups with detailed information and status summary</returns>
+    [HttpGet("{id}/groups")]
+    public async Task<IActionResult> GetGroupsByYearSeason(Guid id)
+    {
+        var query = new GetGroupsByYearSeasonQuery { YearSeasonId = id };
         var result = await _mediator.Send(query);
         if (!result.Succeeded)
         {
