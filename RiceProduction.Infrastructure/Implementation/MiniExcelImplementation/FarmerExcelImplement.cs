@@ -69,7 +69,7 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             result.TotalRows = farmerDtos.Count;
 
             const string FARMER_ROLE = "Farmer"; // Make sure this role exists in DB
-            const string TEMP_PASSWORD = "Farmer@123";
+            const string TEMP_PASSWORD = "123456";
 
             foreach (var dto in farmerDtos)
             {

@@ -273,6 +273,13 @@ namespace RiceProduction.Infrastructure.Data
                     SettingValue = "1",
                     SettingCategory = "MaterialDistribution",
                     SettingDescription = "Grace period after deadline before marking as critically overdue"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "PolygonAreaTolerancePercent",
+                    SettingValue = "10",
+                    SettingCategory = "PolygonValidation",
+                    SettingDescription = "Default tolerance percentage for polygon area validation against registered plot area"
                 }
             };
 

@@ -14,10 +14,17 @@ public class BulkConfirmMaterialDistributionCommand : IRequest<Result<BulkConfir
     public string? Notes { get; set; }
     
     /// <summary>
-    /// List of images - one per material type distributed
-    /// Example: 10 materials = 10 images (one showing each material)
+    /// Deprecated: Use DistributionImages instead for individual distribution images
+    /// List of images applied to all distributions (kept for backward compatibility)
     /// </summary>
     public List<string>? ImageUrls { get; set; }
+
+    /// <summary>
+    /// Optional: Individual images for each distribution
+    /// Key: MaterialDistributionId, Value: List of image URLs for that specific distribution
+    /// If provided, this takes precedence over ImageUrls
+    /// </summary>
+    public Dictionary<Guid, List<string>>? DistributionImages { get; set; }
 }
 
 public class BulkConfirmationResponse

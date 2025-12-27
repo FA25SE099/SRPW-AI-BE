@@ -103,7 +103,7 @@ public class GetMaterialDistributionsGroupedByPlotQueryHandler
                     {
                         PlotCultivationId = g.Key,
                         PlotId = plot.Id,
-                        PlotName =  "Unknown",
+                        PlotName =  "Plot "+plot.SoThua+"/"+plot.SoTo,
                         FarmerId = plot.FarmerId,
                         FarmerName = farmer?.FullName ?? "Unknown",
                         FarmerPhone = farmer?.PhoneNumber,
