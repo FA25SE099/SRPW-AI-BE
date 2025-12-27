@@ -36,7 +36,12 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 
             // 2. Load the Group to get the SeasonId
             var group = await _unitOfWork.Repository<Group>().FindAsync(
-                match: g => g.Id == request.GroupId
+                match: g => g.Id == request.GroupId,
+                includeProperties: q => q
+                    .Include(g => g.YearSeason)
+                    .ThenInclude(ys => ys.Season)
+                    .ThenInclude(s => s.PlotCultivations)
+
             );
 
             if (group == null)
@@ -222,7 +227,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                             TaskType = task.TaskType ?? Domain.Enums.TaskType.Sowing,
                             Status = task.Status ?? Domain.Enums.TaskStatus.Draft,
                             Priority = Domain.Enums.TaskPriority.Normal,
-                            PlannedStartDate = null,
+                            PlannedStartDate = task.ProductionPlanTask?.ScheduledDate ?? null,
                             PlannedEndDate = task.ScheduledEndDate,
                             ActualStartDate = task.ActualStartDate,
                             ActualEndDate = task.ActualEndDate,
@@ -268,8 +273,8 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 
                 SeasonId = plotCultivation.SeasonId,
                 SeasonName = plotCultivation.Season.SeasonName,
-                SeasonStartDate = DateTime.Parse(plotCultivation.Season.StartDate),
-                SeasonEndDate = DateTime.Parse(plotCultivation.Season.EndDate),
+                SeasonStartDate = ParseSeasonDateToDateTime(plotCultivation.Season.StartDate, plotCultivation.PlantingDate.Year),
+                SeasonEndDate = ParseSeasonDateToDateTime(plotCultivation.Season.EndDate, plotCultivation.PlantingDate.Year),
 
                 RiceVarietyId = plotCultivation.RiceVarietyId,
                 RiceVarietyName = plotCultivation.RiceVariety.VarietyName,
@@ -324,6 +329,58 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             return Result<CurrentPlotCultivationDetailResponse>.Failure(
                 "An error occurred while retrieving cultivation plan.",
                 "RetrievalFailed");
+        }
+    }
+
+    /// <summary>
+    /// Parses season date string (MM/DD format) to DateTime by combining with a year
+    /// </summary>
+    /// <param name="seasonDateStr">Season date in MM/DD format (e.g., "04/30")</param>
+    /// <param name="year">Year to use for the date</param>
+    /// <returns>DateTime representing the season date</returns>
+    private DateTime ParseSeasonDateToDateTime(string seasonDateStr, int year)
+    {
+        try
+        {
+            var parts = seasonDateStr.Split('/');
+            if (parts.Length != 2)
+            {
+                _logger.LogWarning("Invalid season date format: {SeasonDateStr}. Expected MM/DD format.", seasonDateStr);
+                return new DateTime(year, 1, 1); // Default to January 1st
+            }
+
+            int month = int.Parse(parts[0]);
+            int day = int.Parse(parts[1]);
+            
+            // Validate month and day ranges
+            if (month < 1 || month > 12)
+            {
+                _logger.LogWarning("Invalid month in season date: {Month}. Using January.", month);
+                month = 1;
+            }
+            
+            if (day < 1 || day > 31)
+            {
+                _logger.LogWarning("Invalid day in season date: {Day}. Using 1st.", day);
+                day = 1;
+            }
+
+            // Handle cases where the season crosses year boundary (e.g., Winter-Spring season)
+            // If this is an end date in early months (Jan-Apr) and planting was late in previous year,
+            // the end date should be in the next year
+            if (month <= 4 && seasonDateStr.Contains("30") && year > DateTime.UtcNow.Year - 1)
+            {
+                // This might be a season ending in early next year
+                return new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+            }
+
+            return new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing season date: {SeasonDateStr} for year {Year}", seasonDateStr, year);
+            // Return a safe default
+            return new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         }
     }
 }

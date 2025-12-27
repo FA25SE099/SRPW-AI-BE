@@ -65,7 +65,8 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
                     EmailConfirmed = true,
                     IsActive = true
                 };
-                var psw = GenerateRandomPassword();
+                //var psw = GenerateRandomPassword();
+                var psw = ("123456");
                 var result = await _userManager.CreateAsync(expert, psw);
                 if (!result.Succeeded)
                 {

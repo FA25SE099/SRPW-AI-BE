@@ -71,7 +71,8 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                         (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
-                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed)
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed ||
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
                 );
             }
             else
@@ -87,7 +88,8 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                         (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
-                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed)
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed ||
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
                 );
             }
 
@@ -141,7 +143,17 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                 CreatedBy = request.ClusterManagerId.Value,
             };
 
-            // 5. Tạo UavOrderPlotAssignments cho từng CultivationTask/Plot
+            // 5. Assign UAV Vendor to Cultivation Tasks
+            foreach (var task in cultivationTasks)
+            {
+                task.AssignedToVendorId = request.UavVendorId;
+                _logger.LogInformation("Assigned UAV Vendor {VendorId} to CultivationTask {TaskId}", request.UavVendorId, task.Id);
+            }
+            
+            // Update cultivation tasks in database
+            _unitOfWork.Repository<CultivationTask>().UpdateRange(cultivationTasks);
+            
+            // 6. Tạo UavOrderPlotAssignments cho từng CultivationTask/Plot
             var assignments = new List<UavOrderPlotAssignment>();
             
             // Gom nhóm Tasks theo PlotId (để đảm bảo mỗi Plot chỉ có một Assignment)

@@ -58,7 +58,7 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
 
             var includesDraft = statusesToFilter.Contains(RiceProduction.Domain.Enums.TaskStatus.Draft);
 
-            // 2. Xây dựng biểu thức lọc:
+            
             Expression<Func<CultivationTask, bool>> filter = ct =>
                 // Lọc theo Version mới nhất (Updated to use latest version)
                 ct.VersionId.HasValue && latestVersionIds.Contains(ct.VersionId.Value) &&
@@ -73,13 +73,9 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                 (request.StatusFilter.HasValue 
                     ? ct.Status == request.StatusFilter.Value 
                     : defaultOutstandingStatuses.Contains(ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft))); 
-                    // &&
+                    
 
-                // Điều kiện tồn đọng
-                // (ct.ScheduledEndDate.HasValue && ct.ScheduledEndDate.Value.Date <= todayUtc || 
-                //  !ct.ScheduledEndDate.HasValue && ct.ProductionPlanTask.ScheduledDate.Date <= todayUtc);
-
-            // 3. Định nghĩa các Includes sâu
+            // 3. Định nghĩa các Includes sâu - Updated to match GetPlotCultivationByGroupAndPlotQueryHandler pattern
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: filter,
                 orderBy: q => q.OrderBy(ct => ct.ProductionPlanTask!.ScheduledDate),
@@ -88,8 +84,11 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                     .Include(ct => ct.PlotCultivation) 
                         .ThenInclude(pc => pc.Plot)
                     .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
-                            .ThenInclude(pptm => pptm.Material)
+                        .ThenInclude(ppt => ppt.ProductionStage)
+                            .ThenInclude(ps => ps.ProductionPlan)
+                    .Include(ct => ct.CultivationTaskMaterials)
+                        .ThenInclude(ctm => ctm.Material)
+                    .Include(ct => ct.AssignedVendor)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
             );
 
@@ -106,19 +105,17 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                 var isOverdue = targetCompletionDate < todayUtc;
                 var currentStatus = ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft); 
 
-                // Ánh xạ vật tư dự kiến
+                // Ánh xạ vật tư - Updated to match GetPlotCultivationByGroupAndPlotQueryHandler pattern
                 var materialsResponse = ct.CultivationTaskMaterials
-                    .Select(pptm => new TodayTaskMaterialResponse
+                    .Select(ctm => new TodayTaskMaterialResponse
                     {
-                        MaterialId = pptm.MaterialId,
-                        MaterialName = pptm.Material.Name,
-                        MaterialUnit = pptm.Material.Unit,
+                        MaterialId = ctm.MaterialId,
+                        MaterialName = ctm.Material.Name,
+                        MaterialUnit = ctm.Material.Unit,
                         
-                        PlannedQuantityTotal = (pptm.ActualQuantity / plotArea) * plotArea,
+                        PlannedQuantityTotal = ctm.ActualQuantity,
                         
-                        EstimatedAmount = pptm.ActualCost > 0 
-                            ? (pptm.ActualCost * plotArea / plot.Area) 
-                            : 0M
+                        EstimatedAmount = ctm.ActualCost
                     })
                     .ToList();
                 
@@ -132,14 +129,16 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                     Status = currentStatus, 
                     
                     ScheduledDate = ct.ProductionPlanTask.ScheduledDate,
+                    ScheduledEndDate = targetCompletionDate,
                     Priority = ct.ProductionPlanTask.Priority,
                     
                     IsOverdue = isOverdue,
+                    IsUav = ct.AssignedToVendorId.HasValue, // True if UAV vendor is assigned
                     
                     PlotArea = plotArea,
                     PlotSoThuaSoTo = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
                     
-                    EstimatedMaterialCost = ct.ProductionPlanTask.EstimatedMaterialCost,
+                    EstimatedMaterialCost = materialsResponse.Sum(m => m.EstimatedAmount),
                     Materials = materialsResponse
                 };
             }).ToList();

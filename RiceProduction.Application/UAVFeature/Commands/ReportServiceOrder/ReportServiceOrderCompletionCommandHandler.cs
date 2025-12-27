@@ -74,10 +74,10 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
 
             if (cultivationTask != null)
             {
-                cultivationTask.Status = RiceProduction.Domain.Enums.TaskStatus.Completed;
+                //cultivationTask.Status = RiceProduction.Domain.Enums.TaskStatus.Completed;
                 cultivationTask.ActualEndDate = DateTime.UtcNow;
                 
-                cultivationTask.ActualServiceCost += request.ActualCost; 
+                //cultivationTask.ActualServiceCost += request.ActualCost; 
 
                 _unitOfWork.Repository<CultivationTask>().Update(cultivationTask);
                 _logger.LogInformation("CultivationTask {TaskId} status updated to Completed via UAV report.", cultivationTask.Id);

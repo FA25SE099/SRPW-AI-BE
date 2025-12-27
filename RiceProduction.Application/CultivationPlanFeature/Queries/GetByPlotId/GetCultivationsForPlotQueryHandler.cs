@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Logging;
@@ -80,7 +80,7 @@ public class GetCultivationsForPlotQueryHandler : IRequestHandler<GetCultivation
                     Area = pc.Area,
                     Status = pc.Status,
                     ActualYield = pc.ActualYield,
-                    ProductionPlanName = planName ?? "N/A",
+                    ProductionPlanName = planName ?? "Chưa gán",
                     ActiveVersionName = latestVersion?.VersionName ?? "Original"
                 };
             }).ToList();

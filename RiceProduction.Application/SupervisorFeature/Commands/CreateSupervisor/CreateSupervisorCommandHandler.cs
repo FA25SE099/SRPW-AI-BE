@@ -58,7 +58,8 @@ namespace RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor
                     MaxFarmerCapacity = request.MaxFarmerCapacity
                 };
 
-                var psw = GenerateRandomPassword();
+                //var psw = GenerateRandomPassword();
+                var psw = ("123456");
                 var result = await _userManager.CreateAsync(supervisor, psw);
                 if (!result.Succeeded)
                 {

@@ -108,37 +108,63 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 "Processing {PlotCount} unique plots for plan {PlanId}", 
                 plotCultivations.Count, notification.PlanId);
             
-            // FIX #3: Create ONE version per plot cultivation (not per task!)
-            // This creates exactly one version for each plot cultivation
+            // FIX #3: Look up existing versions first, create only if none exist
+            // For each plot cultivation, find the newest version or create one
             var versionLookup = new Dictionary<Guid, Guid>();
+            var newVersionsCreated = 0;
+            var existingVersionsUsed = 0;
             
             foreach (var plotCultivation in plotCultivations)
             {
-                var newVersion = new CultivationVersion
-                {
-                    Id = await _versionRepo.GenerateNewGuid(Guid.NewGuid()),
-                    VersionName = "0",
-                    Reason = "Initial version created upon plan approval",
-                    ActivatedAt = DateTime.UtcNow,
-                    PlotCultivationId = plotCultivation.Id,
-                    CreatedAt = DateTime.UtcNow,
-                    IsActive = true,
-                    VersionOrder = 1,
-                };
-                await _versionRepo.AddAsync(newVersion);
-                versionLookup[plotCultivation.Id] = newVersion.Id;
+                // Try to find the newest existing version for this PlotCultivation
+                var existingVersion = await _versionRepo.GetQueryable()
+                    .Where(v => v.PlotCultivationId == plotCultivation.Id)
+                    .OrderByDescending(v => v.VersionOrder)
+                    .FirstOrDefaultAsync(cancellationToken);
                 
-                _logger.LogInformation(
-                    "Created version {VersionId} for PlotCultivation {PlotCultivationId}",
-                    newVersion.Id, plotCultivation.Id);
+                if (existingVersion != null)
+                {
+                    // Use existing version
+                    versionLookup[plotCultivation.Id] = existingVersion.Id;
+                    existingVersionsUsed++;
+                    
+                    _logger.LogInformation(
+                        "Using existing version {VersionId} (Order: {VersionOrder}, Name: '{VersionName}') for PlotCultivation {PlotCultivationId}",
+                        existingVersion.Id, existingVersion.VersionOrder, existingVersion.VersionName, plotCultivation.Id);
+                }
+                else
+                {
+                    // Create new version only if none exists
+                    var newVersion = new CultivationVersion
+                    {
+                        Id = await _versionRepo.GenerateNewGuid(Guid.NewGuid()),
+                        VersionName = "0",
+                        Reason = "Version 0 created upon plan approval",
+                        ActivatedAt = DateTime.UtcNow,
+                        PlotCultivationId = plotCultivation.Id,
+                        CreatedAt = DateTime.UtcNow,
+                        IsActive = true,
+                        VersionOrder = 1,
+                    };
+                    await _versionRepo.AddAsync(newVersion);
+                    versionLookup[plotCultivation.Id] = newVersion.Id;
+                    newVersionsCreated++;
+                    
+                    _logger.LogInformation(
+                        "Created new version {VersionId} (Version 0) for PlotCultivation {PlotCultivationId}",
+                        newVersion.Id, plotCultivation.Id);
+                }
             }
             
-            // Save all versions at once
-            await _versionRepo.SaveChangesAsync();
+            // Save all new versions at once (if any were created)
+            if (newVersionsCreated > 0)
+            {
+                await _versionRepo.SaveChangesAsync();
+            }
             
             _logger.LogInformation(
-                "Created {VersionCount} versions for {PlotCount} plot cultivations", 
-                versionLookup.Count, plotCultivations.Count);
+                "Version lookup complete: {ExistingCount} existing versions used, {NewCount} new versions created for {PlotCount} plot cultivations", 
+                existingVersionsUsed, newVersionsCreated, plotCultivations.Count);
             
             var cultivationTasks = new List<CultivationTask>();
             var cultivationTaskMaterials = new List<CultivationTaskMaterial>();

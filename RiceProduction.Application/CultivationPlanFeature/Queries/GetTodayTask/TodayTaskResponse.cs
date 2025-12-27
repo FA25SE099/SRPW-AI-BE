@@ -41,6 +41,11 @@ public class TodayTaskResponse
     public bool IsOverdue { get; set; } // <--- Trường mới
 
     /// <summary>
+    /// Cho biết công việc có được giao cho UAV vendor hay không
+    /// </summary>
+    public bool IsUav { get; set; }
+
+    /// <summary>
     /// Thông tin về thửa đất.
     /// </summary>
     public string PlotSoThuaSoTo { get; set; } = string.Empty;

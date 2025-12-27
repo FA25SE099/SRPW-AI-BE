@@ -198,7 +198,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                 var firstVersion = new CultivationVersion
                 {
                     PlotCultivationId = plotCultivationId,
-                    VersionName = "Initial Version",
+                    VersionName = "0",
                     VersionOrder = 1,
                     IsActive = true,
                     Reason = "Created during plot creation",
