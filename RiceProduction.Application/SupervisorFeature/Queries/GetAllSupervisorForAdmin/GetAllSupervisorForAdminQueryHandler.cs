@@ -48,7 +48,9 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorF
                     Email = supervisor.Email,
                     FullName = supervisor.FullName,
                     LastActivityAt = supervisor.LastActivityAt,
-                    PhoneNumber = supervisor.PhoneNumber
+                    PhoneNumber = supervisor.PhoneNumber,
+                    ClusterName = supervisor.ManagedCluster?.ClusterName ?? "N/A",
+                    ClusterId = supervisor.ManagedCluster?.Id
                 }).ToList();
                 return PagedResult<List<SupervisorResponse>>.Success(
                     uavVendorResponse,

@@ -15,12 +15,14 @@ using RiceProduction.Application.PlotFeature.Queries;
 using RiceProduction.Application.PlotFeature.Queries.CheckPlotPolygonEditable;
 using RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 using RiceProduction.Application.PlotFeature.Queries.DownloadSample;
+using RiceProduction.Application.PlotFeature.Queries.ExportPlotData;
 using RiceProduction.Application.PlotFeature.Queries.GetAll;
 using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
 using RiceProduction.Application.PlotFeature.Queries.GetById;
 using RiceProduction.Application.PlotFeature.Queries.GetDetail;
 using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
 using RiceProduction.Application.PlotFeature.Queries.GetPlotsAwaitingPolygon;
+using RiceProduction.Application.PlotFeature.Queries.GetPlotsByYearSeason;
 using RiceProduction.Domain.Entities;
 using static RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate.UpdateCoordinateCommand;
 
@@ -92,6 +94,63 @@ namespace RiceProduction.API.Controllers
                 return BadRequest(result);
             }
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Get plots with season-specific cultivation information
+        /// </summary>
+        [HttpGet("by-year-season")]
+        [ProducesResponseType(typeof(PagedResult<IEnumerable<PlotWithSeasonInfoDto>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetPlotsByYearSeason(
+            [FromQuery] Guid yearSeasonId,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] Guid? clusterManagerId = null,
+            [FromQuery] bool? hasMadeSelection = null,
+            [FromQuery] bool? isInGroup = null,
+            [FromQuery] Guid? groupId = null)
+        {
+            try
+            {
+                if (yearSeasonId == Guid.Empty)
+                {
+                    return BadRequest(new { message = "yearSeasonId is required" });
+                }
+
+                var query = new GetPlotsByYearSeasonQuery
+                {
+                    YearSeasonId = yearSeasonId,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize,
+                    SearchTerm = searchTerm,
+                    ClusterManagerId = clusterManagerId,
+                    HasMadeSelection = hasMadeSelection,
+                    IsInGroup = isInGroup,
+                    GroupId = groupId
+                };
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Failed to get plots by year season {YearSeasonId}: {Message}",
+                        yearSeasonId, result.Message);
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, 
+                    "Error occurred while getting plots for YearSeason {YearSeasonId}", 
+                    yearSeasonId);
+                return StatusCode(500, new { message = "An error occurred while processing your request" });
+            }
         }
         
         [HttpPost]
@@ -407,6 +466,55 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, new { message = "An error occurred" });
             }
         }
+
+        [HttpGet("export-data")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ExportPlotData(
+            [FromQuery] Guid? clusterManagerId = null,
+            [FromQuery] Guid? farmerId = null,
+            [FromQuery] Guid? groupId = null,
+            [FromQuery] bool onlyWithPolygons = false,
+            [FromQuery] bool onlyWithoutPolygons = false)
+        {
+            try
+            {
+                // If no cluster manager ID provided, try to get from current user
+                if (!clusterManagerId.HasValue)
+                {
+                    var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
+                    {
+                        clusterManagerId = userId;
+                    }
+                }
+
+                var query = new ExportPlotDataQuery
+                {
+                    ClusterManagerId = clusterManagerId,
+                    FarmerId = farmerId,
+                    GroupId = groupId,
+                    OnlyWithPolygons = onlyWithPolygons,
+                    OnlyWithoutPolygons = onlyWithoutPolygons
+                };
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Failed to export plot data: {Message}", result.Message);
+                    return BadRequest(new { message = result.Message });
+                }
+
+                return result.Data ?? BadRequest(new { message = "Failed to export plot data" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting plot data");
+                return StatusCode(500, new { message = "An error occurred while exporting plot data" });
+            }
+        }
+
         [HttpGet("get-current-farmer-plots")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

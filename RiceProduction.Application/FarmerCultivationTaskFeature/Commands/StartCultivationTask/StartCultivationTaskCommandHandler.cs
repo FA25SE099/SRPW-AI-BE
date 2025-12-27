@@ -121,6 +121,21 @@ public class StartCultivationTaskCommandHandler :
 
                 await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
             }
+            //else
+            //{
+            //    var farmLog = new FarmLog
+            //    {
+            //        CultivationTaskId = cultivationTask.Id,
+            //        PlotCultivationId = cultivationTask.PlotCultivationId,
+            //        LoggedDate = now,
+            //        ServiceNotes = "Task started: " + cultivationTask.ProductionPlanTask.TaskName,
+            //        WeatherConditions = request.WeatherConditions,
+            //        LoggedBy = farmerId.Value,
+            //        CreatedAt = now
+            //    };
+
+            //    await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
+            //}
 
             // Update the PlotCultivation status if it's still in Planned status
             if (cultivationTask.PlotCultivation.Status == Domain.Enums.CultivationStatus.Planned)
@@ -146,7 +161,7 @@ public class StartCultivationTaskCommandHandler :
                 ActualStartDate = cultivationTask.ActualStartDate.Value,
                 ScheduledEndDate = cultivationTask.ScheduledEndDate,
                 WeatherConditions = cultivationTask.WeatherConditions,
-                Message = "Task started successfully",
+                Message = "Công việc đã bắt đầu thành công",
                 PlotId = cultivationTask.PlotCultivation.PlotId,
                 PlotReference = $"{cultivationTask.PlotCultivation.Plot.SoThua}/{cultivationTask.PlotCultivation.Plot.SoTo}",
                 SeasonName = cultivationTask.PlotCultivation.Season.SeasonName,
@@ -155,7 +170,7 @@ public class StartCultivationTaskCommandHandler :
 
             return Result<StartCultivationTaskResponse>.Success(
                 response,
-                "Task started successfully. Good luck with your cultivation!");
+                "Công việc đã bắt đầu thành công. Chúc bạn may mắn với việc canh tác!");
         }
         catch (Exception ex)
         {
@@ -164,7 +179,7 @@ public class StartCultivationTaskCommandHandler :
                 "Error starting cultivation task {TaskId}",
                 request.CultivationTaskId);
             return Result<StartCultivationTaskResponse>.Failure(
-                "An error occurred while starting the task");
+                "Đã xảy ra lỗi khi bắt đầu công việc");
         }
     }
 }

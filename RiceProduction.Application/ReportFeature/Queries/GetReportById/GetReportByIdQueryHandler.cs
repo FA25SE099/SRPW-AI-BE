@@ -41,6 +41,10 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 .Include(r => r.Group)
                     .ThenInclude(g => g.Cluster)
                 .Include(r => r.Cluster)
+                     .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.ProductionPlanTask)
+                .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.Version)
                 .FirstOrDefaultAsync(r => r.Id == request.ReportId, cancellationToken);
 
             if (report == null)
@@ -56,6 +60,8 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                     ? $"{report.PlotCultivation.Plot.SoThua}/{report.PlotCultivation.Plot.SoTo}"
                     : null,
                 PlotArea = report.PlotCultivation?.Plot?.Area,
+                GroupId = report.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.Id,
+                GroupName = report.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.GroupName,
                 CultivationPlanId = report.PlotCultivationId,
                 CultivationPlanName = report.PlotCultivation != null
                     ? $"Plan {report.PlotCultivation.PlantingDate:yyyy-MM-dd}"
@@ -76,7 +82,13 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 FarmerName = report.PlotCultivation?.Plot?.Farmer?.FullName,
                 ClusterName = report.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group?.Cluster?.ClusterName
                     ?? report.Group?.Cluster?.ClusterName
-                    ?? report.Cluster?.ClusterName
+                    ?? report.Cluster?.ClusterName,
+                AffectedCultivationTaskId = report.AffectedCultivationTaskId,
+                AffectedTaskName = report.AffectedTask?.CultivationTaskName
+                    ?? report.AffectedTask?.ProductionPlanTask?.TaskName,
+                AffectedTaskType = report.AffectedTask?.TaskType?.ToString(),
+                AffectedTaskVersionName = report.AffectedTask?.Version?.VersionName,
+                AffectedTaskVersionId = report.AffectedTask?.VersionId
             };
 
             return Result<ReportItemResponse>.Success(response);

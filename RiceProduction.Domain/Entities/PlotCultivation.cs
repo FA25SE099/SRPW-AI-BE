@@ -24,6 +24,11 @@ public class PlotCultivation : BaseAuditableEntity
 
     public CultivationStatus Status { get; set; } = CultivationStatus.Planned;
 
+    public Guid? YearSeasonId { get; set; }
+    public DateTime? FarmerSelectionDate { get; set; }
+    public bool IsFarmerConfirmed { get; set; } = true;
+    public string? FarmerSelectionNotes { get; set; }
+
     [ForeignKey("PlotId")]
     public Plot Plot { get; set; } = null!;
 
@@ -32,6 +37,9 @@ public class PlotCultivation : BaseAuditableEntity
 
     [ForeignKey("RiceVarietyId")]
     public RiceVariety RiceVariety { get; set; } = null!;
+
+    [ForeignKey("YearSeasonId")]
+    public YearSeason? YearSeason { get; set; }
 
     public ICollection<ProductionPlan> ProductionPlans { get; set; } = new List<ProductionPlan>();
     public ICollection<CultivationTask> CultivationTasks { get; set; } = new List<CultivationTask>();

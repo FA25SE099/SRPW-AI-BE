@@ -65,7 +65,8 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
                     EmailConfirmed = true,
                     IsActive = true
                 };
-                var psw = "123456";
+                //var psw = GenerateRandomPassword();
+                var psw = ("123456");
                 var result = await _userManager.CreateAsync(expert, psw);
                 if (!result.Succeeded)
                 {
@@ -110,6 +111,26 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
                 _logger.LogError(ex, "Error creating Agronomy Expert");
                 return Result<Guid>.Failure("An error occurred while creating Agronomy Expert");
             }
+        }
+        private string GenerateRandomPassword()
+        {
+            const string upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const string lowerChars = "abcdefghijklmnopqrstuvwxyz";
+            const string digitChars = "0123456789";
+            const string specialChars = "!@#$%";
+
+            var random = new Random();
+            var password = new char[12];
+            password[0] = upperChars[random.Next(upperChars.Length)];
+            password[1] = lowerChars[random.Next(lowerChars.Length)];
+            password[2] = digitChars[random.Next(digitChars.Length)];
+            password[3] = specialChars[random.Next(specialChars.Length)];
+            const string allChars = upperChars + lowerChars + digitChars + specialChars;
+            for (int i = 4; i < password.Length; i++)
+            {
+                password[i] = allChars[random.Next(allChars.Length)];
+            }
+            return new string(password.OrderBy(x => random.Next()).ToArray());
         }
     }
 }

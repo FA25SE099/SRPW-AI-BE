@@ -1,7 +1,7 @@
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Domain.Entities;
-//status: In Progress, Completed, Emergency Approved, Cancelled
+//status: In Progress, Completed, Emergency Approved, Cancelled, Emergency
 public class CultivationTask : BaseAuditableEntity
 {
     public Guid? ProductionPlanTaskId { get; set; }

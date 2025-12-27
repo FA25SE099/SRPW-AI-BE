@@ -70,7 +70,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                     clusterId = clusterManager?.ClusterId;
                 }
 
-                const string TEMP_PASSWORD = "Farmer@123";
+                const string TEMP_PASSWORD = "123456";
 
                 var newFarmer = new Farmer
                 {
@@ -113,7 +113,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 // Publish event for email notification (non-blocking)
                 if (!string.IsNullOrWhiteSpace(request.Email))
                 {
-                    await _mediator.Publish(new FarmersImportedEvent
+                    await _mediator.Publish(new FarmerWelcomeImportedEvent
                     {
                         ImportedFarmers = new List<ImportedFarmerData>
                         {

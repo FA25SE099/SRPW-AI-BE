@@ -12,6 +12,8 @@ public class MaterialDistribution : BaseAuditableEntity
     [Required]
     public Guid MaterialId { get; set; }
     
+    public Guid? RelatedTaskId { get; set; }
+    
     /// <summary>
     /// Quantity of material distributed to this farmer
     /// </summary>
@@ -23,6 +25,19 @@ public class MaterialDistribution : BaseAuditableEntity
     /// Status: Pending, PartiallyConfirmed, Completed, Rejected
     /// </summary>
     public DistributionStatus Status { get; set; } = DistributionStatus.Pending;
+    
+    [Required]
+    public DateTime ScheduledDistributionDate { get; set; }
+    
+    [Required]
+    public DateTime DistributionDeadline { get; set; }
+    
+    public DateTime? ActualDistributionDate { get; set; }
+    
+    [Required]
+    public DateTime SupervisorConfirmationDeadline { get; set; }
+    
+    public DateTime? FarmerConfirmationDeadline { get; set; }
     
     // Supervisor confirmation
     /// <summary>
@@ -73,5 +88,8 @@ public class MaterialDistribution : BaseAuditableEntity
     
     [ForeignKey("SupervisorConfirmedBy")]
     public Supervisor? ConfirmedBy { get; set; }
+    
+    [ForeignKey("RelatedTaskId")]
+    public ProductionPlanTask? RelatedTask { get; set; }
 }
 

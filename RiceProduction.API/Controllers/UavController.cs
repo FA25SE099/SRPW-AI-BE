@@ -69,16 +69,16 @@ public class UavController : ControllerBase
     [HttpGet("{orderId}")]
     public async Task<IActionResult> GetUavOrderDetail(Guid orderId)
     {
-        var vendorId = _currentUser.Id;
-        if (vendorId == null)
-        {
-            return Unauthorized(Result<UavOrderDetailResponse>.Failure("Vendor is not authenticated.", "Unauthorized"));
-        }
+        //var vendorId = _currentUser.Id;
+        //if (vendorId == null)
+        //{
+        //    return Unauthorized(Result<UavOrderDetailResponse>.Failure("Vendor is not authenticated.", "Unauthorized"));
+        //}
 
         var query = new GetUavOrderDetailQuery 
         { 
             OrderId = orderId, 
-            VendorId = vendorId.Value 
+            //VendorId = vendorId.Value 
         };
         
         var result = await _mediator.Send(query);

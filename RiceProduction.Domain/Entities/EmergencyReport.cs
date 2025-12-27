@@ -25,6 +25,12 @@ public class EmergencyReport : BaseAuditableEntity
 
     public Guid? ClusterId { get; set; }
 
+    /// <summary>
+    /// The cultivation task where the problem occurred (optional).
+    /// Helps identify which stage/task was affected (e.g., "Bón phân lần 2" had pest issue).
+    /// </summary>
+    public Guid? AffectedCultivationTaskId { get; set; }
+
         // Alert details
     [Required]
     [MaxLength(100)]
@@ -89,5 +95,7 @@ public class EmergencyReport : BaseAuditableEntity
 
     [ForeignKey("ReportedBy")]
     public ApplicationUser? Reporter { get; set; }
-    
+
+    [ForeignKey("AffectedCultivationTaskId")]
+    public CultivationTask? AffectedTask { get; set; }   
 }

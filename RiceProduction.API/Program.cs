@@ -10,6 +10,7 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using RiceProduction.API.Middlewares;
 using RiceProduction.API.Services;
+using RiceProduction.API.Common;
 using RiceProduction.Application;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
@@ -23,6 +24,7 @@ using Serilog.Formatting.Json;
 using System.Text;
 using System.Text.Json.Serialization;
 
+// Configure Npgsql to handle timestamps as UTC
 
 
     var builder = WebApplication.CreateBuilder(args);
@@ -132,7 +134,6 @@ builder.AddInfrastructureServices();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -169,7 +170,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3000", "https://srpw-ai-fe-phtr.vercel.app") 
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3000", "https://srpw-ai-fe-phtr.vercel.app", "http://riceproduction.online", "https://riceproduction.online", "http://www.riceproduction.online", "https://www.riceproduction.online") 
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()  
@@ -182,6 +183,19 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowAnyMethod()
             .WithExposedHeaders("Content-Disposition");
+    });
+
+    options.AddPolicy("AllowRiceProduction", policy =>
+    {
+        policy.WithOrigins(
+            "http://riceproduction.online",
+            "https://riceproduction.online",
+            "http://www.riceproduction.online",
+            "https://www.riceproduction.online"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials(); 
     });
 });
 builder.Services.AddHttpContextAccessor();
@@ -240,10 +254,10 @@ if (seedDatabase)
         //}
         if (isProduction)
         {
-            //await initializer.ResetDatabaseAsync();
+            await initializer.ResetDatabaseAsync();
             //await initializer.SeedAsync();
-
-        }       
+        }
+        
         await initializer.SeedAsyncAdminOnly();
         //await initializer.SeedAsync();
     }

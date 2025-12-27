@@ -48,6 +48,7 @@ public class CultivationTaskDetailResponse
     
     // Lịch trình
     public DateTime PlannedScheduledDate { get; set; }
+    public DateTime PlannedScheduledEndDate { get; set; }
     public DateTime? ActualStartDate { get; set; }
     public DateTime? ActualEndDate { get; set; }
 
