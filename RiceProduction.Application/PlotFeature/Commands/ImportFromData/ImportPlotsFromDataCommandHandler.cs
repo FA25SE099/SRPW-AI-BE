@@ -269,8 +269,11 @@ public class ImportPlotsFromDataCommandHandler
             var skippedRows = 0;
             var plotsWithImportedPolygons = 0;
 
-            foreach (var row in plotImportRows)
+            // Use for loop with index to match validation loop index
+            for (int i = 0; i < plotImportRows.Count; i++)
             {
+                var row = plotImportRows[i];
+                
                 // Skip empty rows
                 if (!row.SoThua.HasValue && !row.SoTo.HasValue && !row.Area.HasValue)
                 {
@@ -303,7 +306,8 @@ public class ImportPlotsFromDataCommandHandler
                 Polygon boundary;
                 Point? coordinate = null;
                 PlotStatus status;
-                var rowIndex = plotImportRows.IndexOf(row);
+                // Use the same index 'i' from the loop to match validation loop
+                var rowIndex = i;
                 
                 if (validatedPolygons.TryGetValue(rowIndex, out var polygonData))
                 {
