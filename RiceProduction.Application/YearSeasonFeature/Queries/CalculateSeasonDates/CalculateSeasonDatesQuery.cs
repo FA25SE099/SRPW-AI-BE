@@ -18,3 +18,5 @@ public class CalculateSeasonDatesQuery : IRequest<Result<SeasonDatesDto>>
     public int Year { get; set; }
 }
 
+
+

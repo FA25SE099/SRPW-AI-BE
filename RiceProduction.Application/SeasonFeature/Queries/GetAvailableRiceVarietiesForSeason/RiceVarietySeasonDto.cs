@@ -13,3 +13,5 @@ public class RiceVarietySeasonDto
     public DateTime? OptimalPlantingEnd { get; set; }
 }
 
+
+

@@ -14,3 +14,5 @@ public class GetSystemSettingByIdQuery : IRequest<Result<SystemSettingResponse>>
     public int AbsoluteExpirationInMinutes => 120;
 }
 
+
+
