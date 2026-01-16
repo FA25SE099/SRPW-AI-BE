@@ -143,7 +143,37 @@ public class SelectCultivationPreferencesCommandHandler
             // 7. Save changes
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 8. Create response DTO
+            // 8. Create initial CultivationVersion if it doesn't exist
+            var cultivationVersionRepo = _unitOfWork.Repository<CultivationVersion>();
+            var existingVersion = await cultivationVersionRepo.GetQueryable()
+                .FirstOrDefaultAsync(v => 
+                    v.PlotCultivationId == plotCultivation.Id && 
+                    v.VersionName == "0", 
+                    cancellationToken);
+
+            if (existingVersion == null)
+            {
+                var firstVersion = new CultivationVersion
+                {
+                    PlotCultivationId = plotCultivation.Id,
+                    VersionName = "0",
+                    VersionOrder = 1,
+                    IsActive = true,
+                    Reason = existingCultivation != null 
+                        ? $"Farmer updated cultivation selection on {DateTime.UtcNow:yyyy-MM-dd}" 
+                        : $"Created during farmer cultivation selection for {yearSeason.Season?.SeasonName ?? "season"} {yearSeason.Year}",
+                    ActivatedAt = DateTime.UtcNow
+                };
+
+                await cultivationVersionRepo.AddAsync(firstVersion);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "Created initial CultivationVersion '0' for PlotCultivation {PlotCultivationId}",
+                    plotCultivation.Id);
+            }
+
+            // 9. Create response DTO
             var responseDto = new CultivationPreferenceDto
             {
                 PlotCultivationId = plotCultivation.Id,

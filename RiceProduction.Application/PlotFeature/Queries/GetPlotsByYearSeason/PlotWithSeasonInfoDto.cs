@@ -45,3 +45,5 @@ public class PlotWithSeasonInfoDto
     public string SelectionStatusMessage { get; set; } = string.Empty;
 }
 
+
+
