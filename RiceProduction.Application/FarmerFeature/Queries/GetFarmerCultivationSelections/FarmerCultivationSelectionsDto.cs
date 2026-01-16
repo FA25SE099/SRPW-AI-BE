@@ -27,3 +27,5 @@ public class PlotCultivationSelectionDto
     public DateTime? SelectionDate { get; set; }
 }
 
+
+

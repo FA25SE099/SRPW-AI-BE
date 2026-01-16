@@ -9,6 +9,7 @@ using RiceProduction.Application.PlotFeature.Commands.CreatePlot;
 using RiceProduction.Application.PlotFeature.Commands.CreatePlots;
 using RiceProduction.Application.PlotFeature.Commands.EditPlot;
 using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
+using RiceProduction.Application.PlotFeature.Commands.ImportFromData;
 using RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel;
 using RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate;
 using RiceProduction.Application.PlotFeature.Queries;
@@ -23,6 +24,7 @@ using RiceProduction.Application.PlotFeature.Queries.GetDetail;
 using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
 using RiceProduction.Application.PlotFeature.Queries.GetPlotsAwaitingPolygon;
 using RiceProduction.Application.PlotFeature.Queries.GetPlotsByYearSeason;
+using RiceProduction.Application.PlotFeature.Queries.PreviewPlotImport;
 using RiceProduction.Domain.Entities;
 using static RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate.UpdateCoordinateCommand;
 
@@ -319,6 +321,154 @@ namespace RiceProduction.API.Controllers
 
             return Ok(result);
         }
+
+        /// <summary>
+        /// Preview plot import from Excel file without actually importing
+        /// Returns validation results, errors, and warnings for each row
+        /// </summary>
+        /// <param name="excelFile">Excel file to preview</param>
+        /// <returns>Preview data with valid and invalid rows</returns>
+        [HttpPost("preview-import-excel")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> PreviewPlotImportFromExcel(IFormFile excelFile)
+        {
+            try
+            {
+                if (excelFile == null || excelFile.Length == 0)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Excel file is required",
+                        errors = new[] { "Excel file is required" }
+                    });
+                }
+
+                var allowedExtensions = new[] { ".xlsx", ".xls" };
+                var fileExtension = Path.GetExtension(excelFile.FileName).ToLowerInvariant();
+
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Only Excel files (.xlsx, .xls) are allowed",
+                        errors = new[] { $"Invalid file extension: {fileExtension}" }
+                    });
+                }
+
+                const int maxFileSize = 10 * 1024 * 1024;
+                if (excelFile.Length > maxFileSize)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "File size cannot exceed 10MB",
+                        errors = new[] { $"File size: {excelFile.Length} bytes exceeds 10MB" }
+                    });
+                }
+
+                var query = new PreviewPlotImportQuery
+                {
+                    ExcelFile = excelFile
+                };
+
+                _logger.LogInformation("Previewing plot import from Excel file: {FileName}, Size: {FileSize} bytes",
+                    excelFile.FileName, excelFile.Length);
+
+                var result = await _mediator.Send(query);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Plot import preview failed: {Message}", result.Message);
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = result.Message
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    data = result.Data
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while previewing plot import from Excel file: {FileName}",
+                    excelFile?.FileName ?? "Unknown");
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while processing your request",
+                    errors = new[] { ex.Message }
+                });
+            }
+        }
+
+        /// <summary>
+        /// Import plots from data array (typically after fixing errors in preview UI)
+        /// </summary>
+        /// <param name="command">Import command with plot rows data</param>
+        /// <returns>List of imported plots</returns>
+        [HttpPost("import-from-data")]
+        [Consumes("application/json")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ImportPlotsFromData(
+            [FromBody] ImportPlotsFromDataCommand command)
+        {
+            try
+            {
+                if (command.PlotRows == null || !command.PlotRows.Any())
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Không có dữ liệu thửa đất để nhập"
+                    });
+                }
+
+                _logger.LogInformation(
+                    "Starting plot import from data array: {RowCount} rows",
+                    command.PlotRows.Count);
+
+                var result = await _mediator.Send(command);
+
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning("Plot import from data failed: {Message}", result.Message);
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = result.Message
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = result.Message,
+                    data = result.Data
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while importing plots from data");
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while processing your request",
+                    errors = new[] { ex.Message }
+                });
+            }
+        }
+
         [HttpPost("import-excel")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> ImportPlotsFromExcel(IFormFile excelFile, [FromQuery] DateTime? importDate)

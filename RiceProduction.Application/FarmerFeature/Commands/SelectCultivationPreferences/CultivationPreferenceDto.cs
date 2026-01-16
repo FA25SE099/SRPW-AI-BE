@@ -16,3 +16,5 @@ public class CultivationPreferenceDto
     public string Status { get; set; } = string.Empty;
 }
 
+
+

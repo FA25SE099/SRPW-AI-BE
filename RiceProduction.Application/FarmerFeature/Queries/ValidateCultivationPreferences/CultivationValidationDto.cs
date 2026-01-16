@@ -26,3 +26,5 @@ public class ValidationRecommendation
     public string Type { get; set; } = string.Empty; // Alternative, Optimization, etc.
 }
 
+
+

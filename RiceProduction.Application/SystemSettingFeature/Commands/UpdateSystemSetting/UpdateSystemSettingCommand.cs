@@ -9,3 +9,5 @@ public class UpdateSystemSettingCommand : IRequest<Result<Guid>>
     public string? SettingDescription { get; set; }
 }
 
+
+

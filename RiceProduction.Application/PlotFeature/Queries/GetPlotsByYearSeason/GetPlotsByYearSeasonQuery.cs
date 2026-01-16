@@ -19,3 +19,5 @@ public class GetPlotsByYearSeasonQuery : IRequest<PagedResult<IEnumerable<PlotWi
     public Guid? GroupId { get; set; }
 }
 
+
+
