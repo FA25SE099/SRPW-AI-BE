@@ -152,7 +152,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                         var version = new CultivationVersion
                         {
                             PlotCultivationId = cultivationId,
-                            VersionName = "Initial Version",
+                            VersionName = "0",
                             VersionOrder = 1,
                             IsActive = true,
                             Reason = "Created during bulk plot creation",

@@ -1,8 +1,10 @@
 ﻿using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgronomyExpert;
 using RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyExpertById;
 using RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyExpertList;
+using RiceProduction.Application.AgronomyExpertFeature.Queries.GetCurrentAgronomyExpert;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.AgronomyExpertRequests;
 using RiceProduction.Application.Common.Models.Response.AgronomyExpertResponses;
@@ -78,6 +80,27 @@ public class AgronomyExpertController : Controller
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while getting agronomy expert by id");
+            return StatusCode(500, "An error occurred while processing your request");
+        }
+    }
+
+    [HttpGet("me")]
+    [Authorize(Roles = "AgronomyExpert")]
+    public async Task<IActionResult> GetCurrentAgronomyExpert()
+    {
+        try
+        {
+            var query = new GetCurrentAgronomyExpertQuery();
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while getting current agronomy expert");
             return StatusCode(500, "An error occurred while processing your request");
         }
     }

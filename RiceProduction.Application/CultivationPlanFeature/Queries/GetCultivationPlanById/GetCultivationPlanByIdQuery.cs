@@ -41,6 +41,9 @@ public class CultivationTaskResponse
     public string TaskType { get; set; } = string.Empty;
     public DateTime? ScheduledDate { get; set; }
     public DateTime? ScheduledEndDate { get; set; }
+    public DateTime? ActualStartDate { get; set; }
+    public DateTime? ActualEndDate { get; set; }
+    public string TaskStatus { get; set; } = string.Empty;
     public string Priority { get; set; } = string.Empty;
     public int SequenceOrder { get; set; }
     public List<CultivationTaskMaterialResponse> Materials { get; set; } = new();

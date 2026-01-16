@@ -4,6 +4,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.PlotResponse;
 using RiceProduction.Application.FarmerFeature.Events;
+using RiceProduction.Application.FarmerFeature.Events.SendEmailEvent;
 using RiceProduction.Application.PlotFeature.Events;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
@@ -68,7 +69,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 }
 
                 // Create farmer
-                const string TEMP_PASSWORD = "Farmer@123";
+                const string TEMP_PASSWORD = "123456";
                 
                 var farmer = new Farmer
                 {
@@ -159,12 +160,25 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                         ClusterManagerId = request.ClusterManagerId,
                         ImportedAt = DateTime.UtcNow,
                         TotalPlotsImported = plotResponses.Count
-                    }, cancellationToken);
+                    }, cancellationToken);                  
 
                     _logger.LogInformation("Published PlotImportedEvent for {PlotCount} plot(s) requiring polygon assignment", plotResponses.Count);
+
+                    await _mediator.Publish(new FarmerCreatedEvent
+                    {
+                        FarmerId = farmer.Id,
+                        FullName = farmer.FullName,
+                        PhoneNumber = farmer.PhoneNumber,
+                        Email = farmer.Email,
+                        Password = TEMP_PASSWORD,
+                        CreatedAt = DateTime.UtcNow
+                    }, cancellationToken);
+
+                    _logger.LogInformation("Published FarmerCreatedEvent for farmer {FarmerId} to send credentials email", farmer.Id);
                 }
 
                 return Result<Guid>.Success(farmer.Id);
+
             }
             catch (Exception ex)
             {

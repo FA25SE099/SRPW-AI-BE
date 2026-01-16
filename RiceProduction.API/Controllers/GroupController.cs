@@ -11,6 +11,7 @@ using RiceProduction.Application.GroupFeature.Queries.GetGroupDetail;
 using RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId;
 using RiceProduction.Application.GroupFeature.Queries.PreviewGroups;
 using RiceProduction.Application.GroupFeature.Commands.FormGroups;
+using RiceProduction.Application.GroupFeature.Commands.FormGroupsFromPreview;
 using RiceProduction.Application.GroupFeature.Commands.CreateGroupManually;
 using RiceProduction.Application.GroupFeature.Queries.GetGroupByClusterManager;
 using RiceProduction.Application.Common.Interfaces;
@@ -127,6 +128,39 @@ public class GroupController : Controller
             MaxPlotsPerGroup = request.Parameters?.MaxPlotsPerGroup,
             AutoAssignSupervisors = request.AutoAssignSupervisors,
             CreateGroupsImmediately = request.CreateGroupsImmediately
+        };
+
+        var result = await _mediator.Send(command);
+        if (!result.Succeeded)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Create groups from preview results (edited or unedited)
+    /// </summary>
+    [HttpPost("form-from-preview")]
+    [ProducesResponseType(typeof(Result<FormGroupsResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> FormGroupsFromPreview([FromBody] FormGroupsFromPreviewRequest request)
+    {
+        var command = new FormGroupsFromPreviewCommand
+        {
+            ClusterId = request.ClusterId,
+            SeasonId = request.SeasonId,
+            Year = request.Year,
+            CreateGroupsImmediately = request.CreateGroupsImmediately,
+            Groups = request.Groups.Select(g => new PreviewGroupInput
+            {
+                GroupName = g.GroupName,
+                RiceVarietyId = g.RiceVarietyId,
+                PlantingWindowStart = g.PlantingWindowStart,
+                PlantingWindowEnd = g.PlantingWindowEnd,
+                MedianPlantingDate = g.MedianPlantingDate,
+                PlotIds = g.PlotIds,
+                SupervisorId = g.SupervisorId
+            }).ToList()
         };
 
         var result = await _mediator.Send(command);

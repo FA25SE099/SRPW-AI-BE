@@ -51,10 +51,23 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 return Result<FormGroupsResponse>.Failure($"Season {request.SeasonId} not found");
             }
 
+            // Get or verify YearSeason exists
+            var yearSeason = await _unitOfWork.Repository<YearSeason>()
+                .FindAsync(ys => ys.ClusterId == request.ClusterId && 
+                                ys.SeasonId == request.SeasonId && 
+                                ys.Year == request.Year);
+
+            if (yearSeason == null)
+            {
+                return Result<FormGroupsResponse>.Failure(
+                    $"YearSeason not found for cluster {request.ClusterId}, season {request.SeasonId}, year {request.Year}. " +
+                    "Please create a YearSeason first.");
+            }
+
             // Check if groups already exist for this cluster/season/year
             var existingGroups = await _unitOfWork.Repository<Group>()
                 .ListAsync(g => g.ClusterId == request.ClusterId && 
-                               g.SeasonId == request.SeasonId && 
+                               g.YearSeasonId == yearSeason.Id && 
                                g.Year == request.Year);
 
             if (existingGroups.Any())
@@ -175,8 +188,7 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 var group = new Group
                 {
                     ClusterId = request.ClusterId,
-                    RiceVarietyId = proposedGroup.RiceVarietyId,
-                    SeasonId = request.SeasonId,
+                    YearSeasonId = yearSeason.Id,
                     Year = request.Year,
                     PlantingDate = proposedGroup.MedianPlantingDate,
                     Status = request.CreateGroupsImmediately ? GroupStatus.Active : GroupStatus.Draft,
@@ -246,8 +258,10 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 Groups = createdGroups.Select(g => new CreatedGroupDto
                 {
                     GroupId = g.Id,
-                    RiceVarietyId = g.RiceVarietyId!.Value,
-                    RiceVarietyName = varietyDict.GetValueOrDefault(g.RiceVarietyId!.Value)?.VarietyName ?? "Unknown",
+                    RiceVarietyId = (Guid)(g.YearSeason?.RiceVarietyId),
+                    RiceVarietyName = g.YearSeason?.RiceVarietyId != null && g.YearSeason.RiceVarietyId.HasValue 
+                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName ?? "Unknown" 
+                        : "Not Set",
                     SupervisorId = g.SupervisorId,
                     SupervisorName = g.SupervisorId.HasValue ? supervisorsForResponse.GetValueOrDefault(g.SupervisorId.Value) : null,
                     PlantingDate = g.PlantingDate!.Value,

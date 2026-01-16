@@ -53,6 +53,39 @@ public class PlotImportRow
     /// Will be used to create PlotCultivation for current season
     /// </summary>
     public string? RiceVarietyName { get; set; }
+    
+    /// <summary>
+    /// Optional: Preferred planting date for this plot
+    /// If provided with RiceVarietyName, will be treated as farmer selection
+    /// </summary>
+    public DateTime? PlantingDate { get; set; }
+    
+    /// <summary>
+    /// Optional: Season name for the cultivation (e.g., "Winter-Spring", "Summer-Autumn")
+    /// If not provided, current season will be determined automatically
+    /// </summary>
+    public string? SeasonName { get; set; }
+    
+    /// <summary>
+    /// Optional: Year for the cultivation season
+    /// If not provided, current year will be determined automatically
+    /// </summary>
+    public int? Year { get; set; }
+    
+    /// <summary>
+    /// Optional: Plot boundary polygon in WKT format
+    /// Example: POLYGON((105.123 10.456, 105.124 10.457, ...))
+    /// If provided, plot will be created as Active status
+    /// If empty, supervisor will be assigned to draw polygon
+    /// </summary>
+    public string? BoundaryWKT { get; set; }
+    
+    /// <summary>
+    /// Optional: Plot center point in WKT format
+    /// Example: POINT(105.123 10.456)
+    /// If not provided, centroid of boundary will be used
+    /// </summary>
+    public string? CoordinateWKT { get; set; }
 }
 
 /// <summary>

@@ -36,69 +36,71 @@ public class GetUavOrderDetailQueryHandler : IRequestHandler<GetUavOrderDetailQu
         {
             // Tải Order với tất cả các mối quan hệ sâu, bao gồm các Plot Assignments
             var order = await _unitOfWork.Repository<UavServiceOrder>().FindAsync(
-                match: o => o.Id == request.OrderId && o.UavVendorId == request.VendorId,
+                match: o => o.Id == request.OrderId ,
+                //&& o.UavVendorId == request.VendorId,
                 includeProperties: q => q
                     .Include(o => o.UavVendor)
                     .Include(o => o.Creator)
                     .Include(o => o.Group).ThenInclude(g => g.Cluster)
-                    .Include(o => o.PlotAssignments).ThenInclude(pa => pa.Plot) // <-- Load Plot
-                    // Lấy Materials từ Production Plan (tương tự logic cũ)
-                    .Include(o => o.Group).ThenInclude(g => g.ProductionPlans)
-                        .ThenInclude(pp => pp.CurrentProductionStages)
-                        .ThenInclude(ps => ps.ProductionPlanTasks)
-                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
-                        .ThenInclude(pptm => pptm.Material)
+                    .Include(o => o.PlotAssignments)
+                        .ThenInclude(pa => pa.Plot)
+                    .Include(o => o.PlotAssignments)
+                        .ThenInclude(pa => pa.CultivationTask)
+                            .ThenInclude(ct => ct.CultivationTaskMaterials)
+                                .ThenInclude(ctm => ctm.Material)
             );
 
             if (order == null)
             {
                 return Result<UavOrderDetailResponse>.Failure("Service Order not found or unauthorized.", "OrderNotFound");
             }
-            
-            // --- Logic tính toán và ánh xạ Vật tư (Materials) ---
-            var materials = order.Group?.ProductionPlans
-                .SelectMany(pp => pp.CurrentProductionStages)
-                .SelectMany(ps => ps.ProductionPlanTasks)
-                .SelectMany(ppt => ppt.ProductionPlanTaskMaterials)
-                .GroupBy(pptm => pptm.MaterialId)
-                .Select(g => 
-                {
-                    var firstMat = g.First();
-                    var totalQtyPerHa = g.Sum(i => i.QuantityPerHa);
-                    var totalEstimatedCost = g.Sum(i => i.EstimatedAmount.GetValueOrDefault(0M));
-                    
-                    return new PlannedMaterialDto
-                    {
-                        MaterialId = firstMat.MaterialId,
-                        MaterialName = firstMat.Material.Name,
-                        MaterialUnit = firstMat.Material.Unit,
-                        QuantityPerHa = totalQtyPerHa / order.TotalPlots, 
-                        TotalQuantityRequired = totalQtyPerHa * order.TotalArea,
-                        TotalEstimatedCost = totalEstimatedCost
-                    };
-                })
-                .ToList() ?? new List<PlannedMaterialDto>();
 
-            // --- Ánh xạ Plot Assignments (MỚI) ---
+            // --- Ánh xạ Plot Assignments với Materials từ CultivationTask ---
             var plotAssignmentsResponse = order.PlotAssignments
-                .Select(pa => new UavOrderPlotAssignmentResponse
+                .Select(pa =>
                 {
-                    PlotId = pa.PlotId,
-                    PlotName = $"Thửa {pa.Plot.SoThua ?? 0} - Tờ {pa.Plot.SoTo ?? 0}",
-                    ServicedArea = pa.ServicedArea,
-                    Status = pa.Status,
-                    ActualCost = pa.ActualCost,
-                    CompletionDate = pa.CompletionDate,
-                    ReportNotes = pa.ReportNotes,
-                    
-                    // Gán dữ liệu GIS của Plot Boundary (Sử dụng JsonSerializer cho Polygon)
-                    // Lưu ý: Cần đảm bảo thư viện NetTopologySuite đã được cấu hình để serialize sang GeoJSON
-                     PlotBoundaryGeoJson = pa.Plot.Boundary != null && !pa.Plot.Boundary.IsEmpty 
-                        ? pa.Plot.Boundary.AsText() 
-                        : null,
-                    
-                    // Deserialize ProofUrlsJson (an toàn)
-                    ProofUrls = pa.ProofUrlsJson != null ? JsonSerializer.Deserialize<List<string>>(pa.ProofUrlsJson) ?? new List<string>() : new List<string>()
+                    // Lấy materials từ CultivationTask của plot assignment này
+                    var taskMaterials = pa.CultivationTask?.CultivationTaskMaterials?
+                        .Select(ctm => new PlannedMaterialDto
+                        {
+                            MaterialId = ctm.MaterialId,
+                            MaterialName = ctm.Material.Name,
+                            MaterialUnit = ctm.Material.Unit,
+                            QuantityPerHa = ctm.ActualQuantity / (pa.Plot.Area > 0 ? pa.Plot.Area : 1),
+                            TotalQuantityRequired = ctm.ActualQuantity,
+                            TotalEstimatedCost = ctm.ActualCost
+                        })
+                        .ToList() ?? new List<PlannedMaterialDto>();
+
+                    return new UavOrderPlotAssignmentResponse
+                    {
+                        PlotId = pa.PlotId,
+                        PlotName = $"Thửa {pa.Plot.SoThua ?? 0} - Tờ {pa.Plot.SoTo ?? 0}",
+                        ServicedArea = pa.ServicedArea,
+                        Status = pa.Status,
+                        ActualCost = pa.ActualCost,
+                        CompletionDate = pa.CompletionDate,
+                        ReportNotes = pa.ReportNotes,
+                        
+                        // Thông tin về Cultivation Task
+                        CultivationTaskId = pa.CultivationTaskId,
+                        CultivationTaskName = pa.CultivationTask?.CultivationTaskName 
+                            ?? pa.CultivationTask?.ProductionPlanTask?.TaskName,
+                        TaskType = pa.CultivationTask?.TaskType?.ToString(),
+                        
+                        // Gán dữ liệu GIS của Plot Boundary
+                        PlotBoundaryGeoJson = pa.Plot.Boundary != null && !pa.Plot.Boundary.IsEmpty 
+                            ? pa.Plot.Boundary.AsText() 
+                            : null,
+                        
+                        // Deserialize ProofUrlsJson (an toàn)
+                        ProofUrls = pa.ProofUrlsJson != null 
+                            ? JsonSerializer.Deserialize<List<string>>(pa.ProofUrlsJson) ?? new List<string>() 
+                            : new List<string>(),
+                        
+                        // Materials của cultivation task này
+                        Materials = taskMaterials
+                    };
                 })
                 .OrderBy(pa => pa.PlotName)
                 .ToList();
@@ -129,7 +131,6 @@ public class GetUavOrderDetailQueryHandler : IRequestHandler<GetUavOrderDetailQu
                     ? order.OptimizedRoute.AsText()
                     : order.RouteData, // Route Data (LineString)
                 
-                Materials = materials,
                 PlotAssignments = plotAssignmentsResponse
             };
 

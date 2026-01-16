@@ -61,7 +61,9 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorF
                         PhoneNumber = supervisor.PhoneNumber,
                         Address = supervisor.Address,
                         CurrentFarmerCount = supervisor.CurrentFarmerCount,
-                        LastActivityAt = supervisor.LastActivityAt
+                        LastActivityAt = supervisor.LastActivityAt,
+                        ClusterName = clusterManager.ManagedCluster?.ClusterName ?? "N/A",
+                        ClusterId = supervisor.ManagedCluster?.Id
                     });
                 }
                 if (!supervisorResponses.Any())

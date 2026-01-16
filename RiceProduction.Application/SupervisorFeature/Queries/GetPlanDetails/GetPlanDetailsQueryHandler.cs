@@ -34,6 +34,8 @@ public class GetPlanDetailsQueryHandler
                 match: p => p.Id == request.ProductionPlanId,
                 includeProperties: q => q
                     .Include(p => p.Group)
+                        .ThenInclude(g => g!.YearSeason)
+                    .Include(p => p.Group)
                         .ThenInclude(g => g!.GroupPlots)
                             .ThenInclude(gp => gp.Plot)
                                 .ThenInclude(plot => plot.Farmer)
@@ -73,10 +75,10 @@ public class GetPlanDetailsQueryHandler
 
             // 3. Get season info
             Season? season = null;
-            if (plan.Group.SeasonId.HasValue)
+            if (plan.Group.YearSeason?.SeasonId != null)
             {
                 season = await _unitOfWork.Repository<Season>()
-                    .FindAsync(s => s.Id == plan.Group.SeasonId.Value);
+                    .FindAsync(s => s.Id == plan.Group.YearSeason.SeasonId);
             }
 
             // 4. Calculate detailed progress
@@ -406,7 +408,8 @@ public class GetPlanDetailsQueryHandler
             int contingency = cultivationTasks.Count(ct => ct.IsContingency);
             
             decimal estimatedCost = cultivationTasks
-                .Select(ct => ct.ProductionPlanTask.EstimatedMaterialCost)
+                .Where(ct => ct.ProductionPlanTask != null)
+                .Select(ct => ct.ProductionPlanTask!.EstimatedMaterialCost)
                 .Sum();
             decimal actualCost = cultivationTasks
                 .Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost);
@@ -417,13 +420,13 @@ public class GetPlanDetailsQueryHandler
                 .FirstOrDefault();
             
             var nextScheduled = cultivationTasks
-                .Where(ct => ct.Status != TaskStatus.Completed)
-                .OrderBy(ct => ct.ProductionPlanTask.ScheduledDate)
+                .Where(ct => ct.Status != TaskStatus.Completed && ct.ProductionPlanTask != null)
+                .OrderBy(ct => ct.ProductionPlanTask!.ScheduledDate)
                 .FirstOrDefault();
             
             var currentStage = cultivationTasks
-                .Where(ct => ct.Status == TaskStatus.InProgress)
-                .Select(ct => ct.ProductionPlanTask.ProductionStage)
+                .Where(ct => ct.Status == TaskStatus.InProgress && ct.ProductionPlanTask != null)
+                .Select(ct => ct.ProductionPlanTask!.ProductionStage)
                 .FirstOrDefault();
             
             plotProgressList.Add(new PlotProgressDetails
@@ -448,8 +451,8 @@ public class GetPlanDetailsQueryHandler
                     ct.IsContingency || !string.IsNullOrEmpty(ct.InterruptionReason)),
                 LatestCompletedTask = lastCompleted?.CultivationTaskName ?? lastCompleted?.ProductionPlanTask.TaskName,
                 LatestCompletedAt = lastCompleted?.CompletedAt,
-                NextScheduledTask = nextScheduled?.CultivationTaskName ?? nextScheduled?.ProductionPlanTask.TaskName,
-                NextScheduledDate = nextScheduled?.ProductionPlanTask.ScheduledDate,
+                NextScheduledTask = nextScheduled?.CultivationTaskName ?? nextScheduled?.ProductionPlanTask?.TaskName,
+                NextScheduledDate = nextScheduled?.ProductionPlanTask?.ScheduledDate,
                 CurrentStageName = currentStage?.StageName,
                 CurrentStageOrder = currentStage?.SequenceOrder
             });

@@ -123,7 +123,17 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
             farmLog.FarmLogMaterials = logMaterials;
 
             // 5. Update Cultivation Task Status & Totals
-            task.Status = RiceProduction.Domain.Enums.TaskStatus.Completed; 
+            // Check if task is Emergency status - update to EmergencyApproval, otherwise Completed
+            if (task.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
+            {
+                task.Status = RiceProduction.Domain.Enums.TaskStatus.EmergencyApproval;
+                _logger.LogInformation("Emergency task {TaskId} updated to EmergencyApproval status", task.Id);
+            }
+            else
+            {
+                task.Status = RiceProduction.Domain.Enums.TaskStatus.Completed;
+            }
+            
             task.ActualEndDate = DateTime.UtcNow; 
             
             task.ActualMaterialCost += totalLogMaterialCost;
@@ -136,7 +146,7 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
             }
 
             // 5b. Find and Update Next Task to InProgress
-            await UpdateNextTaskToInProgress(task.PlotCultivationId, task.VersionId, task.ExecutionOrder);
+            //await UpdateNextTaskToInProgress(task.PlotCultivationId, task.VersionId, task.ExecutionOrder);
 
             // 6. Save Changes
             await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);

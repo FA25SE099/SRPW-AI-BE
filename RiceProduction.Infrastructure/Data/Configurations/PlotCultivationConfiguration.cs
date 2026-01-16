@@ -22,6 +22,12 @@ public class PlotCultivationConfiguration : IEntityTypeConfiguration<PlotCultiva
                .HasMaxLength(20)
                .HasDefaultValue(CultivationStatus.Planned);
 
+        builder.Property(pc => pc.IsFarmerConfirmed)
+               .HasDefaultValue(false);
+
+        builder.Property(pc => pc.FarmerSelectionNotes)
+               .HasMaxLength(500);
+
         // Configure relationships
         builder.HasOne(pc => pc.Plot)
                .WithMany(p => p.PlotCultivations)
@@ -37,6 +43,11 @@ public class PlotCultivationConfiguration : IEntityTypeConfiguration<PlotCultiva
                .WithMany(rv => rv.PlotCultivations)
                .HasForeignKey(pc => pc.RiceVarietyId)
                .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(pc => pc.YearSeason)
+               .WithMany()
+               .HasForeignKey(pc => pc.YearSeasonId)
+               .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasMany(pc => pc.CultivationVersions)
                .WithOne(cv => cv.PlotCultivation)
@@ -67,6 +78,10 @@ public class PlotCultivationConfiguration : IEntityTypeConfiguration<PlotCultiva
         builder.HasIndex(pc => new { pc.Status, pc.PlantingDate })
                .HasDatabaseName("IX_PlotCultivation_Status_PlantingDate");
 
-        // Check constraints
+        builder.HasIndex(pc => pc.YearSeasonId)
+               .HasDatabaseName("IX_PlotCultivation_YearSeasonId");
+
+        builder.HasIndex(pc => new { pc.YearSeasonId, pc.IsFarmerConfirmed })
+               .HasDatabaseName("IX_PlotCultivation_YearSeason_Confirmed");
     }
 }

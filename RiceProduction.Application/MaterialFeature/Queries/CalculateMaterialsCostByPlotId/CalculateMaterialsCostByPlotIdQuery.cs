@@ -1,12 +1,10 @@
 ﻿using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Request.MaterialCostCalculationRequests;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
-using RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByPlotId;
 
@@ -19,10 +17,10 @@ public class CalculateMaterialsCostByPlotIdQuery : IRequest<Result<CalculateMate
     public Guid PlotId { get; set; }
 
     /// <summary>
-    /// List of materials with quantity per hectare
+    /// List of tasks with their materials
     /// </summary>
     [Required]
-    public List<MaterialQuantityInput> Materials { get; set; } = new List<MaterialQuantityInput>();
+    public List<TaskWithMaterialsInput> Tasks { get; set; } = new();
 }
 
 public class CalculateMaterialsCostByPlotIdQueryValidator : AbstractValidator<CalculateMaterialsCostByPlotIdQuery>
@@ -33,12 +31,22 @@ public class CalculateMaterialsCostByPlotIdQueryValidator : AbstractValidator<Ca
             .NotEmpty()
             .WithMessage("Plot ID is required.");
 
+        // At least one task must be provided
+        RuleFor(x => x.Tasks)
+            .NotEmpty()
+            .WithMessage("At least one task must be provided.");
 
-        RuleForEach(x => x.Materials).ChildRules(material =>
+        // Validate each task
+        RuleForEach(x => x.Tasks).ChildRules(task =>
         {
-            material.RuleFor(m => m.MaterialId)
-                .NotEmpty()
-                .WithMessage("Material ID is required for each item.");
+            task.RuleFor(t => t.TaskName).NotEmpty().WithMessage("Task name is required.");
+            task.RuleFor(t => t.Materials).NotEmpty().WithMessage("Each task must have at least one material.");
+
+            task.RuleForEach(t => t.Materials).ChildRules(material =>
+            {
+                material.RuleFor(m => m.MaterialId).NotEmpty().WithMessage("Material ID is required for each item.");
+                material.RuleFor(m => m.QuantityPerHa).GreaterThan(0).WithMessage("Quantity per hectare must be greater than zero.");
+            });
         });
     }
 }

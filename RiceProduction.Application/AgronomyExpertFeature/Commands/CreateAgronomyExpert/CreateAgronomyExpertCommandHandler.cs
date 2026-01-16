@@ -1,5 +1,8 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.AgronomyExpertFeature.Commands.Events;
+using RiceProduction.Application.ClusterManagerFeature.Events;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
@@ -9,6 +12,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgronomyExpert
 {
@@ -18,17 +22,18 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
         private readonly ILogger<CreateAgronomyExpertCommandHandler> _logger;
         private readonly IPublisher _publisher;
         private readonly IUnitOfWork _unitOfWork;
-
+        private readonly IMediator _mediator;
         public CreateAgronomyExpertCommandHandler(
             UserManager<ApplicationUser> userManager,
             ILogger<CreateAgronomyExpertCommandHandler> logger,
             IPublisher publisher,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork, IMediator mediator)
         {
             _userManager = userManager;
             _logger = logger;
             _publisher = publisher;
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
         }
 
         public async Task<Result<Guid>> Handle(CreateAgronomyExpertCommand request, CancellationToken cancellationToken)
@@ -51,7 +56,7 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
 
 
                 // Create Agronomy Expert user
-                var expert = new AgronomyExpert
+                var expert = new Domain.Entities.AgronomyExpert
                 {
                     UserName = request.Email,
                     Email = request.Email,
@@ -60,7 +65,8 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
                     EmailConfirmed = true,
                     IsActive = true
                 };
-                var psw = "123456";
+                //var psw = GenerateRandomPassword();
+                var psw = ("123456");
                 var result = await _userManager.CreateAsync(expert, psw);
                 if (!result.Succeeded)
                 {
@@ -87,6 +93,17 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
                 //}, cancellationToken);
 
                 _logger.LogInformation("Successfully created Agronomy Expert with ID: {ExpertId}", expert.Id);
+                await _mediator.Publish(new ExpertCreatedEvent
+                {
+                    ExpertId = expert.Id,
+                    FullName = expert.FullName,
+                    PhoneNumber = expert.PhoneNumber,
+                    Email = expert.Email,
+                    Password = psw,
+                    CreatedAt = DateTime.UtcNow
+                }, cancellationToken);
+
+                _logger.LogInformation("Published ExpertCreatedEvent for expert {ExpertId} to send credentials email", expert.Id);
                 return Result<Guid>.Success(expert.Id, "Agronomy Expert created successfully");
             }
             catch (Exception ex)
@@ -94,6 +111,26 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgrono
                 _logger.LogError(ex, "Error creating Agronomy Expert");
                 return Result<Guid>.Failure("An error occurred while creating Agronomy Expert");
             }
+        }
+        private string GenerateRandomPassword()
+        {
+            const string upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const string lowerChars = "abcdefghijklmnopqrstuvwxyz";
+            const string digitChars = "0123456789";
+            const string specialChars = "!@#$%";
+
+            var random = new Random();
+            var password = new char[12];
+            password[0] = upperChars[random.Next(upperChars.Length)];
+            password[1] = lowerChars[random.Next(lowerChars.Length)];
+            password[2] = digitChars[random.Next(digitChars.Length)];
+            password[3] = specialChars[random.Next(specialChars.Length)];
+            const string allChars = upperChars + lowerChars + digitChars + specialChars;
+            for (int i = 4; i < password.Length; i++)
+            {
+                password[i] = allChars[random.Next(allChars.Length)];
+            }
+            return new string(password.OrderBy(x => random.Next()).ToArray());
         }
     }
 }

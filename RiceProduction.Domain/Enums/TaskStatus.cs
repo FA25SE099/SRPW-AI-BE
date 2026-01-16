@@ -10,5 +10,6 @@ public enum TaskStatus
     Completed,
     Cancelled,
     Emergency,
+    NewEmergency,
     EmergencyApproval,
 }

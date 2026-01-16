@@ -4,12 +4,14 @@ using RiceProduction.Application.ClusterFeature.Commands.CreateCluster;
 using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.UavVendorFeature.Events;
 using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
 {
@@ -19,13 +21,14 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
         private readonly ILogger<CreateUavVendorCommandHandler> _logger;
         private readonly IPublisher _publisher;
         private readonly IUnitOfWork _unitOfWork;
-
-        public CreateUavVendorCommandHandler(UserManager<ApplicationUser> userManager, ILogger<CreateUavVendorCommandHandler> logger, IPublisher publisher, IUnitOfWork unitOfWork)
+        private readonly IMediator _mediator;
+        public CreateUavVendorCommandHandler(UserManager<ApplicationUser> userManager, ILogger<CreateUavVendorCommandHandler> logger, IPublisher publisher, IUnitOfWork unitOfWork, IMediator mediator)
         {
             _userManager = userManager;
             _logger = logger;
             _publisher = publisher;
             _unitOfWork = unitOfWork;
+            _mediator = mediator;
         }
         public async Task<Result<Guid>> Handle(CreateUavVendorCommand request, CancellationToken cancellationToken)
         {
@@ -44,7 +47,7 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                     return Result<Guid>.Failure($"User with phone number '{request.PhoneNumber}' already exists");
                 }
                 // Create UAV Vendor user
-                var uavVendor = new UavVendor
+                var uavVendor = new Domain.Entities.UavVendor
                 {
                     UserName = request.Email,
                     Email = request.Email,
@@ -59,7 +62,7 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                     ServiceRadius = request.ServiceRadius
                 };
 
-                var psw = "123456";
+                var psw = GenerateRandomPassword();
                 var result = await _userManager.CreateAsync(uavVendor, psw);
                 if (!result.Succeeded)
                 {
@@ -68,6 +71,18 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                 }
                 await _userManager.AddToRoleAsync(uavVendor, "UavVendor");
                 _logger.LogInformation("Created UAV Vendor with ID: {UavVendorId}", uavVendor.Id);
+
+                await _mediator.Publish(new UavVendorCreatedEvent
+                {
+                    UavVendorId = uavVendor.Id,
+                    FullName = uavVendor.FullName,
+                    PhoneNumber = uavVendor.PhoneNumber,
+                    Email = uavVendor.Email,
+                    Password = psw,
+                    CreatedAt = DateTime.UtcNow
+                }, cancellationToken
+                );
+                _logger.LogInformation("Published UavVendorCreatedEvent for UavVendor {UavVendorId} to send credentials email", uavVendor.Id);
                 return Result<Guid>.Success(uavVendor.Id);
             }
             catch (Exception ex)
@@ -75,6 +90,26 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                 _logger.LogError(ex, "Error occurred while creating UAV Vendor");
                 return Result<Guid>.Failure("An error occurred while creating the UAV Vendor");
             }
+        }
+        private string GenerateRandomPassword()
+        {
+            const string upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const string lowerChars = "abcdefghijklmnopqrstuvwxyz";
+            const string digitChars = "0123456789";
+            const string specialChars = "!@#$%";
+
+            var random = new Random();
+            var password = new char[12];
+            password[0] = upperChars[random.Next(upperChars.Length)];
+            password[1] = lowerChars[random.Next(lowerChars.Length)];
+            password[2] = digitChars[random.Next(digitChars.Length)];
+            password[3] = specialChars[random.Next(specialChars.Length)];
+            const string allChars = upperChars + lowerChars + digitChars + specialChars;
+            for (int i = 4; i < password.Length; i++)
+            {
+                password[i] = allChars[random.Next(allChars.Length)];
+            }
+            return new string(password.OrderBy(x => random.Next()).ToArray());
         }
     }
 }

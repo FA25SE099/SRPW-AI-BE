@@ -6,7 +6,7 @@ using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
@@ -29,22 +29,16 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
             var currentDate = DateTime.UtcNow;
             var priceWarnings = new List<string>();
 
-            // Group materials by MaterialId and sum their quantities
-            var groupedMaterials = request.Materials
-                .GroupBy(m => m.MaterialId)
-                .Select(g => new MaterialQuantityInput
-                {
-                    MaterialId = g.Key,
-                    QuantityPerHa = g.Sum(m => m.QuantityPerHa)
-                })
+            // --- 1. Collect all material IDs ---
+            var allMaterialIds = request.Tasks
+                .SelectMany(t => t.Materials)
+                .Select(m => m.MaterialId)
+                .Distinct()
                 .ToList();
 
-            // Get unique material IDs
-            var materialIds = groupedMaterials.Select(m => m.MaterialId).ToList();
-
-            // Load material details
+            // --- 2. Load material details ---
             var materials = await _unitOfWork.Repository<Material>().ListAsync(
-                filter: m => materialIds.Contains(m.Id) && m.IsActive
+                filter: m => allMaterialIds.Contains(m.Id) && m.IsActive
             );
 
             if (!materials.Any())
@@ -54,9 +48,9 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
 
             var materialsDict = materials.ToDictionary(m => m.Id, m => m);
 
-            // Load current prices for materials
+            // --- 3. Load current prices for materials ---
             var allPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom <= currentDate
+                filter: p => allMaterialIds.Contains(p.MaterialId) && p.ValidFrom <= currentDate
             );
 
             // Get the most recent valid price for each material
@@ -66,77 +60,94 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
                 .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
                 .ToDictionary(p => p.MaterialId, p => p);
 
-            // Calculate costs for each material
+            // --- 4. Initialize tracking ---
+            decimal totalCost = 0M;
             var materialCostItems = new List<MaterialCostItem>();
-            decimal totalCostForArea = 0M;
+            var taskCostBreakdowns = new List<TaskCostBreakdown>();
 
-            foreach (var inputMaterial in groupedMaterials)
+            // Dictionary to aggregate all materials
+            var materialAggregation = new Dictionary<Guid, MaterialCostItem>();
+
+            // --- 5. Process Tasks with Materials ---
+            foreach (var taskInput in request.Tasks)
             {
-                if (!materialsDict.TryGetValue(inputMaterial.MaterialId, out var material))
+                var taskBreakdown = new TaskCostBreakdown
                 {
-                    priceWarnings.Add($"Material ID {inputMaterial.MaterialId} not found or is inactive.");
-                    continue;
+                    TaskName = taskInput.TaskName,
+                    TaskDescription = taskInput.TaskDescription
+                };
+
+                decimal taskTotalCost = 0M;
+
+                foreach (var materialInput in taskInput.Materials)
+                {
+                    var materialCost = CalculateMaterialCost(
+                        materialInput.MaterialId,
+                        materialInput.QuantityPerHa,
+                        request.Area,
+                        materialsDict,
+                        currentPrices,
+                        priceWarnings);
+
+                    if (materialCost != null)
+                    {
+                        taskBreakdown.Materials.Add(materialCost);
+                        taskTotalCost += materialCost.TotalCost;
+
+                        // Aggregate for overall summary
+                        if (!materialAggregation.ContainsKey(materialInput.MaterialId))
+                        {
+                            materialAggregation[materialInput.MaterialId] = new MaterialCostItem
+                            {
+                                MaterialId = materialCost.MaterialId,
+                                MaterialName = materialCost.MaterialName,
+                                Unit = materialCost.Unit,
+                                QuantityPerHa = materialCost.QuantityPerHa,
+                                TotalQuantityNeeded = materialCost.TotalQuantityNeeded,
+                                AmountPerMaterial = materialCost.AmountPerMaterial,
+                                PackagesNeeded = materialCost.PackagesNeeded,
+                                ActualQuantity = materialCost.ActualQuantity,
+                                PricePerMaterial = materialCost.PricePerMaterial,
+                                TotalCost = materialCost.TotalCost,
+                                CostPerHa = materialCost.CostPerHa,
+                                PriceValidFrom = materialCost.PriceValidFrom
+                            };
+                        }
+                        else
+                        {
+                            var existing = materialAggregation[materialInput.MaterialId];
+                            existing.TotalQuantityNeeded += materialCost.TotalQuantityNeeded;
+                            existing.PackagesNeeded += materialCost.PackagesNeeded;
+                            existing.ActualQuantity += materialCost.ActualQuantity;
+                            existing.TotalCost += materialCost.TotalCost;
+                            existing.CostPerHa = existing.TotalCost / request.Area;
+                        }
+                    }
                 }
 
-                if (!currentPrices.TryGetValue(inputMaterial.MaterialId, out var priceInfo))
-                {
-                    priceWarnings.Add($"No valid price found for material '{material.Name}' (ID: {material.Id}).");
-                    continue;
-                }
-
-                var amountPerMaterial = material.AmmountPerMaterial.GetValueOrDefault(1M);
-                if (amountPerMaterial <= 0) amountPerMaterial = 1M;
-
-                // Calculate total quantity needed for the area
-                var totalQuantityNeeded = inputMaterial.QuantityPerHa * request.Area;
-
-                // Calculate packages needed (ceiling)
-                var packagesNeeded = material.IsPartition
-                    ? totalQuantityNeeded / amountPerMaterial
-                    : Math.Ceiling(totalQuantityNeeded / amountPerMaterial);
-
-                // Calculate actual quantity after ceiling
-                var actualQuantity = packagesNeeded * amountPerMaterial;
-
-                // Calculate total cost
-                var totalCost = packagesNeeded * priceInfo.PricePerMaterial;
-
-                // Calculate cost per hectare
-                var costPerHa = totalCost / request.Area;
-
-                materialCostItems.Add(new MaterialCostItem
-                {
-                    MaterialId = material.Id,
-                    MaterialName = material.Name,
-                    Unit = material.Unit,
-                    QuantityPerHa = inputMaterial.QuantityPerHa,
-                    TotalQuantityNeeded = totalQuantityNeeded,
-                    AmountPerMaterial = amountPerMaterial,
-                    PackagesNeeded = packagesNeeded,
-                    ActualQuantity = actualQuantity,
-                    PricePerMaterial = priceInfo.PricePerMaterial,
-                    TotalCost = totalCost,
-                    CostPerHa = costPerHa,
-                    PriceValidFrom = priceInfo.ValidFrom
-                });
-
-                totalCostForArea += totalCost;
+                taskBreakdown.TotalTaskCost = taskTotalCost;
+                taskCostBreakdowns.Add(taskBreakdown);
+                totalCost += taskTotalCost;
             }
+
+            // --- 6. Calculate totals ---
+            var totalCostPerHa = totalCost / request.Area;
+
+            // Convert aggregation to list
+            materialCostItems = materialAggregation.Values.ToList();
 
             if (!materialCostItems.Any())
             {
                 return Result<CalculateMaterialsCostByAreaResponse>.Failure("No valid material cost calculations could be performed.", "NoValidCalculations");
             }
 
-            // Calculate total cost per hectare
-            var totalCostPerHa = totalCostForArea / request.Area;
-
             var response = new CalculateMaterialsCostByAreaResponse
             {
                 Area = request.Area,
                 TotalCostPerHa = totalCostPerHa,
-                TotalCostForArea = totalCostForArea,
+                TotalCostForArea = totalCost,
                 MaterialCostItems = materialCostItems,
+                TaskCostBreakdowns = taskCostBreakdowns,
                 PriceWarnings = priceWarnings
             };
 
@@ -145,7 +156,7 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
                 : "Successfully calculated material costs.";
 
             _logger.LogInformation("Calculated material costs for area {Area}ha. Total cost: {TotalCost}. Materials: {Count}",
-                request.Area, totalCostForArea, materialCostItems.Count);
+                request.Area, totalCost, materialCostItems.Count);
 
             return Result<CalculateMaterialsCostByAreaResponse>.Success(response, message);
         }
@@ -154,5 +165,62 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
             _logger.LogError(ex, "Error calculating material costs for area {Area}ha", request.Area);
             return Result<CalculateMaterialsCostByAreaResponse>.Failure("An error occurred during cost calculation.", "CostCalculationFailed");
         }
+    }
+
+    private MaterialCostItem? CalculateMaterialCost(
+        Guid materialId,
+        decimal quantityPerHa,
+        decimal area,
+        Dictionary<Guid, Material> materialsDict,
+        Dictionary<Guid, MaterialPrice> currentPrices,
+        List<string> priceWarnings)
+    {
+        if (!materialsDict.TryGetValue(materialId, out var material))
+        {
+            priceWarnings.Add($"Material ID {materialId} not found or is inactive.");
+            return null;
+        }
+
+        if (!currentPrices.TryGetValue(materialId, out var priceInfo))
+        {
+            priceWarnings.Add($"No valid price found for material '{material.Name}' (ID: {material.Id}).");
+            return null;
+        }
+
+        var amountPerMaterial = material.AmmountPerMaterial.GetValueOrDefault(1M);
+        if (amountPerMaterial <= 0) amountPerMaterial = 1M;
+
+        // Calculate total quantity needed for the area
+        var totalQuantityNeeded = quantityPerHa * area;
+
+        // Calculate packages needed (ceiling)
+        var packagesNeeded = material.IsPartition
+            ? totalQuantityNeeded / amountPerMaterial
+            : Math.Ceiling(totalQuantityNeeded / amountPerMaterial);
+
+        // Calculate actual quantity after ceiling
+        var actualQuantity = packagesNeeded * amountPerMaterial;
+
+        // Calculate total cost
+        var totalCost = packagesNeeded * priceInfo.PricePerMaterial;
+
+        // Calculate cost per hectare
+        var costPerHa = totalCost / area;
+
+        return new MaterialCostItem
+        {
+            MaterialId = material.Id,
+            MaterialName = material.Name,
+            Unit = material.Unit,
+            QuantityPerHa = quantityPerHa,
+            TotalQuantityNeeded = totalQuantityNeeded,
+            AmountPerMaterial = amountPerMaterial,
+            PackagesNeeded = packagesNeeded,
+            ActualQuantity = actualQuantity,
+            PricePerMaterial = priceInfo.PricePerMaterial,
+            TotalCost = totalCost,
+            CostPerHa = costPerHa,
+            PriceValidFrom = priceInfo.ValidFrom
+        };
     }
 }

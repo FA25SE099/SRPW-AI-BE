@@ -63,6 +63,7 @@ namespace RiceProduction.Infrastructure.Data
             {
                 await _context.Database.EnsureDeletedAsync();
                 await _context.Database.EnsureCreatedAsync();
+                //await _context.Database.MigrateAsync();
             }
             catch (Exception ex)
             {
@@ -127,14 +128,16 @@ namespace RiceProduction.Infrastructure.Data
         {
             await SeedRolesAsync();
             await SeedAdmin();
+            await SeedSystemSettingsAsync();
 
             await SeedRiceVarietyCategoriesAsync();
             await SeedVietnameseRiceDataAsync();
             await SeedMaterialDataAsync();
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
+            await SeedEmergencyProtocolDataAsync();
             await SeedDemoClusterAndFarmersAsync();
-            await SeedEmergencyReportsAsync();
+            //await SeedEmergencyReportsAsync();
 
         }
         public async Task TrySeedAsync()
@@ -142,14 +145,16 @@ namespace RiceProduction.Infrastructure.Data
             // Seed in dependency order
             await SeedRolesAsync();
             await SeedUsersAsync();
+            await SeedSystemSettingsAsync();
             await SeedRiceVarietyCategoriesAsync();
             await SeedVietnameseRiceDataAsync();
             await SeedMaterialDataAsync();
             await SeedMaterialPriceDataAsync();
             await SeedStandardPlanDataAsync();
+            await SeedEmergencyProtocolDataAsync();
             await SeedClustersAndGroupsAsync(); // Consolidated
             await SeedCompletedPlansForPastGroups();
-            await SeedEmergencyReportsAsync();
+            //await SeedEmergencyReportsAsync();
             await SeedUavOrdersAsync();
         }
 
@@ -184,6 +189,124 @@ namespace RiceProduction.Infrastructure.Data
                     }
                 }
             }
+        }
+        #endregion
+
+        #region SystemSettings Seeding
+        private async Task SeedSystemSettingsAsync()
+        {
+            var settings = new[]
+            {
+                new SystemSetting
+                {
+                    SettingKey = "SupervisorMaxAreaCapacity",
+                    SettingValue = "100",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Maximum total area (in hectares) that a supervisor can manage per season"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultProximityThreshold",
+                    SettingValue = "100",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default proximity threshold in meters for group formation"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultPlantingDateTolerance",
+                    SettingValue = "2",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default planting date tolerance in days for group formation"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMinGroupArea",
+                    SettingValue = "5.0",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default minimum group area in hectares"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMaxGroupArea",
+                    SettingValue = "15.0",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default maximum group area in hectares"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMinPlotsPerGroup",
+                    SettingValue = "3",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default minimum number of plots per group"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "DefaultMaxPlotsPerGroup",
+                    SettingValue = "10",
+                    SettingCategory = "GroupFormation",
+                    SettingDescription = "Default maximum number of plots per group"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "MaterialDistributionDaysBeforeTask",
+                    SettingValue = "7",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "How many days before task start date should materials be distributed"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "SupervisorConfirmationWindowDays",
+                    SettingValue = "2",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "Days after scheduled distribution date for supervisor to confirm"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "FarmerConfirmationWindowDays",
+                    SettingValue = "3",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "Days after supervisor confirmation for farmer to confirm receipt"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "MaterialDistributionGracePeriodDays",
+                    SettingValue = "1",
+                    SettingCategory = "MaterialDistribution",
+                    SettingDescription = "Grace period after deadline before marking as critically overdue"
+                },
+                new SystemSetting
+                {
+                    SettingKey = "PolygonAreaTolerancePercent",
+                    SettingValue = "10",
+                    SettingCategory = "PolygonValidation",
+                    SettingDescription = "Default tolerance percentage for polygon area validation against registered plot area"
+                }
+            };
+
+            foreach (var setting in settings)
+            {
+                var existingSetting = _context.SystemSettings
+                    .FirstOrDefault(s => s.SettingKey == setting.SettingKey);
+                
+                if (existingSetting == null)
+                {
+                    _context.SystemSettings.Add(setting);
+                    _logger.LogInformation("Seeded system setting: {SettingKey} = {SettingValue}", 
+                        setting.SettingKey, setting.SettingValue);
+                }
+                else
+                {
+                    // Optionally update description if changed
+                    if (existingSetting.SettingDescription != setting.SettingDescription)
+                    {
+                        existingSetting.SettingDescription = setting.SettingDescription;
+                        _logger.LogInformation("Updated system setting description: {SettingKey}", setting.SettingKey);
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("System settings seeding completed");
         }
         #endregion
 
@@ -268,6 +391,7 @@ namespace RiceProduction.Infrastructure.Data
                 ("Farmer", "farmer3@ricepro.com", "farmer3@ricepro.com", "Farmer123!", "Le Thi C", "+1234567812", null, null, null, 6.0m, "Demo Area C", null, null, null),
                 ("Farmer", "farmer4@ricepro.com", "farmer4@ricepro.com", "Farmer123!", "Pham Van D", "+1234567813", null, null, null, 3.8m, "Demo Area D", null, null, null),
                 ("Farmer", "farmer5@ricepro.com", "farmer5@ricepro.com", "Farmer123!", "Hoang Thi E", "+1234567814", null, null, null, 5.5m, "Demo Area E", null, null, null),
+                ("UavVendor", "uav1@ricepro.com", "uav1@ricepro.com", "Uav123!", "Team UAV", "+1234567815", null, null, null, null, null, "SkyTech Drones", "Alex Thompson", 50.0m),
 
             };
 
@@ -365,9 +489,9 @@ namespace RiceProduction.Infrastructure.Data
         #region Demo Cluster and Farmers Seeding
         private async Task SeedDemoClusterAndFarmersAsync()
         {
-            if (_context.Set<Cluster>().Any(c => c.ClusterName == "Demo Cluster"))
+            if (_context.Set<Cluster>().Any(c => c.ClusterName == "Tây Ninh 1"))
             {
-                _logger.LogInformation("Demo cluster already exists - skipping");
+                _logger.LogInformation("Tây Ninh 1 already exists - skipping");
                 return;
             }
 
@@ -389,6 +513,7 @@ namespace RiceProduction.Infrastructure.Data
                 return;
             }
 
+            var currentSeasonResult = GetCurrentSeasonAndYear();
             var currentYear = DateTime.UtcNow.Year;
             var currentMonth = DateTime.UtcNow.Month;
 
@@ -424,15 +549,15 @@ namespace RiceProduction.Infrastructure.Data
 
             _logger.LogInformation($"Using current season: {currentSeasonName} ({currentSeasonId}), Planting date: {plantingDate:yyyy-MM-dd}");
 
-            // Create Demo Cluster
-            var demoClusterId = Guid.NewGuid();
+            // Create Tây Ninh 1 with FIXED ID for consistency
+            var demoClusterId = new Guid("883c7c49-eaf7-67a6-ad8b-2f957dce3ea4");
             var polygonDemoCluster = CreatePolygonFromWkt("POLYGON((106.710 10.880, 106.710 10.890, 106.720 10.890, 106.720 10.880, 106.710 10.880))");
 
             var demoCluster = new Cluster
             {
                 Id = demoClusterId,
-                ClusterName = "Demo Cluster",
-                ClusterManagerId = clusterManager.Id,
+                ClusterName = "Tây Ninh 1",
+                ClusterManagerId = null,
                 Area = 250.0m,
                 Boundary = polygonDemoCluster,
                 LastModified = DateTime.UtcNow
@@ -441,212 +566,229 @@ namespace RiceProduction.Infrastructure.Data
             await _context.Clusters.AddAsync(demoCluster);
             await _context.SaveChangesAsync();
 
+            // Create YearSeason for the current season
+            var yearSeason = new YearSeason
+            {
+                SeasonId = currentSeasonId,
+                ClusterId = demoClusterId,
+                Year = currentYear,
+                RiceVarietyId = st25.Id,
+                StartDate = plantingDate,
+                EndDate = plantingDate.AddDays(120),
+                Status = SeasonStatus.Active,
+                AllowedPlantingFlexibilityDays = 7
+            };
+            await _context.YearSeasons.AddAsync(yearSeason);
+            await _context.SaveChangesAsync();
+            
+            _logger.LogInformation($"Created YearSeason for {currentSeasonName} {currentYear} in Tây Ninh 1");
+
             // Update cluster manager
-            clusterManager.ClusterId = demoClusterId;
+            clusterManager.ClusterId = null;
             _context.Update(clusterManager);
             await _context.SaveChangesAsync();
 
-            // Get farmers
-            var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
-            var farmer2 = await _userManager.FindByEmailAsync("farmer2@ricepro.com") as Farmer;
-            var farmer3 = await _userManager.FindByEmailAsync("farmer3@ricepro.com") as Farmer;
-            var farmer4 = await _userManager.FindByEmailAsync("farmer4@ricepro.com") as Farmer;
-            var farmer5 = await _userManager.FindByEmailAsync("farmer5@ricepro.com") as Farmer;
+            //// Get farmers
+            //var farmer1 = await _userManager.FindByEmailAsync("farmer1@ricepro.com") as Farmer;
+            //var farmer2 = await _userManager.FindByEmailAsync("farmer2@ricepro.com") as Farmer;
+            //var farmer3 = await _userManager.FindByEmailAsync("farmer3@ricepro.com") as Farmer;
+            //var farmer4 = await _userManager.FindByEmailAsync("farmer4@ricepro.com") as Farmer;
+            //var farmer5 = await _userManager.FindByEmailAsync("farmer5@ricepro.com") as Farmer;
 
-            if (farmer1 == null || farmer2 == null || farmer3 == null || farmer4 == null || farmer5 == null)
-            {
-                _logger.LogError("Some farmers not found. Expected: farmer1-5@ricepro.com");
-                return;
-            }
+            //if (farmer1 == null || farmer2 == null || farmer3 == null || farmer4 == null || farmer5 == null)
+            //{
+            //    _logger.LogError("Some farmers not found. Expected: farmer1-5@ricepro.com");
+            //    return;
+            //}
 
             // FIX: Create plots WITHOUT inline PlotCultivations
-            var demoPlots = new List<Plot>
+            //var demoPlots = new List<Plot>
     {
         // Farmer 1 - 2 plots
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer1.Id,
-            SoThua = 100,
-            SoTo = 1,
-            Area = 2.5m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.881)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71498059235353 10.884914175930405, 106.71500634870534 10.88494494631992, 106.71505143418733 10.884921977418259, 106.71555851534043 10.88404830600929, 106.71551607799915 10.884048085817966, 106.7148021440646 10.884227751931704, 106.71480011622322 10.884263559457352, 106.71498059235353 10.884914175930405))")
-        },
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer1.Id,
-            SoThua = 101,
-            SoTo = 1,
-            Area = 2.0m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.881)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.884105936898294, 106.71071846252238 10.884055109694685, 106.71207612180888 10.883699319026704, 106.71213186148651 10.883738416923123, 106.71219556397517 10.88406683905012, 106.71216769413752 10.884105936898294, 106.71073438814449 10.884493005318205, 106.71068661127799 10.88444999774083, 106.71069457408902 10.884105936898294))")
-        },
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer1.Id,
+        //    SoThua = 100,
+        //    SoTo = 1,
+        //    Area = 2.5m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.881)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71498059235353 10.884914175930405, 106.71500634870534 10.88494494631992, 106.71505143418733 10.884921977418259, 106.71555851534043 10.88404830600929, 106.71551607799915 10.884048085817966, 106.7148021440646 10.884227751931704, 106.71480011622322 10.884263559457352, 106.71498059235353 10.884914175930405))")
+        //},
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer1.Id,
+        //    SoThua = 101,
+        //    SoTo = 1,
+        //    Area = 2.0m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.881)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.884105936898294, 106.71071846252238 10.884055109694685, 106.71207612180888 10.883699319026704, 106.71213186148651 10.883738416923123, 106.71219556397517 10.88406683905012, 106.71216769413752 10.884105936898294, 106.71073438814449 10.884493005318205, 106.71068661127799 10.88444999774083, 106.71069457408902 10.884105936898294))")
+        //},
         
         // Farmer 2 - 2 plots
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer2.Id,
-            SoThua = 102,
-            SoTo = 2,
-            Area = 2.6m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.713, 10.882)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71070253690021 10.883026834407332, 106.71073438814449 10.882995556015928, 106.71176557217888 10.88272577975404, 106.71181733044978 10.88275314837145, 106.71194871683156 10.883136308751276, 106.71192880980504 10.883175406721506, 106.71073438814449 10.883496009884027, 106.71069059268234 10.883449092369588, 106.71070253690021 10.883026834407332))")
-        },
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer2.Id,
-            SoThua = 103,
-            SoTo = 2,
-            Area = 2.6m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.714, 10.882)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71246520193125 10.884549962144803, 106.7124773433348 10.884470684363805, 106.71283314047417 10.884372696581664, 106.71286735397456 10.884412393761849, 106.71314217194521 10.885425479558137, 106.71311518277992 10.885474251051647, 106.7126604114211 10.885281875234625, 106.71246520193125 10.884549962144803))")
-        },
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer2.Id,
+        //    SoThua = 102,
+        //    SoTo = 2,
+        //    Area = 2.6m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.713, 10.882)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71070253690021 10.883026834407332, 106.71073438814449 10.882995556015928, 106.71176557217888 10.88272577975404, 106.71181733044978 10.88275314837145, 106.71194871683156 10.883136308751276, 106.71192880980504 10.883175406721506, 106.71073438814449 10.883496009884027, 106.71069059268234 10.883449092369588, 106.71070253690021 10.883026834407332))")
+        //},
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer2.Id,
+        //    SoThua = 103,
+        //    SoTo = 2,
+        //    Area = 2.6m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.714, 10.882)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71246520193125 10.884549962144803, 106.7124773433348 10.884470684363805, 106.71283314047417 10.884372696581664, 106.71286735397456 10.884412393761849, 106.71314217194521 10.885425479558137, 106.71311518277992 10.885474251051647, 106.7126604114211 10.885281875234625, 106.71246520193125 10.884549962144803))")
+        //},
         
         // Farmer 3 - 2 plots
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer3.Id,
-            SoThua = 104,
-            SoTo = 3,
-            Area = 3.0m,
-            SoilType = "Đất nông nghiệp",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.715, 10.883)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71475993094629 10.884185857813065, 106.7147898575455 10.88420899070907, 106.71553304049667 10.884007850338875, 106.7155673615681 10.883981671719155, 106.71576933706774 10.883620934353317, 106.7157510766865 10.88360394426607, 106.71475220093299 10.883874493323304, 106.71469404169272 10.883939745415574, 106.71475993094629 10.884185857813065))")
-        },
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer3.Id,
-            SoThua = 105,
-            SoTo = 3,
-            Area = 3.0m,
-            SoilType = "Đất nông nghiệp",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.716, 10.883)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71291179093043 10.884394856084313, 106.71294090122916 10.884345214055259, 106.71412842547488 10.88403926673567, 106.71418326435332 10.884056329391782, 106.71425742751671 10.884306040529339, 106.7142414508669 10.884338972609328, 106.7130036923827 10.88465981337437, 106.71296966024477 10.884634018643936, 106.71291179093043 10.884394856084313))")
-        },
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer3.Id,
+        //    SoThua = 104,
+        //    SoTo = 3,
+        //    Area = 3.0m,
+        //    SoilType = "Đất nông nghiệp",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.715, 10.883)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71475993094629 10.884185857813065, 106.7147898575455 10.88420899070907, 106.71553304049667 10.884007850338875, 106.7155673615681 10.883981671719155, 106.71576933706774 10.883620934353317, 106.7157510766865 10.88360394426607, 106.71475220093299 10.883874493323304, 106.71469404169272 10.883939745415574, 106.71475993094629 10.884185857813065))")
+        //},
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer3.Id,
+        //    SoThua = 105,
+        //    SoTo = 3,
+        //    Area = 3.0m,
+        //    SoilType = "Đất nông nghiệp",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.716, 10.883)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71291179093043 10.884394856084313, 106.71294090122916 10.884345214055259, 106.71412842547488 10.88403926673567, 106.71418326435332 10.884056329391782, 106.71425742751671 10.884306040529339, 106.7142414508669 10.884338972609328, 106.7130036923827 10.88465981337437, 106.71296966024477 10.884634018643936, 106.71291179093043 10.884394856084313))")
+        //},
         
         // Farmer 4 - 2 plots
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer4.Id,
-            SoThua = 106,
-            SoTo = 4,
-            Area = 1.9m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.717, 10.884)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.883589844890736, 106.71073438814449 10.883546837183019, 106.71192482839831 10.883230143871259, 106.71198853088697 10.883249692850825, 106.7120920474311 10.883566386141851, 106.71204427056455 10.883652401545447, 106.71071846252238 10.88400819226824, 106.71069059268234 10.883961274834505, 106.71069457408902 10.883589844890736))")
-        },
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer4.Id,
-            SoThua = 107,
-            SoTo = 4,
-            Area = 1.9m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.718, 10.884)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.7145518044752 10.883408825499856, 106.71460057814164 10.883434939117606, 106.71613453708704 10.88302139060329, 106.71632233452652 10.882705425364477, 106.71630426939402 10.882656355947788, 106.7161268171239 10.882584475771338, 106.71607069260227 10.882588139470599, 106.71447202698675 10.883032314320317, 106.71445363139475 10.883083423087626, 106.7145518044752 10.883408825499856))")
-        },
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer4.Id,
+        //    SoThua = 106,
+        //    SoTo = 4,
+        //    Area = 1.9m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.717, 10.884)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71069457408902 10.883589844890736, 106.71073438814449 10.883546837183019, 106.71192482839831 10.883230143871259, 106.71198853088697 10.883249692850825, 106.7120920474311 10.883566386141851, 106.71204427056455 10.883652401545447, 106.71071846252238 10.88400819226824, 106.71069059268234 10.883961274834505, 106.71069457408902 10.883589844890736))")
+        //},
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer4.Id,
+        //    SoThua = 107,
+        //    SoTo = 4,
+        //    Area = 1.9m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.718, 10.884)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.7145518044752 10.883408825499856, 106.71460057814164 10.883434939117606, 106.71613453708704 10.88302139060329, 106.71632233452652 10.882705425364477, 106.71630426939402 10.882656355947788, 106.7161268171239 10.882584475771338, 106.71607069260227 10.882588139470599, 106.71447202698675 10.883032314320317, 106.71445363139475 10.883083423087626, 106.7145518044752 10.883408825499856))")
+        //},
         
-        // Farmer 5 - 2 plots
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer5.Id,
-            SoThua = 108,
-            SoTo = 5,
-            Area = 2.75m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.885)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.71465576665639 10.883801812868853, 106.71467954706998 10.883825129275792, 106.71584935841179 10.88349513933052, 106.71590053930089 10.883456879875283, 106.71606663309001 10.883153403591834, 106.71605716856175 10.883100706802935, 106.71601578265847 10.883091484992235, 106.7146030776417 10.883487238839052, 106.71458712618221 10.883520643578692, 106.71458756737309 10.883560472932956, 106.71465576665639 10.883801812868853))")
-        },
-        new Plot
-        {
-            Id = Guid.NewGuid(),
-            FarmerId = farmer5.Id,
-            SoThua = 109,
-            SoTo = 5,
-            Area = 2.75m,
-            SoilType = "Đất phù sa",
-            //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.885)),
-            Status = PlotStatus.Active,
-            Boundary = CreatePolygonFromWkt("POLYGON((106.7107264253334 10.884543832447122, 106.7107264253334 10.88461420845745, 106.71102901215232 10.884782328858108, 106.71109271464098 10.884782328858108, 106.71226324787057 10.884469546640403, 106.7122950991149 10.884410899937805, 106.71224334084167 10.884180222795635, 106.71217565694866 10.88415285430932, 106.7107264253334 10.884543832447122))")
-        }
+        //// Farmer 5 - 2 plots
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer5.Id,
+        //    SoThua = 108,
+        //    SoTo = 5,
+        //    Area = 2.75m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.711, 10.885)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.71465576665639 10.883801812868853, 106.71467954706998 10.883825129275792, 106.71584935841179 10.88349513933052, 106.71590053930089 10.883456879875283, 106.71606663309001 10.883153403591834, 106.71605716856175 10.883100706802935, 106.71601578265847 10.883091484992235, 106.7146030776417 10.883487238839052, 106.71458712618221 10.883520643578692, 106.71458756737309 10.883560472932956, 106.71465576665639 10.883801812868853))")
+        //},
+        //new Plot
+        //{
+        //    Id = Guid.NewGuid(),
+        //    FarmerId = farmer5.Id,
+        //    SoThua = 109,
+        //    SoTo = 5,
+        //    Area = 2.75m,
+        //    SoilType = "Đất phù sa",
+        //    //Coordinate = _geometryFactory.CreatePoint(new Coordinate(106.712, 10.885)),
+        //    Status = PlotStatus.Active,
+        //    Boundary = CreatePolygonFromWkt("POLYGON((106.7107264253334 10.884543832447122, 106.7107264253334 10.88461420845745, 106.71102901215232 10.884782328858108, 106.71109271464098 10.884782328858108, 106.71226324787057 10.884469546640403, 106.7122950991149 10.884410899937805, 106.71224334084167 10.884180222795635, 106.71217565694866 10.88415285430932, 106.7107264253334 10.884543832447122))")
+        //}
     };
 
             // FIX: Save plots first
-            await _context.Plots.AddRangeAsync(demoPlots);
+            //await _context.Plots.AddRangeAsync(demoPlots);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation($"Created {demoPlots.Count} demo plots");
+            //_logger.LogInformation($"Created {demoPlots.Count} demo plots");
 
             // FIX: Create PlotCultivations separately with current season
-            var plotCultivations = new List<PlotCultivation>();
+            //var plotCultivations = new List<PlotCultivation>();
 
-            foreach (var plot in demoPlots)
-            {
-                var cultivation = new PlotCultivation
-                {
-                    Id = Guid.NewGuid(),
-                    PlotId = plot.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = currentSeasonId, // Use detected current season
-                    PlantingDate = plantingDate,
-                    Area = plot.Area,
-                    ExpectedYield = plot.Area * 6.0m, // 6 tons per hectare
-                    Status = CultivationStatus.Planned,
-                    CreatedAt = DateTime.UtcNow,
-                    LastModified = DateTime.UtcNow
-                };
+            //foreach (var plot in demoPlots)
+            //{
+            //    var cultivation = new PlotCultivation
+            //    {
+            //        Id = Guid.NewGuid(),
+            //        PlotId = plot.Id,
+            //        RiceVarietyId = st25.Id,
+            //        SeasonId = currentSeasonId, 
+            //        PlantingDate = plantingDate,
+            //        Area = plot.Area,
+            //        ExpectedYield = plot.Area * 6.0m,
+            //        Status = CultivationStatus.Planned,
+            //        CreatedAt = DateTime.UtcNow,
+            //        LastModified = DateTime.UtcNow
+            //    };
 
-                plotCultivations.Add(cultivation);
-            }
+            //    plotCultivations.Add(cultivation);
+            //}
 
-            await _context.Set<PlotCultivation>().AddRangeAsync(plotCultivations);
-            await _context.SaveChangesAsync();
+            //await _context.Set<PlotCultivation>().AddRangeAsync(plotCultivations);
+            //await _context.SaveChangesAsync();
 
-            _logger.LogInformation($"Created {plotCultivations.Count} plot cultivations for season {currentSeasonName}");
+            //_logger.LogInformation($"Created {plotCultivations.Count} plot cultivations for season {currentSeasonName} {currentYear}");
 
-            // Update farmers with cluster
-            farmer1.ClusterId = demoClusterId;
-            farmer2.ClusterId = demoClusterId;
-            farmer3.ClusterId = demoClusterId;
-            farmer4.ClusterId = demoClusterId;
-            farmer5.ClusterId = demoClusterId;
+            //// Update farmers with cluster
+            //farmer1.ClusterId = demoClusterId;
+            //farmer2.ClusterId = demoClusterId;
+            //farmer3.ClusterId = demoClusterId;
+            //farmer4.ClusterId = demoClusterId;
+            //farmer5.ClusterId = demoClusterId;
 
-            _context.Update(farmer1);
-            _context.Update(farmer2);
-            _context.Update(farmer3);
-            _context.Update(farmer4);
-            _context.Update(farmer5);
+            //_context.Update(farmer1);
+            //_context.Update(farmer2);
+            //_context.Update(farmer3);
+            //_context.Update(farmer4);
+            //_context.Update(farmer5);
 
             await _context.SaveChangesAsync();
 
             // Verify the data was created correctly
-            var verifyCount = await _context.Set<PlotCultivation>()
-                .CountAsync(pc => pc.SeasonId == currentSeasonId && pc.Status == CultivationStatus.Planned);
+            //var verifyCount = await _context.Set<PlotCultivation>()
+            //    .CountAsync(pc => pc.SeasonId == currentSeasonId && pc.Status == CultivationStatus.Planned);
 
-            _logger.LogInformation($"Verification: Found {verifyCount} plot cultivations for current season {currentSeasonName}");
-            _logger.LogInformation("Seeded demo cluster with 5 farmers and 10 plots with cultivations");
+            //_logger.LogInformation($"Verification: Found {verifyCount} plot cultivations for current season {currentSeasonName}");
+            //_logger.LogInformation("Seeded demo cluster with 5 farmers and 10 plots with cultivations");
         }
         #endregion
 
@@ -904,9 +1046,9 @@ namespace RiceProduction.Infrastructure.Data
             // Seed Seasons
             var seasonsData = new[]
             {
-                ("Đông Xuân", "Winter-Spring", "12/01", "04/30"),
-                ("Hè Thu", "Summer-Autumn", "05/01", "08/31"),
-                ("Thu Đông", "Autumn-Winter", "09/01", "11/30")
+                ("Đông Xuân", "Winter-Spring", "01/12", "30/04"),
+                ("Hè Thu", "Summer-Autumn", "01/05", "31/08"),
+                ("Thu Đông", "Autumn-Winter", "01/09", "30/11")
             };
 
             foreach (var (name, type, startDate, endDate) in seasonsData)
@@ -1641,6 +1783,170 @@ namespace RiceProduction.Infrastructure.Data
         //}
         #endregion
 
+        #region Emergency Protocol Seeding
+        private async Task SeedEmergencyProtocolDataAsync()
+        {
+            if (_context.Set<EmergencyProtocol>().Any(p => p.PlanName.Contains("Khẩn Cấp")))
+            {
+                _logger.LogInformation("Emergency protocols already exist - skipping");
+                return;
+            }
+
+            var longCategory = await _context.RiceVarietyCategories.FirstOrDefaultAsync(c => c.CategoryCode == "long");
+            if (longCategory == null)
+            {
+                _logger.LogError("Long category not found for emergency protocol");
+                return;
+            }
+
+            var expert = await _context.Set<AgronomyExpert>().FirstOrDefaultAsync(e => e.IsActive);
+            if (expert == null)
+            {
+                _logger.LogError("No active expert found for emergency protocol");
+                return;
+            }
+
+            // Create Emergency Protocol for Pest Outbreak
+            await CreateEmergencyProtocolForPestOutbreak(longCategory.Id, expert.Id);
+
+            _logger.LogInformation("Seeded emergency protocols");
+        }
+
+        private async Task CreateEmergencyProtocolForPestOutbreak(Guid categoryId, Guid expertId)
+        {
+            var emergencyProtocol = new EmergencyProtocol
+            {
+                Id = Guid.NewGuid(),
+                CategoryId = categoryId,
+                ExpertId = expertId,
+                PlanName = "Quy Trình Khẩn Cấp - Rầy Nâu Bùng Phát",
+                Description = "Quy trình xử lý khẩn cấp khi phát hiện rầy nâu bùng phát với mật độ cao",
+                TotalDurationDays = 7,
+                CreatedBy = expertId,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                LastModified = DateTime.UtcNow
+            };
+
+            await _context.Set<EmergencyProtocol>().AddAsync(emergencyProtocol);
+            await _context.SaveChangesAsync();
+
+            // Create emergency stage
+            var emergencyStage = new StandardPlanStage
+            {
+                Id = Guid.NewGuid(),
+                StageName = "Xử lý dịch hại khẩn cấp",
+                StandardPlanId = emergencyProtocol.Id,
+                ExpectedDurationDays = 7,
+                SequenceOrder = 1,
+                IsMandatory = true,
+                Notes = "Giai đoạn xử lý khẩn cấp rầy nâu, yêu cầu thực hiện ngay lập tức",
+                CreatedAt = DateTime.UtcNow,
+                LastModified = DateTime.UtcNow
+            };
+
+            await _context.Set<StandardPlanStage>().AddAsync(emergencyStage);
+            await _context.SaveChangesAsync();
+
+            // Create 5 emergency tasks
+            var emergencyTasks = new List<StandardPlanTask>();
+            var taskMaterials = new List<StandardPlanTaskMaterial>();
+
+            // Task 1: Immediate inspection
+            var inspectionTask = CreateTask(
+                emergencyStage.Id,
+                "Kiểm tra khẩn cấp đồng ruộng",
+                "- Khảo sát toàn bộ diện tích bị ảnh hưởng\r\n- Đánh giá mức độ thiệt hại và mật độ rầy nâu\r\n- Ghi nhận vị trí các điểm nóng",
+                0, 1, TaskType.PestControl, TaskPriority.Critical, 1);
+            emergencyTasks.Add(inspectionTask);
+
+            // Task 2: Emergency pesticide application - Round 1
+            var sprayRound1Task = CreateTask(
+                emergencyStage.Id,
+                "Phun thuốc trừ sâu đợt 1 (Ngày 1)",
+                "- Phun thuốc trừ rầy nâu liều lượng cao\r\n- Tập trung vào các khu vực có mật độ cao nhất\r\n- Sử dụng Villa Fuji kết hợp DT Aba",
+                1, 1, TaskType.PestControl, TaskPriority.Critical, 2);
+            emergencyTasks.Add(sprayRound1Task);
+            taskMaterials.Add(CreateTaskMaterial(sprayRound1Task.Id, MaterialIds.VillaFuji, 2000m)); // Double dose
+            taskMaterials.Add(CreateTaskMaterial(sprayRound1Task.Id, MaterialIds.DTAba, 960m)); // Double dose
+
+            // Task 3: Monitoring
+            var monitoringTask = CreateTask(
+                emergencyStage.Id,
+                "Giám sát hiệu quả (Ngày 2-3)",
+                "- Theo dõi mật độ rầy nâu sau phun thuốc đợt 1\r\n- Đánh giá tình trạng cây lúa\r\n- Xác định các khu vực cần xử lý bổ sung",
+                2, 2, TaskType.PestControl, TaskPriority.High, 3);
+            emergencyTasks.Add(monitoringTask);
+
+            // Task 4: Emergency pesticide application - Round 2
+            var sprayRound2Task = CreateTask(
+                emergencyStage.Id,
+                "Phun thuốc trừ sâu đợt 2 (Ngày 4)",
+                "- Phun thuốc trừ rầy nâu bổ sung cho các khu vực còn mật độ cao\r\n- Sử dụng Rusem Super kết hợp Upper 400SC",
+                4, 1, TaskType.PestControl, TaskPriority.Critical, 4);
+            emergencyTasks.Add(sprayRound2Task);
+            taskMaterials.Add(CreateTaskMaterial(sprayRound2Task.Id, MaterialIds.RusemSuper, 150m)); // Double dose
+            taskMaterials.Add(CreateTaskMaterial(sprayRound2Task.Id, MaterialIds.Upper400SC, 720m)); // Double dose
+
+            // Task 5: Final assessment and recovery support
+            var recoveryTask = CreateTask(
+                emergencyStage.Id,
+                "Đánh giá và hỗ trợ phục hồi (Ngày 5-7)",
+                "- Đánh giá tổng thể tình hình sau xử lý\r\n- Bón phân phục hồi cho cây lúa\r\n- Lập kế hoạch giám sát dài hạn",
+                5, 3, TaskType.Fertilization, TaskPriority.Normal, 5);
+            emergencyTasks.Add(recoveryTask);
+            taskMaterials.Add(CreateTaskMaterial(recoveryTask.Id, MaterialIds.Ure, 100m)); // Recovery fertilizer
+            taskMaterials.Add(CreateTaskMaterial(recoveryTask.Id, new Guid("5731730F-B20E-4309-9A0B-0A36B40AEBD0"), 1000m)); // Amino Gold for recovery
+
+            await _context.Set<StandardPlanTask>().AddRangeAsync(emergencyTasks);
+            await _context.SaveChangesAsync();
+
+            await _context.Set<StandardPlanTaskMaterial>().AddRangeAsync(taskMaterials);
+            await _context.SaveChangesAsync();
+
+            // Create threshold for triggering this emergency protocol
+            var threshold = new Threshold
+            {
+                Id = Guid.NewGuid(),
+                EmergencyProtocolId = emergencyProtocol.Id,
+
+                // Pest threshold settings
+                PestAffectType = "Rầy nâu (Brown Planthopper)",
+                PestSeverityLevel = "Critical",
+                PestAreaThresholdPercent = 20.0m, // Trigger if 20% area affected
+                PestPopulationThreshold = "1000 con/m²", // Population density threshold
+                PestDamageThresholdPercent = 15.0m, // 15% damage threshold
+                PestGrowthStage = "Đẻ nhánh đến trỗ", // Tillering to heading stage
+                PestThresholdNotes = "Kích hoạt khi mật độ rầy nâu vượt 1000 con/m² hoặc thiệt hại > 15% diện tích",
+
+                // Weather threshold (optional, can be null for pest-only)
+                WeatherEventType = null,
+                WeatherIntensityLevel = null,
+                WeatherMeasurementThreshold = null,
+                WeatherMeasurementUnit = null,
+                WeatherThresholdOperator = null,
+                WeatherDurationDaysThreshold = null,
+                WeatherThresholdNotes = null,
+
+                // Common fields
+                ApplicableSeason = "Tất cả các vụ", // All seasons
+                RiceVarietyId = null, // Applies to all varieties
+                Priority = 1, // Highest priority
+                GeneralNotes = "Quy trình khẩn cấp này được kích hoạt tự động khi hệ thống phát hiện mật độ rầy nâu vượt ngưỡng nguy hiểm",
+
+                CreatedAt = DateTime.UtcNow,
+                LastModified = DateTime.UtcNow
+            };
+
+            await _context.Set<Threshold>().AddAsync(threshold);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Created Emergency Protocol {ProtocolId} '{ProtocolName}' with {TaskCount} tasks and 1 threshold",
+                emergencyProtocol.Id, emergencyProtocol.PlanName, emergencyTasks.Count);
+        }
+        #endregion
+
         #region Cluster and Group Seeding (Consolidated)
         private async Task SeedClustersAndGroupsAsync()
         {
@@ -1673,9 +1979,9 @@ namespace RiceProduction.Infrastructure.Data
                 return;
             }
 
-            // Create Clusters
-            var cluster1Id = Guid.NewGuid();
-            var cluster2Id = Guid.NewGuid();
+            // Create Clusters with FIXED IDs for consistency
+            var cluster1Id = new Guid("661a5a27-c8d5-45f4-8469-5a02ec6c5fe0");
+            var cluster2Id = new Guid("772b6b38-d9e6-56f5-9c7a-1e846cbd2df3");
 
             var polygonCluster1 = CreatePolygonFromWkt("POLYGON((1196936.46062617 608865.269417751, 1196936.91062585 608857.799417709, 1196937.4406257 608854.249417673,1196937.11062567 608853.609417687,1196960.63062598 608855.569416764,1196960.5706265 608867.849416807,1196936.46062617 608865.269417751))");
             var polygonCluster2 = CreatePolygonFromWkt("POLYGON((1196959.19062734 608887.939416929,1196934.67062708 608887.029417897,1196935.46062667 608877.419417831,1196959.61062698 608879.409416884,1196959.19062734 608887.939416929))");
@@ -2023,16 +2329,75 @@ namespace RiceProduction.Infrastructure.Data
             if (farmer4 != null) { farmer4.ClusterId = cluster2Id; _context.Update(farmer4); }
             if (farmer5 != null) { farmer5.ClusterId = cluster2Id; _context.Update(farmer5); }
             await _context.SaveChangesAsync();
-            // Create Groups with plots
+            
+            // Create YearSeasons for the groups
             var todayUtc = DateTime.UtcNow.Date;
+            var yearSeasons = new List<YearSeason>
+            {
+                new YearSeason
+                {
+                    SeasonId = dongXuan!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    EndDate = new DateTime(2025, 4, 30, 0, 0, 0, DateTimeKind.Utc),
+                    Status = SeasonStatus.Active,
+                    AllowedPlantingFlexibilityDays = 7
+                },
+                new YearSeason
+                {
+                    SeasonId = thuDong!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-20),
+                    EndDate = todayUtc.AddDays(90),
+                    Status = SeasonStatus.Active
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu!.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-30),
+                    EndDate = todayUtc.AddDays(80),
+                    Status = SeasonStatus.Completed
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu.Id,
+                    ClusterId = cluster2Id,
+                    Year = 2025,
+                    RiceVarietyId = st25.Id,
+                    StartDate = todayUtc.AddDays(-5),
+                    EndDate = todayUtc.AddDays(105),
+                    Status = SeasonStatus.Active
+                },
+                new YearSeason
+                {
+                    SeasonId = heThu.Id,
+                    ClusterId = cluster1Id,
+                    Year = 2024,
+                    RiceVarietyId = om5451?.Id ?? st25.Id,
+                    StartDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
+                    EndDate = new DateTime(2024, 8, 20, 0, 0, 0, DateTimeKind.Utc),
+                    Status = SeasonStatus.Completed
+                }
+            };
+            
+            await _context.YearSeasons.AddRangeAsync(yearSeasons);
+            await _context.SaveChangesAsync();
+            
+            // Create Groups with plots
             var groups = new List<Group>
             {
                 new Group
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = thuDong.Id,
+                    YearSeasonId = yearSeasons[0].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-20),
                     Status = GroupStatus.Active,
@@ -2043,8 +2408,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[1].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-30),
                     Status = GroupStatus.Completed,
@@ -2055,8 +2419,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster2Id,
                     SupervisorId = supervisor2?.Id,
-                    RiceVarietyId = st25.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[2].Id,
                     Year = 2025,
                     PlantingDate = todayUtc.AddDays(-5),
                     Status = GroupStatus.Active,
@@ -2067,8 +2430,7 @@ namespace RiceProduction.Infrastructure.Data
                 {
                     ClusterId = cluster1Id,
                     SupervisorId = supervisor1.Id,
-                    RiceVarietyId = om5451?.Id,
-                    SeasonId = heThu.Id,
+                    YearSeasonId = yearSeasons[3].Id,
                     Year = 2024,
                     PlantingDate = new DateTime(2024, 5, 10, 0, 0, 0, DateTimeKind.Utc),
                     Status = GroupStatus.Completed,
@@ -2274,6 +2636,7 @@ namespace RiceProduction.Infrastructure.Data
 
             var pastGroup2024 = await _context.Groups
                 .Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot)
+                .Include(g => g.YearSeason)
                 .FirstOrDefaultAsync(g => g.Year == 2024 && g.Status == GroupStatus.Completed);
 
             if (pastGroup2024 == null)
@@ -2346,7 +2709,13 @@ namespace RiceProduction.Infrastructure.Data
             foreach (var groupPlot in groupPlots)
             {
                 var plot = groupPlot.Plot;
-            {
+                var existingPlotCultivation = await _context.PlotCultivations
+                    .AnyAsync(pc => pc.PlotId == plot.Id && pc.SeasonId == group.YearSeasonId!.Value);
+                if (existingPlotCultivation)
+                {
+                    continue;
+                }
+                {
                 task1.CultivationTasks.Add(new CultivationTask
                 {
                     Id = Guid.NewGuid(),
@@ -2360,8 +2729,8 @@ namespace RiceProduction.Infrastructure.Data
                     PlotCultivation = new PlotCultivation
                     {
                         PlotId = plot.Id,
-                        RiceVarietyId = group.RiceVarietyId!.Value,
-                        SeasonId = group.SeasonId!.Value,
+                        RiceVarietyId = group.YearSeason!.RiceVarietyId ?? Guid.Empty,
+                        SeasonId = group.YearSeason!.SeasonId,
                         PlantingDate = plantingDate,
                         Status = CultivationStatus.Planned,
                         ActualYield = plot.Area * 7.2m
@@ -2434,7 +2803,7 @@ namespace RiceProduction.Infrastructure.Data
                     PlotId = plot.Id,
                     ServicedArea = plot.Area,
                     Status = isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
-
+                    CultivationTaskId = Guid.Empty,
                     // Chi phí và báo cáo thực tế cho các Plot đã xong
                     ActualCost = isCompleted ? plot.Area * (vendor1.ServiceRatePerHa * 1.05m) : null,
                     CompletionDate = isCompleted ? DateTime.UtcNow.AddDays(-1) : null,
@@ -2490,6 +2859,65 @@ namespace RiceProduction.Infrastructure.Data
             }
 
             return (Polygon)geometry.ConvexHull();
+        }
+        private async Task<(Season? season, int year)> GetCurrentSeasonAndYear()
+        {
+            var today = DateTime.Now;
+            var currentMonth = today.Month;
+            var currentDay = today.Day;
+
+            var allSeasons = await _context.Seasons.ToListAsync();
+
+            foreach (var season in allSeasons)
+            {
+                if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
+                {
+                    var startParts = season.StartDate.Split('/');
+                    int startMonth = int.Parse(startParts[0]);
+
+                    int year = today.Year;
+                    if (currentMonth < startMonth && startMonth > 6)
+                    {
+                        year--;
+                    }
+
+                    return (season, year);
+                }
+            }
+
+            return (null, today.Year);
+        }
+
+        private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
+        {
+            try
+            {
+                var startParts = startDateStr.Split('/');
+                var endParts = endDateStr.Split('/');
+
+                int startMonth = int.Parse(startParts[0]);
+                int startDay = int.Parse(startParts[1]);
+                int endMonth = int.Parse(endParts[0]);
+                int endDay = int.Parse(endParts[1]);
+
+                int currentDate = month * 100 + day;
+                int seasonStart = startMonth * 100 + startDay;
+                int seasonEnd = endMonth * 100 + endDay;
+
+                // Handle cross-year seasons (e.g., Dec to Mar)
+                if (seasonStart > seasonEnd)
+                {
+                    return currentDate >= seasonStart || currentDate <= seasonEnd;
+                }
+                else
+                {
+                    return currentDate >= seasonStart && currentDate <= seasonEnd;
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
         #endregion
     }

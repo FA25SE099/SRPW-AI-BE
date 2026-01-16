@@ -36,7 +36,12 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 
             // 2. Load the Group to get the SeasonId
             var group = await _unitOfWork.Repository<Group>().FindAsync(
-                match: g => g.Id == request.GroupId
+                match: g => g.Id == request.GroupId,
+                includeProperties: q => q
+                    .Include(g => g.YearSeason)
+                    .ThenInclude(ys => ys.Season)
+                    .ThenInclude(s => s.PlotCultivations)
+
             );
 
             if (group == null)
@@ -46,7 +51,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                     "GroupNotFound");
             }
 
-            if (!group.SeasonId.HasValue)
+            if (group.YearSeason?.SeasonId == null)
             {
                 return Result<CurrentPlotCultivationDetailResponse>.Failure(
                     $"Group with ID {request.GroupId} does not have a season assigned.",
@@ -55,7 +60,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 
             // 3. Find PlotCultivation using PlotId and SeasonId
             var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
-                match: pc => pc.PlotId == request.PlotId && pc.SeasonId == group.SeasonId.Value,
+                match: pc => pc.PlotId == request.PlotId && pc.SeasonId == group.YearSeason.SeasonId,
                 includeProperties: q => q
                     .Include(pc => pc.Plot)
                     .Include(pc => pc.Season)
@@ -66,28 +71,83 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             if (plotCultivation == null)
             {
                 return Result<CurrentPlotCultivationDetailResponse>.Failure(
-                    $"No cultivation found for Plot {request.PlotId} in Season {group.SeasonId.Value}.",
+                    $"No cultivation found for Plot {request.PlotId} in Season {group.YearSeason.SeasonId}.",
                     "PlotCultivationNotFound");
             }
 
-            // Get the latest version (highest VersionOrder)
-            var latestVersion = plotCultivation.CultivationVersions
-                .OrderByDescending(v => v.VersionOrder)
-                .FirstOrDefault();
+            // Determine which version to query
+            CultivationVersion? targetVersion = null;
+            
+            if (request.VersionId.HasValue)
+            {
+                // Query specific version
+                targetVersion = plotCultivation.CultivationVersions
+                    .FirstOrDefault(v => v.Id == request.VersionId.Value);
+                
+                if (targetVersion == null)
+                {
+                    return Result<CurrentPlotCultivationDetailResponse>.Failure(
+                        $"Version with ID {request.VersionId.Value} not found for this plot cultivation.",
+                        "VersionNotFound");
+                }
+            }
+            else
+            {
+                // Get the latest version (highest VersionOrder) - default behavior
+                targetVersion = plotCultivation.CultivationVersions
+                    .OrderByDescending(v => v.VersionOrder)
+                    .FirstOrDefault();
+            }
 
-            // 4. Load cultivation tasks with related data for the latest version
-            Guid? versionId = latestVersion?.Id;
+            // 4. Load cultivation tasks with related data for the target version
+            Guid? versionId = targetVersion?.Id;
+            
+            // DEBUG: First check raw database values without includes
+            var rawTaskData = await _unitOfWork.Repository<CultivationTask>()
+                .GetQueryable()
+                .Where(ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId)
+                .Select(ct => new { 
+                    TaskId = ct.Id, 
+                    TaskName = ct.CultivationTaskName, 
+                    ProductionPlanTaskId = ct.ProductionPlanTaskId,
+                    ExecutionOrder = ct.ExecutionOrder,
+                    Status = ct.Status,
+                    IsContingency = ct.IsContingency
+                })
+                .ToListAsync(cancellationToken);
+            
+            _logger.LogInformation(
+                "Raw database check for Version {VersionId}: Found {TaskCount} tasks. " +
+                "Tasks with ProductionPlanTaskId: {WithPPTId}, Tasks without: {WithoutPPTId}. " +
+                "Emergency tasks: {EmergencyCount}",
+                versionId,
+                rawTaskData.Count,
+                rawTaskData.Count(t => t.ProductionPlanTaskId.HasValue),
+                rawTaskData.Count(t => !t.ProductionPlanTaskId.HasValue),
+                rawTaskData.Count(t => t.Status == Domain.Enums.TaskStatus.Emergency)
+            );
+            
             var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
                 filter: ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId,
                 orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
 #pragma warning disable CS8602 // Dereference of a possibly null reference
                 includeProperties: q => q
-                    .Include(ct => ct.ProductionPlanTask)!
-                        .ThenInclude(ppt => ppt.ProductionStage)!
-                        .ThenInclude(ps => ps.ProductionPlan)
+                    .Include(ct => ct.ProductionPlanTask)
+                        .ThenInclude(ppt => ppt.ProductionStage)
+                            .ThenInclude(ps => ps.ProductionPlan)
                     .Include(ct => ct.CultivationTaskMaterials)
                         .ThenInclude(ctm => ctm.Material)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
+            );
+
+            // Log what we loaded
+            _logger.LogInformation(
+                "Loaded {TaskCount} tasks. Navigation property status: " +
+                "ProductionPlanTask null: {PPTNullCount}, " +
+                "ProductionStage null: {PSNullCount}",
+                tasks.Count,
+                tasks.Count(t => t.ProductionPlanTask == null),
+                tasks.Count(t => t.ProductionPlanTask?.ProductionStage == null)
             );
 
             // Log warning if duplicates are detected
@@ -106,30 +166,59 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                 .Select(g => g.First())
                 .ToList();
 
-            // 5. Get production plan info from first task
-            var firstTask = uniqueTasks.FirstOrDefault();
-            var productionPlan = firstTask?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
+            // 5. Get production plan info from first task that has one
+            var firstTaskWithPlan = uniqueTasks.FirstOrDefault(t => t.ProductionPlanTask != null);
+            var productionPlan = firstTaskWithPlan?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
 
-            // 6. Group tasks by stage and create nested structure
-            var stagesGroup = uniqueTasks
-                .GroupBy(task => new
+            // DEBUG: Log task details to diagnose stage grouping issue
+            _logger.LogInformation(
+                "Task loading summary for Version {VersionId}: Total tasks: {TotalTasks}, " +
+                "Tasks with ProductionPlanTask loaded: {LoadedCount}, " +
+                "Tasks with ProductionPlanTaskId: {IdCount}",
+                versionId,
+                uniqueTasks.Count,
+                uniqueTasks.Count(t => t.ProductionPlanTask != null),
+                uniqueTasks.Count(t => t.ProductionPlanTaskId.HasValue)
+            );
+
+            // 6. Group tasks by stage - handle tasks with and without ProductionPlanTask
+            var stagesGroup = new List<CultivationStageSummary>();
+            
+            // Group by stage ID (null for emergency tasks)
+            var tasksByStage = uniqueTasks
+                .GroupBy(task => task.ProductionPlanTask?.ProductionStageId)
+                .OrderBy(g => {
+                    var firstTask = g.First();
+                    return firstTask.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue;
+                });
+
+            foreach (var stageTasksGroup in tasksByStage)
+            {
+                var firstTask = stageTasksGroup.First();
+                var stage = firstTask.ProductionPlanTask?.ProductionStage;
+                
+                _logger.LogInformation(
+                    "Processing stage group: StageId={StageId}, StageName={StageName}, TaskCount={TaskCount}, " +
+                    "First task: Id={TaskId}, Name={TaskName}, HasProductionPlanTask={HasPPT}, ProductionPlanTaskId={PPTId}",
+                    stage?.Id,
+                    stage?.StageName ?? "Emergency Tasks",
+                    stageTasksGroup.Count(),
+                    firstTask.Id,
+                    firstTask.CultivationTaskName,
+                    firstTask.ProductionPlanTask != null,
+                    firstTask.ProductionPlanTaskId
+                );
+
+                var stageSummary = new CultivationStageSummary
                 {
-                    StageId = task.ProductionPlanTask?.ProductionStage?.Id,
-                    StageName = task.ProductionPlanTask?.ProductionStage?.StageName ?? "N/A",
-                    SequenceOrder = task.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue,
-                    Description = task.ProductionPlanTask?.ProductionStage?.Description,
-                    TypicalDurationDays = task.ProductionPlanTask?.ProductionStage?.TypicalDurationDays
-                })
-                .OrderBy(g => g.Key.SequenceOrder)
-                .Select(stageGroup => new CultivationStageSummary
-                {
-                    StageId = stageGroup.Key.StageId,
-                    StageName = stageGroup.Key.StageName,
-                    SequenceOrder = stageGroup.Key.SequenceOrder,
-                    Description = stageGroup.Key.Description,
-                    TypicalDurationDays = stageGroup.Key.TypicalDurationDays,
-                    Tasks = stageGroup
-                        .OrderBy(task => task.ExecutionOrder ?? 0)
+                    StageId = stage?.Id,
+                    StageName = stage?.StageName ?? "Emergency Tasks",
+                    SequenceOrder = stage?.SequenceOrder ?? int.MaxValue,
+                    Description = stage?.Description,
+                    TypicalDurationDays = stage?.TypicalDurationDays,
+                    Tasks = stageTasksGroup
+                        .OrderBy(task => task.ExecutionOrder ?? int.MaxValue)
+                        .ThenBy(task => task.CreatedAt)
                         .Select(task => new CultivationTaskSummary
                         {
                             TaskId = task.Id,
@@ -138,7 +227,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                             TaskType = task.TaskType ?? Domain.Enums.TaskType.Sowing,
                             Status = task.Status ?? Domain.Enums.TaskStatus.Draft,
                             Priority = Domain.Enums.TaskPriority.Normal,
-                            PlannedStartDate = null,
+                            PlannedStartDate = task.ProductionPlanTask?.ScheduledDate ?? null,
                             PlannedEndDate = task.ScheduledEndDate,
                             ActualStartDate = task.ActualStartDate,
                             ActualEndDate = task.ActualEndDate,
@@ -152,8 +241,10 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                                 Unit = ctm.Material.Unit
                             }).ToList()
                         }).ToList()
-                })
-                .ToList();
+                };
+                
+                stagesGroup.Add(stageSummary);
+            }
 
             // 7. Calculate progress (using unique tasks)
             var totalTasks = uniqueTasks.Count;
@@ -182,8 +273,8 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
 
                 SeasonId = plotCultivation.SeasonId,
                 SeasonName = plotCultivation.Season.SeasonName,
-                SeasonStartDate = DateTime.Parse(plotCultivation.Season.StartDate),
-                SeasonEndDate = DateTime.Parse(plotCultivation.Season.EndDate),
+                SeasonStartDate = ParseSeasonDateToDateTime(plotCultivation.Season.StartDate, plotCultivation.PlantingDate.Year),
+                SeasonEndDate = ParseSeasonDateToDateTime(plotCultivation.Season.EndDate, plotCultivation.PlantingDate.Year),
 
                 RiceVarietyId = plotCultivation.RiceVarietyId,
                 RiceVarietyName = plotCultivation.RiceVariety.VarietyName,
@@ -199,8 +290,8 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                 ProductionPlanName = productionPlan?.PlanName,
                 ProductionPlanDescription = null,
 
-                ActiveVersionId = latestVersion?.Id,
-                ActiveVersionName = latestVersion?.VersionName,
+                ActiveVersionId = targetVersion?.Id,
+                ActiveVersionName = targetVersion?.VersionName,
 
                 Stages = stagesGroup,
                 Progress = new CultivationProgress
@@ -216,13 +307,18 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             };
 
             _logger.LogInformation(
-                "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId} using latest version {VersionOrder}. " +
+                "Successfully retrieved cultivation plan for Plot {PlotId} in Group {GroupId} for Season {SeasonId} " +
+                "using version {VersionName} (Order: {VersionOrder}, Requested: {RequestedVersionId}). " +
                 "Total unique tasks: {UniqueCount} (from {TotalCount} records)",
-                request.PlotId, request.GroupId, group.SeasonId.Value, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
+                request.PlotId, request.GroupId, group.YearSeason.SeasonId, 
+                targetVersion?.VersionName, targetVersion?.VersionOrder, request.VersionId,
+                uniqueTasks.Count, tasks.Count);
 
             return Result<CurrentPlotCultivationDetailResponse>.Success(
                 response,
-                "Successfully retrieved cultivation plan for plot in group.");
+                request.VersionId.HasValue 
+                    ? $"Successfully retrieved cultivation plan for specific version '{targetVersion?.VersionName}'."
+                    : "Successfully retrieved cultivation plan with latest version.");
         }
         catch (Exception ex)
         {
@@ -233,6 +329,58 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             return Result<CurrentPlotCultivationDetailResponse>.Failure(
                 "An error occurred while retrieving cultivation plan.",
                 "RetrievalFailed");
+        }
+    }
+
+    /// <summary>
+    /// Parses season date string (MM/DD format) to DateTime by combining with a year
+    /// </summary>
+    /// <param name="seasonDateStr">Season date in MM/DD format (e.g., "04/30")</param>
+    /// <param name="year">Year to use for the date</param>
+    /// <returns>DateTime representing the season date</returns>
+    private DateTime ParseSeasonDateToDateTime(string seasonDateStr, int year)
+    {
+        try
+        {
+            var parts = seasonDateStr.Split('/');
+            if (parts.Length != 2)
+            {
+                _logger.LogWarning("Invalid season date format: {SeasonDateStr}. Expected MM/DD format.", seasonDateStr);
+                return new DateTime(year, 1, 1); // Default to January 1st
+            }
+
+            int month = int.Parse(parts[0]);
+            int day = int.Parse(parts[1]);
+            
+            // Validate month and day ranges
+            if (month < 1 || month > 12)
+            {
+                _logger.LogWarning("Invalid month in season date: {Month}. Using January.", month);
+                month = 1;
+            }
+            
+            if (day < 1 || day > 31)
+            {
+                _logger.LogWarning("Invalid day in season date: {Day}. Using 1st.", day);
+                day = 1;
+            }
+
+            // Handle cases where the season crosses year boundary (e.g., Winter-Spring season)
+            // If this is an end date in early months (Jan-Apr) and planting was late in previous year,
+            // the end date should be in the next year
+            if (month <= 4 && seasonDateStr.Contains("30") && year > DateTime.UtcNow.Year - 1)
+            {
+                // This might be a season ending in early next year
+                return new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+            }
+
+            return new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing season date: {SeasonDateStr} for year {Year}", seasonDateStr, year);
+            // Return a safe default
+            return new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         }
     }
 }

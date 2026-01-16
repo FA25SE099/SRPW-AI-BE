@@ -32,12 +32,18 @@ public class TodayTaskResponse
     public TaskType TaskType { get; set; }
     public RiceProduction.Domain.Enums.TaskStatus Status { get; set; }
     public DateTime ScheduledDate { get; set; }
+    public DateTime ScheduledEndDate { get; set; }
     public TaskPriority Priority { get; set; }
 
     /// <summary>
     /// Cho biết công việc đã quá hạn (ScheduledEndDate < Today)
     /// </summary>
     public bool IsOverdue { get; set; } // <--- Trường mới
+
+    /// <summary>
+    /// Cho biết công việc có được giao cho UAV vendor hay không
+    /// </summary>
+    public bool IsUav { get; set; }
 
     /// <summary>
     /// Thông tin về thửa đất.

@@ -19,12 +19,10 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
 
         builder.HasIndex(g => g.ClusterId);
         builder.HasIndex(g => g.SupervisorId);
-        builder.HasIndex(g => g.RiceVarietyId);
-        builder.HasIndex(g => g.SeasonId);
         builder.HasIndex(g => g.YearSeasonId);
         
-        builder.HasIndex(g => new { g.SupervisorId, g.SeasonId, g.Year })
-            .HasDatabaseName("IX_Group_Supervisor_Season_Year");
+        builder.HasIndex(g => new { g.SupervisorId, g.YearSeasonId, g.Year })
+            .HasDatabaseName("IX_Group_Supervisor_YearSeason_Year");
         
         builder.HasIndex(g => g.Status);
         builder.HasIndex(g => g.Area)
@@ -37,11 +35,6 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
             .HasForeignKey(g => g.ClusterId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasOne(g => g.Season)
-            .WithMany()
-            .HasForeignKey(g => g.SeasonId)
-            .OnDelete(DeleteBehavior.SetNull);
-
         builder.HasOne(g => g.YearSeason)
             .WithMany(ys => ys.Groups)
             .HasForeignKey(g => g.YearSeasonId)
@@ -50,11 +43,6 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
         builder.HasOne(g => g.Supervisor)
             .WithMany(s => s.SupervisedGroups)
             .HasForeignKey(g => g.SupervisorId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        builder.HasOne(g => g.RiceVariety)
-            .WithMany(rv => rv.Groups)
-            .HasForeignKey(g => g.RiceVarietyId)
             .OnDelete(DeleteBehavior.SetNull);
 
     }

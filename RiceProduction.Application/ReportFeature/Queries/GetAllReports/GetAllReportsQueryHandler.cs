@@ -3,6 +3,7 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
+using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.ReportFeature.Queries.GetAllReports;
 
@@ -40,6 +41,8 @@ public class GetAllReportsQueryHandler : IRequestHandler<GetAllReportsQuery, Pag
                 .Include(r => r.Group)
                     .ThenInclude(g => g.Cluster)
                 .Include(r => r.Cluster)
+                .Include(r => r.AffectedTask)
+                    .ThenInclude(t => t.Version)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(request.Status))
@@ -93,6 +96,8 @@ public class GetAllReportsQueryHandler : IRequestHandler<GetAllReportsQuery, Pag
                     ? $"{r.PlotCultivation.Plot.SoThua}/{r.PlotCultivation.Plot.SoTo}"
                     : null,
                 PlotArea = r.PlotCultivation?.Plot?.Area,
+                GroupId = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.Id,
+                GroupName = r.PlotCultivation.Plot.GroupPlots.FirstOrDefault().Group.GroupName,
                 CultivationPlanId = r.PlotCultivationId,
                 CultivationPlanName = r.PlotCultivation != null
                     ? $"Plan {r.PlotCultivation.PlantingDate:yyyy-MM-dd}"
@@ -113,7 +118,13 @@ public class GetAllReportsQueryHandler : IRequestHandler<GetAllReportsQuery, Pag
                 FarmerName = r.PlotCultivation?.Plot?.Farmer?.FullName,
                 ClusterName = r.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group?.Cluster?.ClusterName
                     ?? r.Group?.Cluster?.ClusterName
-                    ?? r.Cluster?.ClusterName
+                    ?? r.Cluster?.ClusterName,
+                AffectedCultivationTaskId = r.AffectedCultivationTaskId,
+                AffectedTaskName = r.AffectedTask?.CultivationTaskName 
+                    ?? r.AffectedTask?.ProductionPlanTask?.TaskName,
+                AffectedTaskType = r.AffectedTask?.TaskType?.ToString(),
+                AffectedTaskVersionName = r.AffectedTask?.Version?.VersionName,
+                AffectedTaskVersionId = r.AffectedTask?.VersionId
             }).ToList();
 
             return PagedResult<List<ReportItemResponse>>.Success(

@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Ardalis.GuardClauses;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -11,9 +12,6 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.FarmerFeature.Queries;
-using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
-using RiceProduction.Application.PlotFeature.Queries.GetAll;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
@@ -26,6 +24,7 @@ using RiceProduction.Infrastructure.Implementation.Zalo;
 using RiceProduction.Infrastructure.Repository;
 using RiceProduction.Infrastructure.Services;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
 
 namespace RiceProduction.Infrastructure;
 
@@ -38,7 +37,7 @@ public static class DependencyInjection
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
         builder.Services.AddScoped<IGenericExcel, GenericExcel>();
-        builder.Services.AddScoped<ISaveChangesInterceptor, PlotGeometryInterceptor>(); 
+        builder.Services.AddScoped<ISaveChangesInterceptor, PlotGeometryInterceptor>();
         builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -56,9 +55,22 @@ public static class DependencyInjection
             });
         });
 
-
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddAutoMapper(typeof(FarmerMapping).Assembly);
+
+        // Register the Channel as a singleton first
+        builder.Services.AddSingleton<Channel<Func<CancellationToken, Task>>>(sp =>
+        {
+            return Channel.CreateUnbounded<Func<CancellationToken, Task>>(
+                new UnboundedChannelOptions
+                {
+                    SingleWriter = false,
+                    SingleReader = false
+                });
+        });
+        builder.Services.AddHostedService<QueuedEmailBackgroundService>();
+        // Then register the BackgroundTaskQueue using the channel
+        builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();      
 
         // Configure Identity with proper stores
         builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -73,13 +85,11 @@ public static class DependencyInjection
         })
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
-       
-        builder.Services.AddMediatR(cfg =>
-        {
-            cfg.RegisterServicesFromAssembly(typeof(GetAllFarmerQueriesHandler).Assembly);
-            cfg.RegisterServicesFromAssembly(typeof(GetAllPlotQueriesHandler).Assembly);
-        });
 
+        // MediatR registration removed from Infrastructure - it's already registered in Application layer
+        // Duplicate registration was causing event handlers to be invoked twice, leading to duplicate emails
+
+        builder.Services.AddScoped<IEmailJobService, EmailJobService>();
         builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
@@ -88,7 +98,7 @@ public static class DependencyInjection
         // Configure SMS Retry Strategy
         //builder.Services.Configure<SmsRetryConfiguration>(
         //    builder.Configuration.GetSection("SmsRetry"));
-        
+
         //builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
         //builder.Services.AddHostedService<SmsRetryBackgroundService>();
         builder.Services.AddScoped<IFarmerRepository, FarmerRepository>();
@@ -115,9 +125,10 @@ public static class DependencyInjection
         builder.Services.AddSingleton<ISmSService>(sp =>
     new InfobipSmsAPI("21767813b128cc6a42da45672e2926f9-76a6192c-c30d-462f-8a37-abd2797742ac", "https://2m6wzp.api.infobip.com"));
         builder.Services.AddScoped<IRicePestDetectionService, RicePestDetectionService>();
-        
+
         // Register PostGIS spatial group formation service
         builder.Services.AddScoped<IPostGISGroupFormationService, Services.PostGISGroupFormationService>();
 
     }
 }
+

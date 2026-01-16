@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models.Request.MaterialCostCalculationRequests;
 using RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
@@ -48,9 +49,16 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         var query = new CalculateMaterialsCostByAreaQuery
         {
             Area = 10.5m,
-            Materials = new List<MaterialQuantityInput>
+            Tasks = new List<TaskWithMaterialsInput>
             {
-                new MaterialQuantityInput { MaterialId = Guid.NewGuid(), QuantityPerHa = 50 }
+                new TaskWithMaterialsInput 
+                { 
+                    TaskName = "Test Task",
+                    Materials = new List<TaskMaterialInput>
+                    {
+                        new TaskMaterialInput { MaterialId = Guid.NewGuid(), QuantityPerHa = 50 }
+                    }
+                }
             }
         };
 
@@ -122,10 +130,17 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         var query = new CalculateMaterialsCostByAreaQuery
         {
             Area = 10m, // 10 hectares
-            Materials = new List<MaterialQuantityInput>
+            Tasks = new List<TaskWithMaterialsInput>
             {
-                new MaterialQuantityInput { MaterialId = materialId1, QuantityPerHa = 50 }, // 50 kg/ha
-                new MaterialQuantityInput { MaterialId = materialId2, QuantityPerHa = 10 }  // 10 liters/ha
+                new TaskWithMaterialsInput 
+                { 
+                    TaskName = "Fertilizer Application",
+                    Materials = new List<TaskMaterialInput>
+                    {
+                        new TaskMaterialInput { MaterialId = materialId1, QuantityPerHa = 50 }, // 50 kg/ha
+                        new TaskMaterialInput { MaterialId = materialId2, QuantityPerHa = 10 }  // 10 liters/ha
+                    }
+                }
             }
         };
 
@@ -203,9 +218,16 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         var query = new CalculateMaterialsCostByAreaQuery
         {
             Area = 5m,
-            Materials = new List<MaterialQuantityInput>
+            Tasks = new List<TaskWithMaterialsInput>
             {
-                new MaterialQuantityInput { MaterialId = materialId, QuantityPerHa = 100 }
+                new TaskWithMaterialsInput 
+                { 
+                    TaskName = "Fertilizer Task",
+                    Materials = new List<TaskMaterialInput>
+                    {
+                        new TaskMaterialInput { MaterialId = materialId, QuantityPerHa = 100 }
+                    }
+                }
             }
         };
 
@@ -248,9 +270,16 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         var query = new CalculateMaterialsCostByAreaQuery
         {
             Area = 10m,
-            Materials = new List<MaterialQuantityInput>
+            Tasks = new List<TaskWithMaterialsInput>
             {
-                new MaterialQuantityInput { MaterialId = materialId, QuantityPerHa = 50 }
+                new TaskWithMaterialsInput 
+                { 
+                    TaskName = "Test Task",
+                    Materials = new List<TaskMaterialInput>
+                    {
+                        new TaskMaterialInput { MaterialId = materialId, QuantityPerHa = 50 }
+                    }
+                }
             }
         };
 
@@ -302,11 +331,32 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         var query = new CalculateMaterialsCostByAreaQuery
         {
             Area = 10m,
-            Materials = new List<MaterialQuantityInput>
+            Tasks = new List<TaskWithMaterialsInput>
             {
-                new MaterialQuantityInput { MaterialId = materialId, QuantityPerHa = 30 },
-                new MaterialQuantityInput { MaterialId = materialId, QuantityPerHa = 20 }, // Same material
-                new MaterialQuantityInput { MaterialId = materialId, QuantityPerHa = 10 }  // Same material again
+                new TaskWithMaterialsInput 
+                { 
+                    TaskName = "Task 1",
+                    Materials = new List<TaskMaterialInput>
+                    {
+                        new TaskMaterialInput { MaterialId = materialId, QuantityPerHa = 30 }
+                    }
+                },
+                new TaskWithMaterialsInput 
+                { 
+                    TaskName = "Task 2",
+                    Materials = new List<TaskMaterialInput>
+                    {
+                        new TaskMaterialInput { MaterialId = materialId, QuantityPerHa = 20 }
+                    }
+                },
+                new TaskWithMaterialsInput 
+                { 
+                    TaskName = "Task 3",
+                    Materials = new List<TaskMaterialInput>
+                    {
+                        new TaskMaterialInput { MaterialId = materialId, QuantityPerHa = 10 }
+                    }
+                }
             }
         };
 

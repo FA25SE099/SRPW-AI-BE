@@ -8,7 +8,8 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
         public string PhoneNumber { get; set; } = string.Empty;
         public string? Address { get; set; }
         public string? FarmCode { get; set; }
-        
+        public string? Email { get; set; }
+
         // Optional multiple plots to create along with farmer
         public List<PlotCreationData>? Plots { get; set; }
         

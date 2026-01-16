@@ -23,6 +23,7 @@ namespace RiceProduction.Application.Common.Models
     {
         public ICollection<ProductionPlanDTO> ProductionPlans { get; set; }
         public ICollection<PlotCultivationDTO> PlotCultivations { get; set; }
+        
     }
     public class ProductionPlanDetailDTO : ProductionPlanDTO
     {

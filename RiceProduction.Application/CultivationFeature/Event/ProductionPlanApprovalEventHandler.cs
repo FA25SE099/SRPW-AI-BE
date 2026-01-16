@@ -81,9 +81,9 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             var plots = plan.Group!.GroupPlots.Select(gp => gp.Plot).ToList();
             
             // FIX #2: Get only plot cultivations for the current season to avoid duplicates
-            var seasonId = plan.Group.SeasonId;
+            var seasonId = plan.Group.YearSeason?.SeasonId;
             
-            if (!seasonId.HasValue)
+            if (seasonId == null)
             {
                 _logger.LogWarning("Group {GroupId} for plan {PlanId} has no season assigned", 
                     plan.Group.Id, notification.PlanId);
@@ -92,7 +92,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             
             var plotCultivations = plots
                 .SelectMany(pl => pl.PlotCultivations)
-                .Where(pc => pc.SeasonId == seasonId.Value) // Only current season
+                .Where(pc => pc.SeasonId == seasonId) // Only current season
                 .GroupBy(pc => pc.PlotId) // Group by PlotId
                 .Select(g => g.OrderByDescending(pc => pc.CreatedAt).First()) // Take latest per plot
                 .ToList();
@@ -108,27 +108,68 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 "Processing {PlotCount} unique plots for plan {PlanId}", 
                 plotCultivations.Count, notification.PlanId);
             
-            var plotCultivationIds = plotCultivations.Select(pc => pc.Id).ToList();
+            // FIX #3: Look up existing versions first, create only if none exist
+            // For each plot cultivation, find the newest version or create one
+            var versionLookup = new Dictionary<Guid, Guid>();
+            var newVersionsCreated = 0;
+            var existingVersionsUsed = 0;
             
-            // FIX #3: Get the latest version (highest VersionOrder) instead of IsActive
-            var allVersions = await _versionRepo.ListAsync(
-                filter: v => plotCultivationIds.Contains(v.PlotCultivationId)
-            );
+            foreach (var plotCultivation in plotCultivations)
+            {
+                // Try to find the newest existing version for this PlotCultivation
+                var existingVersion = await _versionRepo.GetQueryable()
+                    .Where(v => v.PlotCultivationId == plotCultivation.Id)
+                    .OrderByDescending(v => v.VersionOrder)
+                    .FirstOrDefaultAsync(cancellationToken);
+                
+                if (existingVersion != null)
+                {
+                    // Use existing version
+                    versionLookup[plotCultivation.Id] = existingVersion.Id;
+                    existingVersionsUsed++;
+                    
+                    _logger.LogInformation(
+                        "Using existing version {VersionId} (Order: {VersionOrder}, Name: '{VersionName}') for PlotCultivation {PlotCultivationId}",
+                        existingVersion.Id, existingVersion.VersionOrder, existingVersion.VersionName, plotCultivation.Id);
+                }
+                else
+                {
+                    // Create new version only if none exists
+                    var newVersion = new CultivationVersion
+                    {
+                        Id = await _versionRepo.GenerateNewGuid(Guid.NewGuid()),
+                        VersionName = "0",
+                        Reason = "Version 0 created upon plan approval",
+                        ActivatedAt = DateTime.UtcNow,
+                        PlotCultivationId = plotCultivation.Id,
+                        CreatedAt = DateTime.UtcNow,
+                        IsActive = true,
+                        VersionOrder = 1,
+                    };
+                    await _versionRepo.AddAsync(newVersion);
+                    versionLookup[plotCultivation.Id] = newVersion.Id;
+                    newVersionsCreated++;
+                    
+                    _logger.LogInformation(
+                        "Created new version {VersionId} (Version 0) for PlotCultivation {PlotCultivationId}",
+                        newVersion.Id, plotCultivation.Id);
+                }
+            }
             
-            var versionLookup = allVersions
-                .GroupBy(v => v.PlotCultivationId)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.OrderByDescending(v => v.VersionOrder).First().Id
-                );
+            // Save all new versions at once (if any were created)
+            if (newVersionsCreated > 0)
+            {
+                await _versionRepo.SaveChangesAsync();
+            }
             
             _logger.LogInformation(
-                "Found versions for {VersionCount} plot cultivations", 
-                versionLookup.Count);
+                "Version lookup complete: {ExistingCount} existing versions used, {NewCount} new versions created for {PlotCount} plot cultivations", 
+                existingVersionsUsed, newVersionsCreated, plotCultivations.Count);
             
             var cultivationTasks = new List<CultivationTask>();
             var cultivationTaskMaterials = new List<CultivationTaskMaterial>();
 
+            // Now create tasks - each task references the single version for its plot cultivation
             foreach (var stage in plan.CurrentProductionStages)
             {
                 foreach (var planTask in stage.ProductionPlanTasks ?? Enumerable.Empty<ProductionPlanTask>())
@@ -142,12 +183,14 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                             continue;
                         }
 
-                        if (!versionLookup.TryGetValue(plotCultivation.Id, out var versionId))
+                        // Use the pre-created version for this plot cultivation
+                        var versionId = versionLookup.GetValueOrDefault(plotCultivation.Id, Guid.Empty);
+                        
+                        if (versionId == Guid.Empty)
                         {
                             _logger.LogWarning(
                                 "No version found for PlotCultivation {PlotCultivationId}. Task will be created without version.",
                                 plotCultivation.Id);
-                            versionId = Guid.Empty;
                         }
 
                         var (task, taskMaterials) = CreateTaskForPlot(
@@ -177,6 +220,8 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 q => q.Include(p => p.CurrentProductionStages)
                       .ThenInclude(s => s.ProductionPlanTasks)
                       .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                      .Include(p => p.Group)
+                        .ThenInclude(g => g.YearSeason)
                       .Include(p => p.Group)
                       .ThenInclude(g => g.GroupPlots)
                       .ThenInclude(gp => gp.Plot)
@@ -300,10 +345,6 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             {
                 await _materialTaskRepo.AddRangeAsync(materials);
             }
-        if (tasks.FirstOrDefault() is CultivationTask firstTask)
-        {
-            firstTask.Status = TaskStatus.InProgress; 
-        }
         await _taskRepo.SaveChangesAsync();
         }
     }

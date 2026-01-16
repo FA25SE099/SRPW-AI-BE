@@ -1,0 +1,27 @@
+name: CI/CD Backend - Deploy to VPS
+on:
+  push:
+    branches:
+      - nguyenbackend4
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: SSH into VPS and deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          
+          script: |
+            cd ~/riceproduction
+            git pull origin nguyenbackend4
+            docker compose up --build -d riceproduction-api
+            docker image prune -f
+            echo "Deploy backend success!"

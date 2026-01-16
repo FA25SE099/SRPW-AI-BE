@@ -37,7 +37,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
                 var query = _unitOfWork.Repository<Plot>()
                     .GetQueryable()
                     .Include(p => p.Farmer)
-                    .Include(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(g => g.RiceVariety)
+                    .Include(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(g => g.YearSeason).ThenInclude(ys => ys.RiceVariety)
                     .Include(p => p.PlotCultivations).Where(p => p.Status == Domain.Enums.PlotStatus.Active)
                     .Include (p =>p.PlotCultivations).ThenInclude(pc => pc.Season)
                     .AsQueryable();
