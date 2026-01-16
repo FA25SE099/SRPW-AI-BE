@@ -12,5 +12,6 @@ namespace RiceProduction.Application.Common.Interfaces
         string CacheKey { get => string.Empty; } 
         int SlidingExpirationInMinutes { get => 30; } 
         int AbsoluteExpirationInMinutes { get => 60; }  
+        
     }
 }
