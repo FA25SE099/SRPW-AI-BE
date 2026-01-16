@@ -41,4 +41,16 @@ public class PlotImportPreviewRow
     public string? PlotStatus { get; set; } // "Active" or "PendingPolygon"
     public string? WillCreatePlotCultivation { get; set; }
     public string? SeasonYear { get; set; }
+    
+    /// <summary>
+    /// Plot boundary polygon in WKT format (returned so frontend doesn't need to read Excel again)
+    /// Example: POLYGON((105.123 10.456, 105.124 10.457, ...))
+    /// </summary>
+    public string? BoundaryWKT { get; set; }
+    
+    /// <summary>
+    /// Plot center point in WKT format (returned so frontend doesn't need to read Excel again)
+    /// Example: POINT(105.123 10.456)
+    /// </summary>
+    public string? CoordinateWKT { get; set; }
 }

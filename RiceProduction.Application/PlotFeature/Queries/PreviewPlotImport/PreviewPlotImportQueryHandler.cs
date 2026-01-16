@@ -114,7 +114,10 @@ public class PreviewPlotImportQueryHandler
                     RiceVarietyName = row.RiceVarietyName,
                     PlantingDate = row.PlantingDate,
                     SeasonName = row.SeasonName,
-                    Year = row.Year
+                    Year = row.Year,
+                    // Include polygon WKT data so frontend doesn't need to read Excel again
+                    BoundaryWKT = row.BoundaryWKT,
+                    CoordinateWKT = row.CoordinateWKT
                 };
 
                 // Skip rows with no plot data (empty rows from template)
@@ -221,6 +224,7 @@ public class PreviewPlotImportQueryHandler
                 }
 
                 // Validate polygon if provided
+                // Note: WKT data is already included in previewRow above, so frontend can use it even if validation fails
                 if (!string.IsNullOrWhiteSpace(row.BoundaryWKT))
                 {
                     try
