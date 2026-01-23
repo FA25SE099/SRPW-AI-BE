@@ -15,7 +15,7 @@ services:
       - .env
 
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://0.0.0.0:5000
 
       SeedDatabase: "true"
@@ -37,10 +37,18 @@ services:
       Jwt__AccessTokenExpirationMinutes: "1500"
       Jwt__RefreshTokenExpirationDays: "7"
 
+      Gemini__ApiKey: ${GEMINI_API_KEY:-AIzaSyAqqpbnzKnKC_95vIVwx7K0a8lLQJ1YIBY}
+      Gemini__BaseUrl: https://generativelanguage.googleapis.com/v1beta
+      Gemini__Model: gemini-2.5-flash
+      Gemini__Temperature: "0.7"
+      Gemini__MaxOutputTokens: "2000"
+      Gemini__TopP: "0.95"
+      Gemini__TopK: "40"
+
       Phone: 3LZJYE89F169H1659AA38JTA
       Loki__Url: http://loki:3100
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
-
+      AiApi__BaseUrl: https://hhtrieu-capstone-project-backup-ui.hf.space
     volumes:
       - /var/log/riceproduction:/var/log/riceproduction
 
@@ -51,4 +59,3 @@ services:
 networks:
   monitoring:
     external: true
-
