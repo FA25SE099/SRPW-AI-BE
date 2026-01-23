@@ -48,6 +48,7 @@ services:
       Phone: 3LZJYE89F169H1659AA38JTA
       Loki__Url: http://loki:3100
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+
       AiApi__BaseUrl: https://hhtrieu-capstone-project-backup-ui.hf.space
     volumes:
       - /var/log/riceproduction:/var/log/riceproduction

@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
+using RiceProduction.Application.Common.Interfaces.External;
+using RiceProduction.Application.Common.Models.Request;
 using Microsoft.OpenApi.Models;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -350,6 +352,84 @@ app.MapPost("/api/rice/check-pest", async (
 })
 .DisableAntiforgery()
 .WithName("CheckRicePest")
+.WithOpenApi();
+
+app.MapPost("/api/rice/full-analysis", async (
+    [FromForm] IFormFileCollection files,
+    [FromServices] IRicePestDetectionService detectionService,
+    [FromServices] IGeminiRecommendationService recommendationService) =>
+{
+    if (files == null || files.Count == 0)
+    {
+        return Results.BadRequest(new { error = "No files uploaded" });
+    }
+
+    try
+    {
+        var finalResults = new List<object>();
+
+        foreach (var file in files)
+        {
+            // Bước 1: Nhận diện sâu bệnh
+            var detectionResult = await detectionService.DetectPestAsync(file);
+
+            if (detectionResult.HasPest && detectionResult.DetectedPests.Count > 0)
+            {
+                // Bước 2: Tự động Mapping sang Request của AI Recommendation
+                // Chúng ta gộp các detection cùng tên lại để Gemini dễ phân tích
+                var pestsToRecommend = detectionResult.DetectedPests
+                    .GroupBy(p => p.PestName)
+                    .Select(g => new DetectedPestInput
+                    {
+                        PestName = g.Key,
+                        Confidence = g.Max(p => p.Confidence),
+                        DetectionCount = g.Count(),
+                        ConfidenceLevel = g.OrderByDescending(p => p.Confidence).First().ConfidenceLevel
+                    })
+                    .ToList();
+
+                var recommendationRequest = new PestRecommendationRequest
+                {
+                    DetectedPests = pestsToRecommend,
+                    Language = "vi"
+                    // Ở đây có thể bổ sung FarmContext nếu Frontend gửi kèm
+                };
+
+                // Bước 3: Lấy khuyến nghị từ Gemini
+                var recommendation = await recommendationService.GetRecommendationAsync(recommendationRequest);
+
+                // Gộp kết quả
+                finalResults.Add(new
+                {
+                    FileName = file.FileName,
+                    Detection = detectionResult,
+                    Recommendation = recommendation
+                });
+            }
+            else
+            {
+                finalResults.Add(new
+                {
+                    FileName = file.FileName,
+                    Detection = detectionResult,
+                    Message = "Không phát hiện sâu bệnh, không cần khuyến nghị."
+                });
+            }
+        }
+
+        return Results.Ok(finalResults);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Error during full analysis"
+        );
+    }
+})
+.DisableAntiforgery()
+.WithName("FullPestAnalysis")
 .WithOpenApi();
 
 app.UseSwagger();
