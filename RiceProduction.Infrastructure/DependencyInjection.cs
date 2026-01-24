@@ -125,6 +125,7 @@ public static class DependencyInjection
         builder.Services.AddSingleton<ISmSService>(sp =>
     new InfobipSmsAPI("21767813b128cc6a42da45672e2926f9-76a6192c-c30d-462f-8a37-abd2797742ac", "https://2m6wzp.api.infobip.com"));
         builder.Services.AddScoped<IRicePestDetectionService, RicePestDetectionService>();
+        builder.Services.AddScoped<IAiReportService, AiReportService>();
         builder.Services.AddScoped<IGeminiRecommendationService, GeminiRecommendationService>();
 
         // Register PostGIS spatial group formation service

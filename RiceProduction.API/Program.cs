@@ -376,7 +376,6 @@ app.MapPost("/api/rice/full-analysis", async (
             if (detectionResult.HasPest && detectionResult.DetectedPests.Count > 0)
             {
                 // Bước 2: Tự động Mapping sang Request của AI Recommendation
-                // Chúng ta gộp các detection cùng tên lại để Gemini dễ phân tích
                 var pestsToRecommend = detectionResult.DetectedPests
                     .GroupBy(p => p.PestName)
                     .Select(g => new DetectedPestInput
@@ -392,7 +391,6 @@ app.MapPost("/api/rice/full-analysis", async (
                 {
                     DetectedPests = pestsToRecommend,
                     Language = "vi"
-                    // Ở đây có thể bổ sung FarmContext nếu Frontend gửi kèm
                 };
 
                 // Bước 3: Lấy khuyến nghị từ Gemini
@@ -430,6 +428,16 @@ app.MapPost("/api/rice/full-analysis", async (
 })
 .DisableAntiforgery()
 .WithName("FullPestAnalysis")
+.WithOpenApi();
+
+app.MapPost("/api/ai-report/suggest-tasks", async (
+    [FromBody] PlanRecommendationRequest request,
+    [FromServices] IAiReportService aiReportService) =>
+{
+    var result = await aiReportService.SuggestTasksAsync(request);
+    return result.Success ? Results.Ok(result) : Results.Problem("AI could not generate suggestions");
+})
+.WithName("SuggestTasksFromReport")
 .WithOpenApi();
 
 app.UseSwagger();
