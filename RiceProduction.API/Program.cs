@@ -257,7 +257,7 @@ if (seedDatabase)
             await initializer.ResetDatabaseAsync();
             //await initializer.SeedAsync();
         }
-        
+
         await initializer.SeedAsyncAdminOnly();
         //await initializer.SeedAsync();
     }
