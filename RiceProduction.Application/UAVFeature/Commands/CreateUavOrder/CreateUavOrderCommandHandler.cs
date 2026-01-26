@@ -134,7 +134,7 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                 GroupId = request.GroupId,
                 UavVendorId = request.UavVendorId,
                 OrderName = orderName,
-                ScheduledDate = DateTime.SpecifyKind(request.ScheduledDate, DateTimeKind.Utc),
+                ScheduledDate = DateTime.SpecifyKind(request.ScheduledDate, DateTimeKind.Utc) - TimeSpan.FromHours(7),
                 Status = RiceProduction.Domain.Enums.TaskStatus.Approved,
                 Priority = request.Priority,
                 TotalArea = totalArea,
