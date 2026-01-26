@@ -238,13 +238,13 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
     {
         if (hasActiveTaskOrder)
         {
-            return "This task already has an active UAV order";
+            return "Có đơn hàng UAV đang hoạt động";
         }
 
         if (!isScheduledSoon)
         {
             var daysUntilScheduled = (scheduledDate - todayUtc).Days;
-            return $"Task scheduled in {daysUntilScheduled} days - not yet ready";
+            return $"Lịch trình trong {daysUntilScheduled} ngày - chưa sẵn sàng";
         }
 
         if (scheduledDate < todayUtc)
@@ -252,25 +252,25 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
             var daysOverdue = (todayUtc - scheduledDate).Days;
             if (plotHasAnyActiveOrder)
             {
-                return $"Ready - Task overdue by {daysOverdue} days (plot has other active orders)";
+                return $"Sẵn sàng - Đơn hàng quá hạn {daysOverdue} ngày (thửa có đơn hàng khác đang hoạt động)";
             }
-            return $"Ready - Task overdue by {daysOverdue} days";
+            return $"Sẵn sàng - Đơn hàng quá hạn {daysOverdue} ngày";
         }
 
         if (scheduledDate == todayUtc)
         {
             if (plotHasAnyActiveOrder)
             {
-                return "Ready - Task scheduled for today (plot has other active orders)";
+                return "Sẵn sàng - Đơn hàng đã được lên lịch cho hôm nay (thửa có đơn hàng khác đang hoạt động)";
             }
-            return "Ready - Task scheduled for today";
+            return "Sẵn sàng - Đơn hàng đã được lên lịch cho hôm nay";
         }
 
         var daysUntil = (scheduledDate - todayUtc).Days;
         if (plotHasAnyActiveOrder)
         {
-            return $"Ready - Task scheduled in {daysUntil} days (plot has other active orders)";
+            return $"Sẵn sàng - Đơn hàng đã được lên lịch trong {daysUntil} ngày (thửa có đơn hàng khác đang hoạt động)";
         }
-        return $"Ready - Task scheduled in {daysUntil} days";
+        return $"Sẵn sàng - Đơn hàng đã được lên lịch trong {daysUntil} ngày";
     }
 }
