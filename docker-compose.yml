@@ -37,7 +37,8 @@ services:
       Jwt__AccessTokenExpirationMinutes: "1500"
       Jwt__RefreshTokenExpirationDays: "7"
 
-      Gemini__ApiKey: ${GEMINI_API_KEY:-AIzaSyAqqpbnzKnKC_95vIVwx7K0a8lLQJ1YIBY}
+      Gemini__ApiKey: ${GEMINI_API_KEY:-AIzaSyA-JB5Vz6n5Wz-HVPU8zREIPYJYi2cEf1I}
+      GeminiAI__ApiKey: ${GEMINI_AI_API_KEY:-AIzaSyA-JB5Vz6n5Wz-HVPU8zREIPYJYi2cEf1I}
       Gemini__BaseUrl: https://generativelanguage.googleapis.com/v1beta
       Gemini__Model: gemini-2.5-flash
       Gemini__Temperature: "0.7"
