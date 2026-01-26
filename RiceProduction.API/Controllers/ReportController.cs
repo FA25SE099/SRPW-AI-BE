@@ -1,9 +1,12 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ReportResponses;
 using RiceProduction.Application.ReportFeature.Command;
+using RiceProduction.Application.ReportFeature.Queries.GetAIRecommendations;
+using RiceProduction.Application.ReportFeature.Queries.GetContextualAISuggestions;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
 using RiceProduction.Application.ReportFeature.Queries.GetReportById;
 using RiceProduction.Application.ReportFeature.Queries.GetReportWithEmergencyMaterials;
@@ -219,5 +222,96 @@ public class ReportController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
+
+    /// <summary>
+    /// Get AI-generated recommendations for emergency plan creation
+    /// Uses Google Gemini AI to analyze the emergency report and suggest tasks and materials
+    /// </summary>
+    /// <param name="reportId">The emergency report ID</param>
+    /// <returns>AI-generated emergency plan recommendations with tasks and materials</returns>
+    //[HttpGet("{reportId}/ai-recommendations")]
+    //[ProducesResponseType(typeof(Result<EmergencyPlanRecommendation>), StatusCodes.Status200OK)]
+    //[ProducesResponseType(StatusCodes.Status404NotFound)]
+    //[ProducesResponseType(StatusCodes.Status400BadRequest)]
+    //[ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    //public async Task<IActionResult> GetAIRecommendations(Guid reportId)
+    //{
+    //    try
+    //    {
+    //        var query = new GetAIRecommendationsQuery { ReportId = reportId };
+    //        var result = await _mediator.Send(query);
+
+    //        if (!result.Succeeded)
+    //        {
+    //            if (result.Message == "NotFound")
+    //            {
+    //                return NotFound(result);
+    //            }
+    //            else if (result.Message == "ConfigurationError")
+    //            {
+    //                return StatusCode(503, result);
+    //            }
+                
+    //            return BadRequest(result);
+    //        }
+
+    //        return Ok(result);
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        _logger.LogError(ex, "Error occurred while getting AI recommendations for report {ReportId}", reportId);
+    //        return StatusCode(500, new { message = "An error occurred while processing your request" });
+    //    }
+    //}
+
+    /// <summary>
+    /// Get contextual AI suggestions that analyze the existing plan and suggest specific improvements
+    /// This provides incremental, apply-able suggestions rather than a complete plan
+    /// </summary>
+    /// <param name="reportId">The emergency report ID</param>
+    /// <param name="plotCultivationId">The plot cultivation ID with existing tasks</param>
+    /// <returns>Contextual AI suggestions with individual apply actions</returns>
+    [HttpGet("{reportId}/contextual-suggestions")]
+    [ProducesResponseType(typeof(Result<ContextualPlanSuggestions>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> GetContextualAISuggestions(
+        Guid reportId, 
+        [FromQuery] Guid plotCultivationId)
+    {
+        try
+        {
+            var query = new GetContextualAISuggestionsQuery 
+            { 
+                ReportId = reportId,
+                PlotCultivationId = plotCultivationId
+            };
+            
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                if (result.Message == "NotFound")
+                {
+                    return NotFound(result);
+                }
+                else if (result.Message == "ConfigurationError")
+                {
+                    return StatusCode(503, result);
+                }
+                
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while getting contextual AI suggestions for report {ReportId}", reportId);
+            return StatusCode(500, new { message = "An error occurred while processing your request" });
+        }
+    }
 }
+
 
