@@ -127,6 +127,12 @@ public static class DependencyInjection
         builder.Services.AddScoped<IRicePestDetectionService, RicePestDetectionService>();
         builder.Services.AddScoped<IAiReportService, AiReportService>();
         builder.Services.AddScoped<IGeminiRecommendationService, GeminiRecommendationService>();
+        
+        // Register Gemini AI service for emergency plan recommendations
+        //builder.Services.AddScoped<IGeminiAIService, GeminiAIService>();
+        
+        // Register Contextual Gemini AI service for incremental suggestions
+        builder.Services.AddScoped<IContextualAIService, ContextualGeminiAIService>();
 
         // Register PostGIS spatial group formation service
         builder.Services.AddScoped<IPostGISGroupFormationService, Services.PostGISGroupFormationService>();
