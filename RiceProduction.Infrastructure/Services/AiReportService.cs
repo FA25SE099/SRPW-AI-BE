@@ -29,7 +29,7 @@ public class AiReportService : IAiReportService
         _configuration = configuration;
         _logger = logger;
 
-        _apiKey = (_configuration["Gemini:ApiKey"] ?? "").Trim();
+        _apiKey = (_configuration["Gemini:ApiKey"] ?? _configuration["GeminiAI:ApiKey"] ?? "").Trim();
         _baseUrl = (_configuration["Gemini:BaseUrl"] ?? "https://generativelanguage.googleapis.com/v1beta").Trim();
         _model = (_configuration["Gemini:Model"] ?? "gemini-2.5-flash").Trim();
     }

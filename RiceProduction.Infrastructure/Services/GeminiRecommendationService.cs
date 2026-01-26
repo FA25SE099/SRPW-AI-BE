@@ -42,8 +42,8 @@ public class GeminiRecommendationService : IGeminiRecommendationService
         _logger = logger;
         _context = context;
 
-        // Load configuration with trimming
-        _apiKey = (_configuration["Gemini:ApiKey"] ?? throw new InvalidOperationException("Gemini API Key not configured")).Trim();
+        // Load configuration with fallback to GeminiAI for team compatibility
+        _apiKey = (_configuration["Gemini:ApiKey"] ?? _configuration["GeminiAI:ApiKey"] ?? throw new InvalidOperationException("Gemini API Key not configured")).Trim();
         _baseUrl = (_configuration["Gemini:BaseUrl"] ?? "https://generativelanguage.googleapis.com/v1beta").Trim();
         _model = (_configuration["Gemini:Model"] ?? "gemini-2.5-flash").Trim();
         _temperature = double.Parse(_configuration["Gemini:Temperature"] ?? "0.7");
