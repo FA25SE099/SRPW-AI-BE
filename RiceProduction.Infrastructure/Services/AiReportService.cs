@@ -64,7 +64,8 @@ KẾ HOẠCH HIỆN TẠI (NẾU CÓ):
 YÊU CẦU:
 1. Đề xuất các Task cần thiết để xử lý vấn đề trong báo cáo hoặc cải thiện kế hoạch.
 2. Với mỗi Task, cung cấp: 'TaskName' (tên ngắn gọn), 'Description' (mô tả chi tiết các bước), và 'Reason' (lý do cần làm).
-3. ĐỊNH DẠNG TRẢ VỀ: Chỉ trả về JSON duy nhất theo cấu trúc sau, không chào hỏi:
+3. QUAN TRỌNG: KHÔNG sử dụng các định dạng Markdown như bôi đậm (**), in nghiêng, hoặc tiêu đề (#). Chỉ trả về văn bản thuần túy.
+4. ĐỊNH DẠNG TRẢ VỀ: Chỉ trả về JSON duy nhất theo cấu trúc sau, không chào hỏi:
 {{
   ""Suggestions"": [
     {{

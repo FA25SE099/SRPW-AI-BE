@@ -192,11 +192,11 @@ public class GeminiRecommendationService : IGeminiRecommendationService
 
         sb.AppendLine("Bạn là một chuyên gia nông nghiệp chuyên về trồng lúa và phòng trừ sâu bệnh.");
         sb.AppendLine("Hãy phân tích kết quả phát hiện sâu bệnh và đưa ra khuyến nghị xử lý.");
-        sb.AppendLine("YÊU CẦU QUAN TRỌNG: Không chào hỏi, không kết bài rườm rà. Hãy đi thẳng vào các mục sau:");
+        sb.AppendLine("YÊU CẦU QUAN TRỌNG: Không chào hỏi, không kết bài rườm rà. KHÔNG sử dụng dấu sao (**) để bôi đậm, KHÔNG sử dụng các thanh phân cách (===). Hãy trình bày văn bản thuần túy theo các mục sau:");
         sb.AppendLine();
 
         // Detected pests
-        sb.AppendLine("=== KẾT QUẢ PHÁT HIỆN SÂU BỆNH ===");
+        sb.AppendLine("DANH SÁCH SÂU BỆNH PHÁT HIỆN:");
         foreach (var pest in request.DetectedPests)
         {
             sb.AppendLine($"- {pest.PestName}: {pest.Confidence:F2}% ({pest.ConfidenceLevel}), Số lượng: {pest.DetectionCount}");
@@ -205,14 +205,14 @@ public class GeminiRecommendationService : IGeminiRecommendationService
 
         if (request.FarmContext != null)
         {
-            sb.AppendLine("=== THÔNG TIN RUỘNG LÚA ===");
+            sb.AppendLine("THÔNG TIN RUỘNG LÚA:");
             if (!string.IsNullOrEmpty(request.FarmContext.Location)) sb.AppendLine($"- Vị trí: {request.FarmContext.Location}");
             if (request.FarmContext.FieldArea.HasValue) sb.AppendLine($"- Diện tích: {request.FarmContext.FieldArea} ha");
             if (!string.IsNullOrEmpty(request.FarmContext.Notes)) sb.AppendLine($"- Ghi chú: {request.FarmContext.Notes}");
             sb.AppendLine();
         }
 
-        sb.AppendLine("=== CẤU TRÚC PHẢN HỒI (BẮT BUỘC) ===");
+        sb.AppendLine("CẤU TRÚC PHẢN HỒI (BẮT BUỘC):");
         sb.AppendLine("1. ĐÁNH GIÁ TÌNH HÌNH: (Phân tích mức độ nghiêm trọng)");
         sb.AppendLine("2. KHUYẾN NGHỊ XỬ LÝ: (Các bước cụ thể, thuốc khuyên dùng, liều lượng)");
         sb.AppendLine("3. BIỆN PHÁP PHÒNG NGỪA: (Cách tránh tái phát)");
