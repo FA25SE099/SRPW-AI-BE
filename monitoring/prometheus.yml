@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'riceproduction'
+    environment: 'production'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:5000']
+        labels:
+          application: 'prometheus'
+
+  - job_name: 'riceproduction-api'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['riceproduction-api:5000']
+        labels:
+          application: 'riceproduction-api'
+          environment: 'production'
