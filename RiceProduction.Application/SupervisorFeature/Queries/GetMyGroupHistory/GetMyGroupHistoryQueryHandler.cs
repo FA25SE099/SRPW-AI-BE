@@ -1,12 +1,13 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupHistory;
 
-public class GetMyGroupHistoryQueryHandler 
+public class GetMyGroupHistoryQueryHandler
     : IRequestHandler<GetMyGroupHistoryQuery, Result<List<GroupHistorySummary>>>
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -21,7 +22,7 @@ public class GetMyGroupHistoryQueryHandler
     }
 
     public async Task<Result<List<GroupHistorySummary>>> Handle(
-        GetMyGroupHistoryQuery request, 
+        GetMyGroupHistoryQuery request,
         CancellationToken cancellationToken)
     {
         try
@@ -35,46 +36,50 @@ public class GetMyGroupHistoryQueryHandler
                 return Result<List<GroupHistorySummary>>.Failure("Supervisor not found");
             }
 
-            var allSeasons = await _unitOfWork.Repository<Season>()
-                .ListAsync(_ => true);
+            var allSeasons = (await _unitOfWork.Repository<Season>()
+                .ListAsync(_ => true)).ToList();
+            var seasonDict = allSeasons.ToDictionary(s => s.Id);
 
             Season? currentSeason = null;
             if (!request.IncludeCurrentSeason)
             {
-                currentSeason = await GetCurrentSeasonAsync();
+                var today = DateTime.Now;
+                currentSeason = allSeasons.FirstOrDefault(s =>
+                    SeasonDateHelper.IsDateInSeasonRange(today.Month, today.Day, s.StartDate, s.EndDate));
             }
 
-            var groups = await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.SupervisorId == request.SupervisorId);
-
-            var groupsList = groups.ToList();
+            var groupsList = (await _unitOfWork.Repository<Group>()
+                .ListAsync(g => g.SupervisorId == request.SupervisorId)).ToList();
 
             if (!request.IncludeCurrentSeason && currentSeason != null)
             {
-                groupsList = groupsList.Where(g => g.YearSeason?.SeasonId != currentSeason.Id).ToList();
+                groupsList = groupsList
+                    .Where(g => g.YearSeason?.SeasonId != currentSeason.Id)
+                    .ToList();
             }
 
             var history = new List<GroupHistorySummary>();
 
             foreach (var group in groupsList)
             {
-                var season = allSeasons.FirstOrDefault(s => s.Id == group.YearSeason?.SeasonId);
-                if (season == null) continue;
+                if (group.YearSeason?.SeasonId is not { } seasonId ||
+                    !seasonDict.TryGetValue(seasonId, out var season))
+                {
+                    continue;
+                }
 
                 var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken);
-
                 var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
                     .ListAsync(pp => pp.GroupId == group.Id);
 
                 RiceVariety? riceVariety = null;
-                if (group.YearSeason?.RiceVarietyId != null)
+                if (group.YearSeason.RiceVarietyId != null)
                 {
                     riceVariety = await _unitOfWork.Repository<RiceVariety>()
                         .FindAsync(rv => rv.Id == group.YearSeason.RiceVarietyId);
                 }
 
-                Cluster? cluster = null;
-                cluster = await _unitOfWork.Repository<Cluster>()
+                var cluster = await _unitOfWork.Repository<Cluster>()
                     .FindAsync(c => c.Id == group.ClusterId);
 
                 history.Add(new GroupHistorySummary
@@ -112,79 +117,25 @@ public class GetMyGroupHistoryQueryHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Error getting group history for supervisor {SupervisorId}", 
+            _logger.LogError(ex,
+                "Error getting group history for supervisor {SupervisorId}",
                 request.SupervisorId);
             return Result<List<GroupHistorySummary>>.Failure(
                 $"Error retrieving group history: {ex.Message}");
         }
     }
 
-    private async Task<Season?> GetCurrentSeasonAsync()
+    private static DateTime ParseSeasonStartDate(string startDateStr)
     {
-        var today = DateTime.Now;
-        var currentMonth = today.Month;
-        var currentDay = today.Day;
-        
-        var allSeasons = await _unitOfWork.Repository<Season>()
-            .ListAsync(_ => true);
-        
-        foreach (var season in allSeasons)
+        if (!SeasonDateHelper.TryParseMonthDay(startDateStr, out var month, out var day))
         {
-            if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
-            {
-                return season;
-            }
+            return DateTime.MinValue;
         }
-        
-        return null;
-    }
 
-    private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
-    {
         try
         {
-            var startParts = startDateStr.Split('/');
-            var endParts = endDateStr.Split('/');
-            
-            int startMonth = int.Parse(startParts[0]);
-            int startDay = int.Parse(startParts[1]);
-            int endMonth = int.Parse(endParts[0]);
-            int endDay = int.Parse(endParts[1]);
-            
-            int currentDate = month * 100 + day;
-            int seasonStart = startMonth * 100 + startDay;
-            int seasonEnd = endMonth * 100 + endDay;
-            
-            if (seasonStart > seasonEnd)
-            {
-                return currentDate >= seasonStart || currentDate <= seasonEnd;
-            }
-            else
-            {
-                return currentDate >= seasonStart && currentDate <= seasonEnd;
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private DateTime ParseSeasonStartDate(string startDateStr)
-    {
-        try
-        {
-            var parts = startDateStr.Split('/');
-            int month = int.Parse(parts[0]);
-            int day = int.Parse(parts[1]);
-            int year = DateTime.Now.Year;
-            
-            if (month > 6)
-            {
-                year = DateTime.Now.Year - 1;
-            }
-            
+            var currentYear = DateTime.Now.Year;
+            var year = month > 6 ? currentYear - 1 : currentYear;
             return new DateTime(year, month, day);
         }
         catch

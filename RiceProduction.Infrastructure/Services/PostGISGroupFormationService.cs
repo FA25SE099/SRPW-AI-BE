@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Data;
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Infrastructure.Data;
@@ -7,23 +9,7 @@ namespace RiceProduction.Infrastructure.Services;
 
 public class PostGISGroupFormationService : IPostGISGroupFormationService
 {
-    private readonly ApplicationDbContext _context;
-
-    public PostGISGroupFormationService(ApplicationDbContext context)
-    {
-        _context = context;
-    }
-
-    /// <summary>
-    /// Form groups using PostGIS spatial clustering with coherence checks
-    /// </summary>
-    public async Task<PostGISGroupFormationResult> FormGroupsAsync(
-        PostGISGroupingParameters parameters,
-        Guid? clusterId = null,
-        Guid? seasonId = null,
-        CancellationToken cancellationToken = default)
-    {
-        var sql = @"
+    private const string FormGroupsSql = @"
 WITH plot_data AS (
     SELECT
         p.""Id"" AS plot_id,
@@ -226,13 +212,28 @@ FROM ungrouped_plots
 ORDER BY result_type DESC, group_number NULLS LAST, plot_id;
 ";
 
+    private readonly ApplicationDbContext _context;
+
+    public PostGISGroupFormationService(ApplicationDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <summary>
+    /// Form groups using PostGIS spatial clustering with coherence checks
+    /// </summary>
+    public async Task<PostGISGroupFormationResult> FormGroupsAsync(
+        PostGISGroupingParameters parameters,
+        Guid? clusterId = null,
+        Guid? seasonId = null,
+        CancellationToken cancellationToken = default)
+    {
         var connection = _context.Database.GetDbConnection();
         await using var command = connection.CreateCommand();
-        command.CommandText = sql;
+        command.CommandText = FormGroupsSql;
 
-        // Add parameters
-        AddParameter(command, "@ClusterId", clusterId.HasValue ? clusterId.Value : DBNull.Value);
-        AddParameter(command, "@SeasonId", seasonId.HasValue ? seasonId.Value : DBNull.Value);
+        AddParameter(command, "@ClusterId", (object?)clusterId ?? DBNull.Value);
+        AddParameter(command, "@SeasonId", (object?)seasonId ?? DBNull.Value);
         AddParameter(command, "@ProximityThreshold", parameters.ProximityThreshold);
         AddParameter(command, "@PlantingDateTolerance", parameters.PlantingDateTolerance);
         AddParameter(command, "@MinGroupArea", parameters.MinGroupArea);
@@ -241,7 +242,7 @@ ORDER BY result_type DESC, group_number NULLS LAST, plot_id;
         AddParameter(command, "@MaxPlotsPerGroup", parameters.MaxPlotsPerGroup);
         AddParameter(command, "@BorderBuffer", parameters.BorderBuffer);
 
-        if (connection.State != System.Data.ConnectionState.Open)
+        if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken);
 
         var result = new PostGISGroupFormationResult();
@@ -253,44 +254,46 @@ ORDER BY result_type DESC, group_number NULLS LAST, plot_id;
 
             if (resultType == "GROUPED")
             {
-                var group = new PostGISProposedGroup
-                {
-                    GroupNumber = reader.GetInt32(1),
-                    RiceVarietyId = reader.GetGuid(2),
-                    PlotCount = reader.GetInt32(3),
-                    TotalArea = reader.GetDecimal(4),
-                    PlantingWindowStart = reader.GetDateTime(5),
-                    PlantingWindowEnd = reader.GetDateTime(6),
-                    MedianPlantingDate = reader.GetDateTime(7),
-                    PlotIds = ParseGuidArray(reader.GetValue(8)),
-                    CultivationIds = ParseGuidArray(reader.GetValue(9)),
-                    GroupBoundary = reader.IsDBNull(10) ? null : reader.GetFieldValue<Polygon>(10),
-                    GroupCentroid = reader.IsDBNull(11) ? null : reader.GetFieldValue<Point>(11)
-                };
-                result.Groups.Add(group);
+                result.Groups.Add(MapProposedGroup(reader));
             }
-            else // UNGROUPED
+            else
             {
-                var ungrouped = new PostGISUngroupedPlotInfo
-                {
-                    PlotId = reader.GetGuid(12),
-                    CultivationId = reader.GetGuid(13),
-                    RiceVarietyId = reader.GetGuid(2),
-                    PlantingDate = reader.GetDateTime(14),
-                    Centroid = reader.IsDBNull(15) ? null : reader.GetFieldValue<Point>(15),
-                    Area = reader.GetDecimal(16),
-                    UngroupedReason = reader.GetString(17),
-                    NearestGroupNumber = reader.IsDBNull(18) ? null : reader.GetInt32(18),
-                    DistanceToNearestGroup = reader.IsDBNull(19) ? null : reader.GetDouble(19)
-                };
-                result.UngroupedPlots.Add(ungrouped);
+                result.UngroupedPlots.Add(MapUngroupedPlot(reader));
             }
         }
 
         return result;
     }
 
-    private void AddParameter(System.Data.Common.DbCommand command, string name, object value)
+    private static PostGISProposedGroup MapProposedGroup(DbDataReader reader) => new()
+    {
+        GroupNumber = reader.GetInt32(1),
+        RiceVarietyId = reader.GetGuid(2),
+        PlotCount = reader.GetInt32(3),
+        TotalArea = reader.GetDecimal(4),
+        PlantingWindowStart = reader.GetDateTime(5),
+        PlantingWindowEnd = reader.GetDateTime(6),
+        MedianPlantingDate = reader.GetDateTime(7),
+        PlotIds = ParseGuidArray(reader.GetValue(8)),
+        CultivationIds = ParseGuidArray(reader.GetValue(9)),
+        GroupBoundary = reader.IsDBNull(10) ? null : reader.GetFieldValue<Polygon>(10),
+        GroupCentroid = reader.IsDBNull(11) ? null : reader.GetFieldValue<Point>(11)
+    };
+
+    private static PostGISUngroupedPlotInfo MapUngroupedPlot(DbDataReader reader) => new()
+    {
+        PlotId = reader.GetGuid(12),
+        CultivationId = reader.GetGuid(13),
+        RiceVarietyId = reader.GetGuid(2),
+        PlantingDate = reader.GetDateTime(14),
+        Centroid = reader.IsDBNull(15) ? null : reader.GetFieldValue<Point>(15),
+        Area = reader.GetDecimal(16),
+        UngroupedReason = reader.GetString(17),
+        NearestGroupNumber = reader.IsDBNull(18) ? null : reader.GetInt32(18),
+        DistanceToNearestGroup = reader.IsDBNull(19) ? null : reader.GetDouble(19)
+    };
+
+    private static void AddParameter(DbCommand command, string name, object value)
     {
         var parameter = command.CreateParameter();
         parameter.ParameterName = name;
@@ -298,19 +301,11 @@ ORDER BY result_type DESC, group_number NULLS LAST, plot_id;
         command.Parameters.Add(parameter);
     }
 
-    private List<Guid> ParseGuidArray(object value)
+    private static List<Guid> ParseGuidArray(object value) => value switch
     {
-        if (value == null || value is DBNull)
-            return new List<Guid>();
-
-        // PostgreSQL returns arrays as object[]
-        if (value is Guid[] guidArray)
-            return guidArray.ToList();
-
-        if (value is object[] objArray)
-            return objArray.Cast<Guid>().ToList();
-
-        return new List<Guid>();
-    }
+        Guid[] guidArray => guidArray.ToList(),
+        object[] objArray => objArray.Cast<Guid>().ToList(),
+        _ => new List<Guid>()
+    };
 }
 

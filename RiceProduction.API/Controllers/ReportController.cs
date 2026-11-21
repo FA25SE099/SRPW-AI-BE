@@ -1,13 +1,15 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ReportResponses;
+using RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport;
 using RiceProduction.Application.ReportFeature.Command;
-using RiceProduction.Application.ReportFeature.Queries.GetAIRecommendations;
-using RiceProduction.Application.ReportFeature.Queries.GetContextualAISuggestions;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
+using RiceProduction.Application.ReportFeature.Queries.GetContextualAISuggestions;
+using RiceProduction.Application.ReportFeature.Queries.GetMyReports;
 using RiceProduction.Application.ReportFeature.Queries.GetReportById;
 using RiceProduction.Application.ReportFeature.Queries.GetReportWithEmergencyMaterials;
 
@@ -51,14 +53,7 @@ public class ReportController : ControllerBase
                 ReportType = reportType
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
@@ -86,7 +81,7 @@ public class ReportController : ControllerBase
                 return Unauthorized(new { message = "User not authenticated" });
             }
 
-            var query = new RiceProduction.Application.ReportFeature.Queries.GetMyReports.GetMyReportsQuery
+            var query = new GetMyReportsQuery
             {
                 UserId = _currentUser.Id.Value,
                 CurrentPage = currentPage,
@@ -97,14 +92,7 @@ public class ReportController : ControllerBase
                 ReportType = reportType
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
@@ -124,12 +112,7 @@ public class ReportController : ControllerBase
             var query = new GetReportByIdQuery { ReportId = reportId };
             var result = await _mediator.Send(query);
 
-            if (!result.Succeeded)
-            {
-                return NotFound(result);
-            }
-
-            return Ok(result);
+            return result.Succeeded ? Ok(result) : NotFound(result);
         }
         catch (Exception ex)
         {
@@ -143,7 +126,7 @@ public class ReportController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> CreateReport([FromForm] RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport.CreateEmergencyReportCommand command)
+    public async Task<IActionResult> CreateReport([FromForm] CreateEmergencyReportCommand command)
     {
         try
         {
@@ -151,14 +134,7 @@ public class ReportController : ControllerBase
                 "Create report request: Type={AlertType}, Title={Title}, Severity={Severity}",
                 command.AlertType, command.Title, command.Severity);
 
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(command));
         }
         catch (Exception ex)
         {
@@ -182,14 +158,7 @@ public class ReportController : ControllerBase
 
             command.ExpertId = _currentUser.Id;
 
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(command));
         }
         catch (Exception ex)
         {
@@ -209,12 +178,7 @@ public class ReportController : ControllerBase
             var query = new GetReportWithEmergencyMaterialsQuery { ReportId = reportId };
             var result = await _mediator.Send(query);
 
-            if (!result.Succeeded)
-            {
-                return NotFound(result);
-            }
-
-            return Ok(result);
+            return result.Succeeded ? Ok(result) : NotFound(result);
         }
         catch (Exception ex)
         {
@@ -222,47 +186,6 @@ public class ReportController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-
-    /// <summary>
-    /// Get AI-generated recommendations for emergency plan creation
-    /// Uses Google Gemini AI to analyze the emergency report and suggest tasks and materials
-    /// </summary>
-    /// <param name="reportId">The emergency report ID</param>
-    /// <returns>AI-generated emergency plan recommendations with tasks and materials</returns>
-    //[HttpGet("{reportId}/ai-recommendations")]
-    //[ProducesResponseType(typeof(Result<EmergencyPlanRecommendation>), StatusCodes.Status200OK)]
-    //[ProducesResponseType(StatusCodes.Status404NotFound)]
-    //[ProducesResponseType(StatusCodes.Status400BadRequest)]
-    //[ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
-    //public async Task<IActionResult> GetAIRecommendations(Guid reportId)
-    //{
-    //    try
-    //    {
-    //        var query = new GetAIRecommendationsQuery { ReportId = reportId };
-    //        var result = await _mediator.Send(query);
-
-    //        if (!result.Succeeded)
-    //        {
-    //            if (result.Message == "NotFound")
-    //            {
-    //                return NotFound(result);
-    //            }
-    //            else if (result.Message == "ConfigurationError")
-    //            {
-    //                return StatusCode(503, result);
-    //            }
-                
-    //            return BadRequest(result);
-    //        }
-
-    //        return Ok(result);
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        _logger.LogError(ex, "Error occurred while getting AI recommendations for report {ReportId}", reportId);
-    //        return StatusCode(500, new { message = "An error occurred while processing your request" });
-    //    }
-    //}
 
     /// <summary>
     /// Get contextual AI suggestions that analyze the existing plan and suggest specific improvements
@@ -277,31 +200,27 @@ public class ReportController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetContextualAISuggestions(
-        Guid reportId, 
+        Guid reportId,
         [FromQuery] Guid plotCultivationId)
     {
         try
         {
-            var query = new GetContextualAISuggestionsQuery 
-            { 
+            var query = new GetContextualAISuggestionsQuery
+            {
                 ReportId = reportId,
                 PlotCultivationId = plotCultivationId
             };
-            
+
             var result = await _mediator.Send(query);
 
             if (!result.Succeeded)
             {
-                if (result.Message == "NotFound")
+                return result.Message switch
                 {
-                    return NotFound(result);
-                }
-                else if (result.Message == "ConfigurationError")
-                {
-                    return StatusCode(503, result);
-                }
-                
-                return BadRequest(result);
+                    "NotFound" => NotFound(result),
+                    "ConfigurationError" => StatusCode(503, result),
+                    _ => BadRequest(result)
+                };
             }
 
             return Ok(result);

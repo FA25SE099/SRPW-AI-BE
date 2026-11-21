@@ -39,30 +39,24 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
             _logger.LogInformation("Starting PostGIS-based group formation for cluster {ClusterId}, season {SeasonId}, year {Year}",
                 request.ClusterId, request.SeasonId, request.Year);
 
-            // Verify cluster exists
             var cluster = await _unitOfWork.Repository<Cluster>()
                 .FindAsync(c => c.Id == request.ClusterId);
-
             if (cluster == null)
             {
                 return Result<FormGroupsResponse>.Failure($"Cluster {request.ClusterId} not found");
             }
 
-            // Verify season exists
             var season = await _unitOfWork.Repository<Season>()
                 .FindAsync(s => s.Id == request.SeasonId);
-
             if (season == null)
             {
                 return Result<FormGroupsResponse>.Failure($"Season {request.SeasonId} not found");
             }
 
-            // Get or verify YearSeason exists
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .FindAsync(ys => ys.ClusterId == request.ClusterId && 
-                                ys.SeasonId == request.SeasonId && 
+                .FindAsync(ys => ys.ClusterId == request.ClusterId &&
+                                ys.SeasonId == request.SeasonId &&
                                 ys.Year == request.Year);
-
             if (yearSeason == null)
             {
                 return Result<FormGroupsResponse>.Failure(
@@ -70,11 +64,11 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                     "Please create a YearSeason first.");
             }
 
-            // Check if groups already exist for this cluster/season/year
-            var existingGroups = await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.ClusterId == request.ClusterId &&
-                               g.YearSeasonId == yearSeason.Id &&
-                               g.Year == request.Year);
+            var groupRepo = _unitOfWork.Repository<Group>();
+            var existingGroups = await groupRepo.ListAsync(g =>
+                g.ClusterId == request.ClusterId &&
+                g.YearSeasonId == yearSeason.Id &&
+                g.Year == request.Year);
 
             if (existingGroups.Any())
             {
@@ -83,26 +77,14 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                     "Please disband existing groups before forming new ones.");
             }
 
-            // Build grouping parameters
-            var parameters = new PostGISGroupingParameters
-            {
-                ProximityThreshold = request.ProximityThreshold ?? 100, // 100m default
-                PlantingDateTolerance = request.PlantingDateTolerance ?? 2,
-                MinGroupArea = request.MinGroupArea ?? 5.0m,
-                MaxGroupArea = request.MaxGroupArea ?? 50.0m,
-                MinPlotsPerGroup = request.MinPlotsPerGroup ?? 3,
-                MaxPlotsPerGroup = request.MaxPlotsPerGroup ?? 10,
-                BorderBuffer = 10
-            };
-
+            var parameters = BuildGroupingParameters(request);
             _logger.LogInformation("Using PostGIS spatial clustering with parameters: Proximity={Proximity}m, DateTolerance={DateTolerance}days",
                 parameters.ProximityThreshold, parameters.PlantingDateTolerance);
 
-            // Run PostGIS-based grouping algorithm with cluster and season filters
             var groupingResult = await _postGISService.FormGroupsAsync(
-                parameters, 
-                request.ClusterId, 
-                request.SeasonId, 
+                parameters,
+                request.ClusterId,
+                request.SeasonId,
                 cancellationToken);
 
             if (!groupingResult.Groups.Any())
@@ -115,28 +97,17 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
             _logger.LogInformation("PostGIS clustering completed: {GroupCount} groups formed, {UngroupedCount} plots ungrouped",
                 groupingResult.Groups.Count, groupingResult.UngroupedPlots.Count);
 
-            // Get rice varieties for the groups
             var varietyIds = groupingResult.Groups.Select(g => g.RiceVarietyId).Distinct().ToList();
             var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
                 .ListAsync(rv => varietyIds.Contains(rv.Id));
             var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
 
-            // Get supervisors if auto-assign
-            List<Supervisor> availableSupervisors = new();
-            if (request.AutoAssignSupervisors)
-            {
-                var supervisors = await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => s.IsActive);
-                availableSupervisors = supervisors
-                    .Where(s => s.CurrentFarmerCount < s.MaxFarmerCapacity)
-                    .OrderBy(s => s.CurrentFarmerCount)
-                    .ToList();
-            }
+            var availableSupervisors = await GetAvailableSupervisorsAsync(request.AutoAssignSupervisors);
 
-            // Create groups from PostGIS results
+            var groupPlotRepo = _unitOfWork.Repository<GroupPlot>();
             var createdGroups = new List<Group>();
             var warnings = new List<string>();
-            int supervisorIndex = 0;
+            var supervisorIndex = 0;
 
             foreach (var proposedGroup in groupingResult.Groups)
             {
@@ -152,56 +123,40 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                     IsException = false
                 };
 
-                // Assign supervisor
-                if (request.AutoAssignSupervisors && availableSupervisors.Any())
+                if (request.AutoAssignSupervisors)
                 {
-                    var supervisor = availableSupervisors[supervisorIndex % availableSupervisors.Count];
-                    group.SupervisorId = supervisor.Id;
-                    supervisorIndex++;
-                }
-                else if (request.AutoAssignSupervisors)
-                {
-                    warnings.Add($"Group with {proposedGroup.PlotCount} plots created without supervisor - no supervisors available");
+                    if (availableSupervisors.Any())
+                    {
+                        var supervisor = availableSupervisors[supervisorIndex % availableSupervisors.Count];
+                        group.SupervisorId = supervisor.Id;
+                        supervisorIndex++;
+                    }
+                    else
+                    {
+                        warnings.Add($"Group with {proposedGroup.PlotCount} plots created without supervisor - no supervisors available");
+                    }
                 }
 
-                // Add group
-                await _unitOfWork.Repository<Group>().AddAsync(group);
+                await groupRepo.AddAsync(group);
                 createdGroups.Add(group);
 
-                // Assign plots to group using many-to-many relationship
                 foreach (var plotId in proposedGroup.PlotIds)
                 {
-                    var groupPlot = new GroupPlot
+                    await groupPlotRepo.AddAsync(new GroupPlot
                     {
                         GroupId = group.Id,
                         PlotId = plotId
-                    };
-                    await _unitOfWork.Repository<GroupPlot>().AddAsync(groupPlot);
+                    });
                 }
             }
 
-            // Save all changes
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Created {GroupCount} groups for cluster {ClusterId}, season {SeasonId}, year {Year}",
                 createdGroups.Count, request.ClusterId, request.SeasonId, request.Year);
 
-            // Build response
-            var supervisorIds = createdGroups
-                .Where(g => g.SupervisorId.HasValue)
-                .Select(g => g.SupervisorId!.Value)
-                .Distinct()
-                .ToList();
-
-            var supervisorsForResponse = new Dictionary<Guid, string>();
-            if (supervisorIds.Any())
-            {
-                var supervisorsList = await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => supervisorIds.Contains(s.Id));
-                supervisorsForResponse = supervisorsList.ToDictionary(s => s.Id, s => s.FullName ?? string.Empty);
-            }
-
+            var supervisorsForResponse = await GetSupervisorNamesAsync(createdGroups);
             var totalPlotsGrouped = createdGroups.Sum(g => g.GroupPlots.Count);
 
             var response = new FormGroupsResponse
@@ -215,13 +170,15 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                 Groups = createdGroups.Select(g =>
                 {
                     var proposedGroup = groupingResult.Groups.First(pg => pg.PlotIds.SequenceEqual(g.GroupPlots.Select(gp => gp.PlotId)));
+                    var riceVarietyName = g.YearSeason?.RiceVarietyId is Guid varietyId
+                        ? varietyDict.GetValueOrDefault(varietyId)?.VarietyName ?? "Unknown"
+                        : "Not Set";
+
                     return new CreatedGroupDto
                     {
                         GroupId = g.Id,
                         RiceVarietyId = (Guid)(g.YearSeason?.RiceVarietyId),
-                        RiceVarietyName = g.YearSeason?.RiceVarietyId != null && g.YearSeason.RiceVarietyId.HasValue 
-                            ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName ?? "Unknown" 
-                            : "Not Set",
+                        RiceVarietyName = riceVarietyName,
                         SupervisorId = g.SupervisorId,
                         SupervisorName = g.SupervisorId.HasValue ? supervisorsForResponse.GetValueOrDefault(g.SupervisorId.Value) : null,
                         PlantingDate = g.PlantingDate!.Value,
@@ -238,7 +195,6 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                 Warnings = warnings
             };
 
-            // Add detailed ungrouped plot information
             if (groupingResult.UngroupedPlots.Any())
             {
                 var ungroupedSummary = groupingResult.UngroupedPlots
@@ -246,10 +202,9 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                     .Select(g => $"{g.Key}: {g.Count()} plots")
                     .ToList();
 
-                response.Warnings.Add($"{groupingResult.UngroupedPlots.Count} plots could not be grouped: {string.Join(", ", ungroupedSummary)}");
-
-                _logger.LogWarning("Ungrouped plots breakdown: {UngroupedBreakdown}",
-                    string.Join(", ", ungroupedSummary));
+                var summaryText = string.Join(", ", ungroupedSummary);
+                response.Warnings.Add($"{groupingResult.UngroupedPlots.Count} plots could not be grouped: {summaryText}");
+                _logger.LogWarning("Ungrouped plots breakdown: {UngroupedBreakdown}", summaryText);
             }
 
             return Result<FormGroupsResponse>.Success(
@@ -261,6 +216,50 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
             _logger.LogError(ex, "Error forming groups for cluster {ClusterId} using PostGIS", request.ClusterId);
             return Result<FormGroupsResponse>.Failure($"Error forming groups: {ex.Message}");
         }
+    }
+
+    private static PostGISGroupingParameters BuildGroupingParameters(FormGroupsCommand request) =>
+        new()
+        {
+            ProximityThreshold = request.ProximityThreshold ?? 100, // 100m default
+            PlantingDateTolerance = request.PlantingDateTolerance ?? 2,
+            MinGroupArea = request.MinGroupArea ?? 5.0m,
+            MaxGroupArea = request.MaxGroupArea ?? 50.0m,
+            MinPlotsPerGroup = request.MinPlotsPerGroup ?? 3,
+            MaxPlotsPerGroup = request.MaxPlotsPerGroup ?? 10,
+            BorderBuffer = 10
+        };
+
+    private async Task<List<Supervisor>> GetAvailableSupervisorsAsync(bool autoAssignSupervisors)
+    {
+        if (!autoAssignSupervisors)
+        {
+            return new List<Supervisor>();
+        }
+
+        var supervisors = await _unitOfWork.SupervisorRepository.ListAsync(s => s.IsActive);
+        return supervisors
+            .Where(s => s.CurrentFarmerCount < s.MaxFarmerCapacity)
+            .OrderBy(s => s.CurrentFarmerCount)
+            .ToList();
+    }
+
+    private async Task<Dictionary<Guid, string>> GetSupervisorNamesAsync(List<Group> createdGroups)
+    {
+        var supervisorIds = createdGroups
+            .Where(g => g.SupervisorId.HasValue)
+            .Select(g => g.SupervisorId!.Value)
+            .Distinct()
+            .ToList();
+
+        if (!supervisorIds.Any())
+        {
+            return new Dictionary<Guid, string>();
+        }
+
+        var supervisorsList = await _unitOfWork.SupervisorRepository
+            .ListAsync(s => supervisorIds.Contains(s.Id));
+        return supervisorsList.ToDictionary(s => s.Id, s => s.FullName ?? string.Empty);
     }
 }
 

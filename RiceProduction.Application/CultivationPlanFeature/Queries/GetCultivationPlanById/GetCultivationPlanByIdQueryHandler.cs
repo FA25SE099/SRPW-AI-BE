@@ -89,103 +89,8 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                     "TasksNotFound");
             }
 
-            // Group tasks by stage and sort by ExecutionOrder (matches GetPlotCultivationByGroupAndPlot)
-            var stagesMap = new Dictionary<Guid, CultivationStageResponse>();
-
-            // Sort by ExecutionOrder within each stage
-            var sortedTasks = tasks
-                .OrderBy(ct => ct.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue)
-                .ThenBy(ct => ct.ExecutionOrder ?? int.MaxValue)
-                .ThenBy(ct => ct.CreatedAt)
-                .ToList();
-
-            foreach (var task in sortedTasks)
-            {
-                // Handle tasks with ProductionPlanTask (regular tasks)
-                if (task.ProductionPlanTask?.ProductionStage != null)
-                {
-                    var stage = task.ProductionPlanTask.ProductionStage;
-
-                    if (!stagesMap.ContainsKey(stage.Id))
-                    {
-                        stagesMap[stage.Id] = new CultivationStageResponse
-                        {
-                            Id = stage.Id,
-                            StageName = stage.StageName,
-                            SequenceOrder = stage.SequenceOrder,
-                            ExpectedDurationDays = stage.TypicalDurationDays,
-                            Tasks = new List<CultivationTaskResponse>()
-                        };
-                    }
-
-                    var taskMaterials = task.CultivationTaskMaterials
-                        .Select(ctm => new CultivationTaskMaterialResponse
-                        {
-                            MaterialId = ctm.MaterialId,
-                            MaterialName = ctm.Material.Name,
-                            QuantityPerHa = ctm.ActualQuantity / (plotCultivation.Area ?? plotCultivation.Plot.Area),
-                            Unit = ctm.Material.Unit
-                        }).ToList();
-
-                    stagesMap[stage.Id].Tasks.Add(new CultivationTaskResponse
-                    {
-                        Id = task.Id,
-                        TaskName = task.CultivationTaskName ?? task.ProductionPlanTask.TaskName,
-                        Description = task.Description ?? task.ProductionPlanTask.Description,
-                        TaskType = task.TaskType?.ToString() ?? task.ProductionPlanTask.TaskType.ToString(),
-                        ScheduledDate = task.ProductionPlanTask.ScheduledDate,
-                        ScheduledEndDate = task.ScheduledEndDate ?? task.ProductionPlanTask.ScheduledEndDate,
-                        ActualEndDate = task.ActualEndDate,
-                        ActualStartDate = task.ActualStartDate,
-                        TaskStatus = task.Status?.ToString() ?? "Approved",
-                        Priority = task.ProductionPlanTask.Priority.ToString(),
-                        SequenceOrder = task.ExecutionOrder ?? task.ProductionPlanTask.SequenceOrder,
-                        Materials = taskMaterials
-                    });
-                }
-                // Handle emergency tasks without ProductionPlanTask
-                else
-                {
-                    var emergencyStageId = Guid.Empty;
-                    
-                    if (!stagesMap.ContainsKey(emergencyStageId))
-                    {
-                        stagesMap[emergencyStageId] = new CultivationStageResponse
-                        {
-                            Id = emergencyStageId,
-                            StageName = "Emergency Tasks",
-                            SequenceOrder = int.MaxValue,
-                            ExpectedDurationDays = null,
-                            Tasks = new List<CultivationTaskResponse>()
-                        };
-                    }
-
-                    var taskMaterials = task.CultivationTaskMaterials
-                        .Select(ctm => new CultivationTaskMaterialResponse
-                        {
-                            MaterialId = ctm.MaterialId,
-                            MaterialName = ctm.Material.Name,
-                            QuantityPerHa = ctm.ActualQuantity / (plotCultivation.Area ?? plotCultivation.Plot.Area),
-                            Unit = ctm.Material.Unit
-                        }).ToList();
-
-                    stagesMap[emergencyStageId].Tasks.Add(new CultivationTaskResponse
-                    {
-                        Id = task.Id,
-                        TaskName = task.CultivationTaskName ?? "Emergency Task",
-                        Description = task.Description,
-                        TaskType = task.TaskType?.ToString() ?? "PestControl",
-                        ScheduledDate = null,
-                        ScheduledEndDate = task.ScheduledEndDate,
-                        ActualEndDate = task.ActualEndDate,
-                        ActualStartDate = task.ActualStartDate,
-                        TaskStatus = task.Status?.ToString() ?? "Emergency",
-                        Priority = "High",
-                        SequenceOrder = task.ExecutionOrder ?? 0,
-                        Materials = taskMaterials
-                    });
-                }
-            }
+            var totalArea = plotCultivation.Area ?? plotCultivation.Plot.Area;
+            var stages = BuildStages(tasks, totalArea);
 
             var response = new CultivationPlanDetailResponse
             {
@@ -196,17 +101,17 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                 RiceVarietyId = plotCultivation.RiceVarietyId,
                 RiceVarietyName = plotCultivation.RiceVariety?.VarietyName ?? "Unknown",
                 BasePlantingDate = plotCultivation.PlantingDate,
-                TotalArea = plotCultivation.Area ?? plotCultivation.Plot.Area,
+                TotalArea = totalArea,
                 Status = plotCultivation.Status.ToString(),
                 EstimatedTotalCost = 0,
                 FarmerName = plotCultivation.Plot.Farmer?.FullName,
                 ClusterName = plotCultivation.Plot.GroupPlots.FirstOrDefault()?.Group?.Cluster?.ClusterName,
-                Stages = stagesMap.Values.OrderBy(s => s.SequenceOrder).ToList()
+                Stages = stages
             };
 
             _logger.LogInformation(
                 "Successfully retrieved cultivation plan {PlanId} with {StageCount} stages and {TaskCount} tasks (Version: {VersionName})",
-                request.PlanId, response.Stages.Count, sortedTasks.Count, latestVersion.VersionName);
+                request.PlanId, response.Stages.Count, tasks.Count, latestVersion.VersionName);
 
             return Result<CultivationPlanDetailResponse>.Success(response);
         }
@@ -215,6 +120,98 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
             _logger.LogError(ex, "Error retrieving cultivation plan {PlanId}", request.PlanId);
             return Result<CultivationPlanDetailResponse>.Failure("An error occurred while retrieving the cultivation plan.");
         }
+    }
+
+    private static List<CultivationStageResponse> BuildStages(
+        IEnumerable<CultivationTask> tasks,
+        decimal totalArea)
+    {
+        var stagesMap = new Dictionary<Guid, CultivationStageResponse>();
+
+        var sortedTasks = tasks
+            .OrderBy(ct => ct.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue)
+            .ThenBy(ct => ct.ExecutionOrder ?? int.MaxValue)
+            .ThenBy(ct => ct.CreatedAt);
+
+        foreach (var task in sortedTasks)
+        {
+            var taskMaterials = task.CultivationTaskMaterials
+                .Select(ctm => new CultivationTaskMaterialResponse
+                {
+                    MaterialId = ctm.MaterialId,
+                    MaterialName = ctm.Material.Name,
+                    QuantityPerHa = ctm.ActualQuantity / totalArea,
+                    Unit = ctm.Material.Unit
+                })
+                .ToList();
+
+            var stage = task.ProductionPlanTask?.ProductionStage;
+            if (stage != null)
+            {
+                if (!stagesMap.TryGetValue(stage.Id, out var stageResponse))
+                {
+                    stageResponse = new CultivationStageResponse
+                    {
+                        Id = stage.Id,
+                        StageName = stage.StageName,
+                        SequenceOrder = stage.SequenceOrder,
+                        ExpectedDurationDays = stage.TypicalDurationDays,
+                        Tasks = new List<CultivationTaskResponse>()
+                    };
+                    stagesMap[stage.Id] = stageResponse;
+                }
+
+                var planTask = task.ProductionPlanTask!;
+                stageResponse.Tasks.Add(new CultivationTaskResponse
+                {
+                    Id = task.Id,
+                    TaskName = task.CultivationTaskName ?? planTask.TaskName,
+                    Description = task.Description ?? planTask.Description,
+                    TaskType = task.TaskType?.ToString() ?? planTask.TaskType.ToString(),
+                    ScheduledDate = planTask.ScheduledDate,
+                    ScheduledEndDate = task.ScheduledEndDate ?? planTask.ScheduledEndDate,
+                    ActualEndDate = task.ActualEndDate,
+                    ActualStartDate = task.ActualStartDate,
+                    TaskStatus = task.Status?.ToString() ?? "Approved",
+                    Priority = planTask.Priority.ToString(),
+                    SequenceOrder = task.ExecutionOrder ?? planTask.SequenceOrder,
+                    Materials = taskMaterials
+                });
+            }
+            else
+            {
+                if (!stagesMap.TryGetValue(Guid.Empty, out var emergencyStage))
+                {
+                    emergencyStage = new CultivationStageResponse
+                    {
+                        Id = Guid.Empty,
+                        StageName = "Emergency Tasks",
+                        SequenceOrder = int.MaxValue,
+                        ExpectedDurationDays = null,
+                        Tasks = new List<CultivationTaskResponse>()
+                    };
+                    stagesMap[Guid.Empty] = emergencyStage;
+                }
+
+                emergencyStage.Tasks.Add(new CultivationTaskResponse
+                {
+                    Id = task.Id,
+                    TaskName = task.CultivationTaskName ?? "Emergency Task",
+                    Description = task.Description,
+                    TaskType = task.TaskType?.ToString() ?? "PestControl",
+                    ScheduledDate = null,
+                    ScheduledEndDate = task.ScheduledEndDate,
+                    ActualEndDate = task.ActualEndDate,
+                    ActualStartDate = task.ActualStartDate,
+                    TaskStatus = task.Status?.ToString() ?? "Emergency",
+                    Priority = "High",
+                    SequenceOrder = task.ExecutionOrder ?? 0,
+                    Materials = taskMaterials
+                });
+            }
+        }
+
+        return stagesMap.Values.OrderBy(s => s.SequenceOrder).ToList();
     }
 }
 

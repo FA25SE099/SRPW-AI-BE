@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text;
 using System.Threading.Tasks;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Domain.Entities;
@@ -16,19 +15,17 @@ namespace RiceProduction.Infrastructure.Repository
         private readonly ApplicationDbContext _context;
         private readonly DbSet<Plot> _plots;
 
-        public PlotRepository (ApplicationDbContext context)
+        public PlotRepository(ApplicationDbContext context)
         {
             _context = context;
-            _plots = context.Set<Plot>(); 
+            _plots = context.Set<Plot>();
         }
 
         public async Task<int> CountPlotAsync(Expression<Func<Plot, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
-            if (predicate != null)
-            { 
-                return await _plots.CountAsync(predicate, cancellationToken);
-            }
-            return await _plots.CountAsync(cancellationToken);
+            return predicate != null
+                ? await _plots.CountAsync(predicate, cancellationToken)
+                : await _plots.CountAsync(cancellationToken);
         }
 
         public async Task<bool> ExistPlotAsync(Guid id, CancellationToken cancellationToken = default)
@@ -38,36 +35,28 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<Plot?> GetPlotByIDAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _plots
-                .Include (p => p.Farmer)
-                .Include (p => p.GroupPlots)
-                    .ThenInclude(gp => gp.Group)
-                        .ThenInclude(g => g.YearSeason)
-                            .ThenInclude(ys => ys.RiceVariety)
+            return await QueryWithDetails()
                 .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         }
 
         public async Task<(IEnumerable<Plot> Items, int TotalCount)> GetAllPlotPagedAsync(int pageNumber, int pageSize, Expression<Func<Plot, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
-            var query = _plots
-        .Include(p => p.Farmer)
-        .Include(p => p.GroupPlots)
-            .ThenInclude(gp => gp.Group)
-                .ThenInclude(g => g.YearSeason)
-                    .ThenInclude(ys => ys.RiceVariety)
-        .Include(p => p.PlotCultivations)
-        .ThenInclude(pc => pc.RiceVariety)
-        .Include(p => p.PlotCultivations)
-        .ThenInclude(pc => pc.Season)
-        .AsSplitQuery()                
-        .AsQueryable();
+            var query = QueryWithDetails()
+                .Include(p => p.PlotCultivations)
+                    .ThenInclude(pc => pc.RiceVariety)
+                .Include(p => p.PlotCultivations)
+                    .ThenInclude(pc => pc.Season)
+                .AsSplitQuery();
 
             if (predicate != null)
             {
                 query = query.Where(predicate);
             }
+
             var totalCount = await query.CountAsync(cancellationToken);
-            var items = await query.OrderByDescending(p => p.SoThua).Skip((pageNumber - 1) * pageSize)
+            var items = await query
+                .OrderByDescending(p => p.SoThua)
+                .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(cancellationToken);
             return (items, totalCount);
@@ -75,15 +64,10 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<IEnumerable<Plot?>> GetPlotsByFarmerIdAsync(Guid farmerId, CancellationToken cancellationToken = default)
         {
-            return await _plots
-                .Include(p => p.Farmer)
-                .Include(p => p.GroupPlots)
-                    .ThenInclude(gp => gp.Group)
-                        .ThenInclude(g => g.YearSeason)
-                            .ThenInclude(ys => ys.RiceVariety)
-                .Where (p => p.Farmer.Id == farmerId && p.Status == PlotStatus.Active )
+            return await QueryWithDetails()
+                .Where(p => p.Farmer.Id == farmerId && p.Status == PlotStatus.Active)
                 .OrderByDescending(p => p.SoThua)
-                .ToListAsync(cancellationToken);             
+                .ToListAsync(cancellationToken);
         }
 
         public async Task<IEnumerable<Plot?>> GetPlotsByGroupIdAsync(Guid groupId, CancellationToken cancellationToken = default)
@@ -93,12 +77,7 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<IEnumerable<Plot>> GetPlotsForGroupAsync(Guid groupId, CancellationToken cancellationToken = default)
         {
-            return await _plots
-                .Include(p => p.Farmer)
-                .Include(p => p.GroupPlots)
-                    .ThenInclude(gp => gp.Group)
-                        .ThenInclude(g => g.YearSeason)
-                            .ThenInclude(ys => ys.RiceVariety)
+            return await QueryWithDetails()
                 .Where(p => p.GroupPlots.Any(gp => gp.GroupId == groupId) && p.Status == PlotStatus.Active)
                 .OrderByDescending(p => p.SoThua)
                 .ToListAsync(cancellationToken);
@@ -106,16 +85,9 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<bool> IsPlotAssignedToGroupAsync(Guid plotId, Guid? groupId = null, CancellationToken cancellationToken = default)
         {
-            if (groupId.HasValue)
-            {
-                return await _context.Set<GroupPlot>()
-                    .AnyAsync(gp => gp.PlotId == plotId && gp.GroupId == groupId.Value, cancellationToken);
-            }
-            else
-            {
-                return await _context.Set<GroupPlot>()
-                    .AnyAsync(gp => gp.PlotId == plotId, cancellationToken);
-            }
+            return groupId.HasValue
+                ? await _context.Set<GroupPlot>().AnyAsync(gp => gp.PlotId == plotId && gp.GroupId == groupId.Value, cancellationToken)
+                : await _context.Set<GroupPlot>().AnyAsync(gp => gp.PlotId == plotId, cancellationToken);
         }
 
         public async Task<bool> IsPlotAssignedToGroupForSeasonAsync(Guid plotId, Guid seasonId, CancellationToken cancellationToken = default)
@@ -136,6 +108,16 @@ namespace RiceProduction.Infrastructure.Repository
         public IQueryable<Plot> PlotQueryable()
         {
             return _plots.AsQueryable();
+        }
+
+        private IQueryable<Plot> QueryWithDetails()
+        {
+            return _plots
+                .Include(p => p.Farmer)
+                .Include(p => p.GroupPlots)
+                    .ThenInclude(gp => gp.Group)
+                        .ThenInclude(g => g.YearSeason)
+                            .ThenInclude(ys => ys.RiceVariety);
         }
     }
 }

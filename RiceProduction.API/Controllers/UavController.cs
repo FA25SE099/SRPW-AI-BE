@@ -1,14 +1,15 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.UAVFeature.Commands.CreateUavOrder;
 using RiceProduction.Application.UAVFeature.Commands.ReportServiceOrder;
 using RiceProduction.Application.UAVFeature.Queries.GeUAVOrderDetail;
 using RiceProduction.Application.UAVFeature.Queries.GetClusterServiceOrdersByManager;
+using RiceProduction.Application.UAVFeature.Queries.GetPlotsReadyForUav;
 using RiceProduction.Application.UAVFeature.Queries.GetVendorServiceOrders;
 using System.Collections.Generic;
-using RiceProduction.Application.UAVFeature.Commands.CreateUavOrder;
-using RiceProduction.Application.UAVFeature.Queries.GetPlotsReadyForUav;
 
 namespace RiceProduction.API.Controllers;
 
@@ -35,15 +36,8 @@ public class UavController : ControllerBase
         }
 
         query.VendorId = vendorId.Value;
-        
-        var result = await _mediator.Send(query);
 
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     [HttpGet("cluster-managers")]
@@ -57,45 +51,25 @@ public class UavController : ControllerBase
 
         query.ClusterManagerId = currentUserId.Value;
 
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpGet("{orderId}")]
     public async Task<IActionResult> GetUavOrderDetail(Guid orderId)
     {
-        //var vendorId = _currentUser.Id;
-        //if (vendorId == null)
-        //{
-        //    return Unauthorized(Result<UavOrderDetailResponse>.Failure("Vendor is not authenticated.", "Unauthorized"));
-        //}
-
-        var query = new GetUavOrderDetailQuery 
-        { 
-            OrderId = orderId, 
-            //VendorId = vendorId.Value 
-        };
-        
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
+        var query = new GetUavOrderDetailQuery
         {
-            return BadRequest(result);
-        }
+            OrderId = orderId
+        };
 
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpPost("{orderId}/plots/{plotId}/report")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> ReportServiceOrderCompletion(
-        Guid orderId, 
-        Guid plotId, 
+        Guid orderId,
+        Guid plotId,
         [FromForm] ReportServiceOrderCompletionCommand command)
     {
         var vendorId = _currentUser.Id;
@@ -110,16 +84,10 @@ public class UavController : ControllerBase
         }
 
         command.VendorId = vendorId.Value;
-        
-        var result = await _mediator.Send(command);
 
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
+
     [HttpPost("uav/orders")]
     public async Task<IActionResult> CreateUavOrder([FromBody] CreateUavOrderCommand command)
     {
@@ -128,28 +96,15 @@ public class UavController : ControllerBase
         {
             return Unauthorized(Result<Guid>.Failure("Cluster Manager authentication required.", "Unauthorized"));
         }
-        
+
         command.ClusterManagerId = managerId.Value;
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
+
     [HttpGet("uav/ready-plots")]
     public async Task<IActionResult> GetPlotsReadyForUav([FromQuery] GetPlotsReadyForUavQuery query)
-    {   
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+    {
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 }

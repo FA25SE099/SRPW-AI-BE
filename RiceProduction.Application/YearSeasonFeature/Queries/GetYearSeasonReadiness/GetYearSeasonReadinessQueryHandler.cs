@@ -78,38 +78,22 @@ public class GetYearSeasonReadinessQueryHandler
         YearSeason yearSeason,
         CancellationToken cancellationToken)
     {
-        // Get all farmers in the cluster
-        var farmers = await _unitOfWork.FarmerRepository
-            .ListAsync(f => f.ClusterId == yearSeason.ClusterId);
-        var farmersList = farmers.ToList();
+        var farmersList = (await _unitOfWork.FarmerRepository
+            .ListAsync(f => f.ClusterId == yearSeason.ClusterId)).ToList();
         var farmerIds = farmersList.Select(f => f.Id).ToList();
 
-        // Get all plots for these farmers
-        var plots = await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => farmerIds.Contains(p.FarmerId));
-        var plotsList = plots.ToList();
-        var plotIds = plotsList.Select(p => p.Id).ToList();
+        var plotsList = (await _unitOfWork.Repository<Plot>()
+            .ListAsync(p => farmerIds.Contains(p.FarmerId))).ToList();
 
-        // Get active supervisors
-        var supervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => s.IsActive && s.ClusterId == yearSeason.ClusterId);
-        var supervisorsList = supervisors.ToList();
+        var supervisorsList = (await _unitOfWork.SupervisorRepository
+            .ListAsync(s => s.IsActive && s.ClusterId == yearSeason.ClusterId)).ToList();
 
-        // Check farmer selections (PlotCultivations for this season)
-        var cultivations = await _unitOfWork.Repository<PlotCultivation>()
-            .GetQueryable()
-            .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
-            .ToListAsync(cancellationToken);
+        var farmersWithSelection = await CountFarmersWithSelectionAsync(
+            plotsList, yearSeason.SeasonId, cancellationToken);
 
-        var farmersWithSelection = cultivations
-            .Select(pc => plotsList.First(p => p.Id == pc.PlotId).FarmerId)
-            .Distinct()
-            .Count();
-
-        // Analyze readiness
-        var plotsWithPolygon = plotsList.Count(p => 
+        var plotsWithPolygon = plotsList.Count(p =>
             p.Boundary != null && p.Status == PlotStatus.Active);
-        var plotsWithoutPolygon = plotsList.Count(p => 
+        var plotsWithoutPolygon = plotsList.Count(p =>
             p.Boundary == null || p.Status == PlotStatus.PendingPolygon);
 
         var blockingIssues = new List<string>();
@@ -139,35 +123,8 @@ public class GetYearSeasonReadinessQueryHandler
             recommendations.Add("Complete polygon boundaries for more plots");
         }
 
-        // Check if using expert-selected variety or farmer selection model
-        if (yearSeason.RiceVarietyId == null)
-        {
-            // Farmer selection model - check if farmers have made their selections
-            if (yearSeason.AllowFarmerSelection)
-            {
-                var now = DateTime.UtcNow;
-                var isSelectionWindowOpen = 
-                    (!yearSeason.FarmerSelectionWindowStart.HasValue || now >= yearSeason.FarmerSelectionWindowStart.Value) &&
-                    (!yearSeason.FarmerSelectionWindowEnd.HasValue || now <= yearSeason.FarmerSelectionWindowEnd.Value);
-
-                if (!isSelectionWindowOpen && yearSeason.FarmerSelectionWindowStart.HasValue && now < yearSeason.FarmerSelectionWindowStart.Value)
-                {
-                    blockingIssues.Add($"Farmer selection window not yet open (starts {yearSeason.FarmerSelectionWindowStart.Value:yyyy-MM-dd})");
-                    recommendations.Add("Wait for selection window to open, or adjust the selection window dates");
-                }
-                else if (farmersWithSelection < farmersList.Count)
-                {
-                    var pendingFarmers = farmersList.Count - farmersWithSelection;
-                    blockingIssues.Add($"{pendingFarmers} farmers have not selected rice variety and planting date");
-                    recommendations.Add("Contact pending farmers to complete their selections");
-                }
-            }
-            else
-            {
-                blockingIssues.Add("No rice variety selected and farmer selection is not enabled");
-                recommendations.Add("Either enable farmer selection (AllowFarmerSelection) or have expert select a cluster-wide rice variety");
-            }
-        }
+        EvaluateVarietySelectionReadiness(
+            yearSeason, farmersList.Count, farmersWithSelection, blockingIssues, recommendations);
 
         if (yearSeason.Status == SeasonStatus.Draft)
         {
@@ -175,25 +132,8 @@ public class GetYearSeasonReadinessQueryHandler
             recommendations.Add("Activate the YearSeason to begin group formation");
         }
 
-        // Calculate readiness score
-        var readinessScore = 0;
-        if (plotsWithPolygon >= 5) readinessScore += 30;
-        if (supervisorsList.Any()) readinessScore += 20;
-        if (farmersList.Count >= 5) readinessScore += 20;
-        
-        // Variety/selection score
-        if (yearSeason.RiceVarietyId != null)
-        {
-            // Expert selected variety for cluster
-            readinessScore += 15;
-        }
-        else if (yearSeason.AllowFarmerSelection && farmersWithSelection == farmersList.Count)
-        {
-            // All farmers have made selections
-            readinessScore += 15;
-        }
-        
-        if (yearSeason.Status == SeasonStatus.Active) readinessScore += 15;
+        var readinessScore = CalculatePreGroupReadinessScore(
+            yearSeason, plotsWithPolygon, supervisorsList.Any(), farmersList.Count, farmersWithSelection);
 
         return new ClusterReadinessInfo
         {
@@ -215,20 +155,16 @@ public class GetYearSeasonReadinessQueryHandler
         List<Group> groups,
         CancellationToken cancellationToken)
     {
-        // Get all plot IDs in groups
         var groupIds = groups.Select(g => g.Id).ToList();
         var groupPlots = await _unitOfWork.Repository<GroupPlot>()
             .ListAsync(gp => groupIds.Contains(gp.GroupId),
                 includeProperties: q => q.Include(gp => gp.Plot));
         var plotsInGroups = groupPlots.Select(gp => gp.Plot).ToList();
-        var plotIds = plotsInGroups.Select(p => p.Id).ToList();
 
-        // Get farmers in groups
         var farmerIds = plotsInGroups.Select(p => p.FarmerId).Distinct().ToList();
         var farmers = await _unitOfWork.FarmerRepository
             .ListAsync(f => farmerIds.Contains(f.Id));
 
-        // Get supervisors
         var supervisorIds = groups
             .Where(g => g.SupervisorId.HasValue)
             .Select(g => g.SupervisorId!.Value)
@@ -237,18 +173,9 @@ public class GetYearSeasonReadinessQueryHandler
         var supervisors = await _unitOfWork.SupervisorRepository
             .ListAsync(s => supervisorIds.Contains(s.Id));
 
-        // Get farmer selections
-        var cultivations = await _unitOfWork.Repository<PlotCultivation>()
-            .GetQueryable()
-            .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
-            .ToListAsync(cancellationToken);
+        var farmersWithSelection = await CountFarmersWithSelectionAsync(
+            plotsInGroups, yearSeason.SeasonId, cancellationToken);
 
-        var farmersWithSelection = cultivations
-            .Select(pc => plotsInGroups.First(p => p.Id == pc.PlotId).FarmerId)
-            .Distinct()
-            .Count();
-
-        // Analyze grouped readiness
         var groupsWithoutSupervisor = groups.Count(g => !g.SupervisorId.HasValue);
         var draftGroups = groups.Count(g => g.Status == GroupStatus.Draft);
 
@@ -267,14 +194,13 @@ public class GetYearSeasonReadinessQueryHandler
             recommendations.Add("Activate groups to begin production planning");
         }
 
-        // Calculate readiness score (groups already formed)
         var readinessScore = 50; // Base score for having groups
         if (groupsWithoutSupervisor == 0) readinessScore += 25;
         if (draftGroups == 0) readinessScore += 25;
 
         return new ClusterReadinessInfo
         {
-            IsReadyToFormGroups = true, // Already have groups
+            IsReadyToFormGroups = true,
             AvailablePlots = plotsInGroups.Count,
             PlotsWithPolygon = plotsInGroups.Count(p => p.Boundary != null),
             PlotsWithoutPolygon = plotsInGroups.Count(p => p.Boundary == null),
@@ -285,6 +211,81 @@ public class GetYearSeasonReadinessQueryHandler
             BlockingIssues = blockingIssues,
             Recommendations = recommendations
         };
+    }
+
+    private async Task<int> CountFarmersWithSelectionAsync(
+        IReadOnlyCollection<Plot> plots,
+        Guid seasonId,
+        CancellationToken cancellationToken)
+    {
+        var plotIds = plots.Select(p => p.Id).ToList();
+        var cultivations = await _unitOfWork.Repository<PlotCultivation>()
+            .GetQueryable()
+            .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == seasonId)
+            .ToListAsync(cancellationToken);
+
+        var plotToFarmerId = plots
+            .GroupBy(p => p.Id)
+            .ToDictionary(g => g.Key, g => g.First().FarmerId);
+
+        return cultivations
+            .Select(pc => plotToFarmerId[pc.PlotId])
+            .Distinct()
+            .Count();
+    }
+
+    private static void EvaluateVarietySelectionReadiness(
+        YearSeason yearSeason,
+        int totalFarmers,
+        int farmersWithSelection,
+        List<string> blockingIssues,
+        List<string> recommendations)
+    {
+        if (yearSeason.RiceVarietyId != null)
+        {
+            return;
+        }
+
+        if (!yearSeason.AllowFarmerSelection)
+        {
+            blockingIssues.Add("No rice variety selected and farmer selection is not enabled");
+            recommendations.Add("Either enable farmer selection (AllowFarmerSelection) or have expert select a cluster-wide rice variety");
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (yearSeason.FarmerSelectionWindowStart.HasValue && now < yearSeason.FarmerSelectionWindowStart.Value)
+        {
+            blockingIssues.Add($"Farmer selection window not yet open (starts {yearSeason.FarmerSelectionWindowStart.Value:yyyy-MM-dd})");
+            recommendations.Add("Wait for selection window to open, or adjust the selection window dates");
+        }
+        else if (farmersWithSelection < totalFarmers)
+        {
+            var pendingFarmers = totalFarmers - farmersWithSelection;
+            blockingIssues.Add($"{pendingFarmers} farmers have not selected rice variety and planting date");
+            recommendations.Add("Contact pending farmers to complete their selections");
+        }
+    }
+
+    private static int CalculatePreGroupReadinessScore(
+        YearSeason yearSeason,
+        int plotsWithPolygon,
+        bool hasActiveSupervisors,
+        int totalFarmers,
+        int farmersWithSelection)
+    {
+        var score = 0;
+        if (plotsWithPolygon >= 5) score += 30;
+        if (hasActiveSupervisors) score += 20;
+        if (totalFarmers >= 5) score += 20;
+
+        var varietySelectionReady = yearSeason.RiceVarietyId != null ||
+            (yearSeason.AllowFarmerSelection && farmersWithSelection == totalFarmers);
+        if (varietySelectionReady) score += 15;
+
+        if (yearSeason.Status == SeasonStatus.Active) score += 15;
+
+        return score;
     }
 }
 

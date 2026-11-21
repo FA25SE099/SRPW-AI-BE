@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationPlanFeature.Queries;
@@ -24,83 +25,49 @@ public class CultivationPlanController : ControllerBase
 
     [HttpGet("plan-view/{plotCultivationId}")]
     public async Task<IActionResult> GetFarmerPlanView(Guid plotCultivationId)
-    {  
-        var query = new GetFarmerPlanViewQuery { PlotCultivationId = plotCultivationId };
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+    {
+        var result = await _mediator.Send(new GetFarmerPlanViewQuery { PlotCultivationId = plotCultivationId });
+        return this.ToIActionResult(result);
     }
-    
+
     [HttpGet("by-plot/{plotId}")]
-    [Authorize] // Require authentication
+    [Authorize]
     public async Task<IActionResult> GetCultivationsByPlot(Guid plotId)
     {
-        // Check if user is authenticated
         if (!_currentUser.Id.HasValue)
         {
             return Unauthorized(Result<object>.Failure("User not authenticated", "AuthenticationRequired"));
         }
 
-        var query = new GetCultivationsForPlotQuery 
-        { 
-            PlotId = plotId, 
-            FarmerId = _currentUser.Id.Value 
-        };
-        
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
+        var query = new GetCultivationsForPlotQuery
         {
-            return BadRequest(result);
-        }
+            PlotId = plotId,
+            FarmerId = _currentUser.Id.Value
+        };
 
-        return Ok(result);
+        var result = await _mediator.Send(query);
+        return this.ToIActionResult(result);
     }
-    
+
     [HttpGet("{planId}")]
     public async Task<IActionResult> GetCultivationPlanById(Guid planId)
     {
-        var query = new GetCultivationPlanByIdQuery { PlanId = planId };
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return NotFound(result);
-        }
-
-        return Ok(result);
+        var result = await _mediator.Send(new GetCultivationPlanByIdQuery { PlanId = planId });
+        return result.Succeeded ? Ok(result) : NotFound(result);
     }
 
     [HttpGet("current/{plotId}")]
     public async Task<IActionResult> GetCurrentPlotCultivation(Guid plotId)
     {
-        var query = new GetCurrentPlotCultivationQuery { PlotId = plotId };
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return NotFound(result);
-        }
-
-        return Ok(result);
+        var result = await _mediator.Send(new GetCurrentPlotCultivationQuery { PlotId = plotId });
+        return result.Succeeded ? Ok(result) : NotFound(result);
     }
 
     [HttpPost("by-group-plot")]
     public async Task<IActionResult> GetCurrentPlotCultivationByGroup([FromBody] GetPlotCultivationByGroupAndPlotQuery query)
     {
         var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return NotFound(result);
-        }
-
-        return Ok(result);
+        return result.Succeeded ? Ok(result) : NotFound(result);
     }
 }
 

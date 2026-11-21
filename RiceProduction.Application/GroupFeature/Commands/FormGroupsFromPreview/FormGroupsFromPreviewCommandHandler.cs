@@ -142,10 +142,11 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
             Dictionary<Guid, string> supervisorsForResponse = new();
             if (supervisorIds.Any())
             {
-                var supervisors = await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => supervisorIds.Contains(s.Id));
-                
-                if (supervisors.Count() != supervisorIds.Count)
+                var supervisors = (await _unitOfWork.SupervisorRepository
+                    .ListAsync(s => supervisorIds.Contains(s.Id)))
+                    .ToList();
+
+                if (supervisors.Count != supervisorIds.Count)
                 {
                     var missingSupervisors = supervisorIds.Except(supervisors.Select(s => s.Id)).ToList();
                     return Result<FormGroupsResponse>.Failure(
@@ -161,47 +162,16 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
 
             foreach (var previewGroup in request.Groups)
             {
-                // Validate rice variety
                 if (!varietyDict.ContainsKey(previewGroup.RiceVarietyId))
                 {
                     return Result<FormGroupsResponse>.Failure(
                         $"Rice variety {previewGroup.RiceVarietyId} not found");
                 }
 
-                // Get plots for this group
                 var groupPlots = previewGroup.PlotIds
                     .Select(id => plotsDict[id])
                     .ToList();
 
-                // Calculate total area
-                var totalArea = groupPlots.Sum(p => p.Area);
-
-                // Calculate group boundary (union of plot boundaries)
-                Polygon? groupBoundary = null;
-                var plotBoundaries = groupPlots
-                    .Where(p => p.Boundary != null)
-                    .Select(p => p.Boundary!)
-                    .ToList();
-
-                if (plotBoundaries.Any())
-                {
-                    Geometry union = plotBoundaries.First();
-                    foreach (var boundary in plotBoundaries.Skip(1))
-                    {
-                        union = union.Union(boundary);
-                    }
-
-                    if (union is Polygon polygon)
-                    {
-                        groupBoundary = polygon;
-                    }
-                    else if (union is MultiPolygon multiPolygon)
-                    {
-                        groupBoundary = (Polygon)multiPolygon.ConvexHull();
-                    }
-                }
-
-                // Create group
                 var group = new Group
                 {
                     ClusterId = request.ClusterId,
@@ -210,12 +180,11 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
                     GroupName = previewGroup.GroupName,
                     PlantingDate = previewGroup.MedianPlantingDate,
                     Status = request.CreateGroupsImmediately ? GroupStatus.Active : GroupStatus.Draft,
-                    TotalArea = totalArea,
-                    Area = groupBoundary,
+                    TotalArea = groupPlots.Sum(p => p.Area),
+                    Area = CalculateGroupBoundary(groupPlots),
                     IsException = false
                 };
 
-                // Assign supervisor if specified
                 if (previewGroup.SupervisorId.HasValue)
                 {
                     group.SupervisorId = previewGroup.SupervisorId;
@@ -225,11 +194,9 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
                     warnings.Add($"Group '{previewGroup.GroupName ?? "unnamed"}' created without supervisor assignment");
                 }
 
-                // Add group
                 await _unitOfWork.Repository<Group>().AddAsync(group);
                 createdGroups.Add(group);
 
-                // Assign plots to group
                 foreach (var plot in groupPlots)
                 {
                     var groupPlot = new GroupPlot
@@ -258,24 +225,9 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
                 GroupsCreated = createdGroups.Count,
                 PlotsGrouped = totalPlotsGrouped,
                 UngroupedPlots = 0, // No ungrouped plots since we're using exact preview
-                Groups = createdGroups.Select(g => new CreatedGroupDto
-                {
-                    GroupId = g.Id,
-                    RiceVarietyId = (Guid)(g.YearSeason?.RiceVarietyId),
-                    RiceVarietyName = g.YearSeason?.RiceVarietyId != null && g.YearSeason.RiceVarietyId.HasValue 
-                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName ?? "Unknown" 
-                        : "Not Set",
-                    SupervisorId = g.SupervisorId,
-                    SupervisorName = g.SupervisorId.HasValue ? supervisorsForResponse.GetValueOrDefault(g.SupervisorId.Value) : null,
-                    PlantingDate = g.PlantingDate!.Value,
-                    PlantingWindowStart = g.PlantingDate!.Value,
-                    PlantingWindowEnd = g.PlantingDate!.Value,
-                    Status = g.Status.ToString(),
-                    PlotCount = g.GroupPlots.Count,
-                    TotalArea = g.TotalArea!.Value,
-                    GroupBoundaryWkt = g.Area != null ? _wktWriter.Write(g.Area) : null,
-                    PlotIds = g.GroupPlots.Select(gp => gp.PlotId).ToList()
-                }).ToList(),
+                Groups = createdGroups
+                    .Select(g => MapToCreatedGroupDto(g, varietyDict, supervisorsForResponse))
+                    .ToList(),
                 UngroupedPlotIds = new List<Guid>(),
                 Warnings = warnings
             };
@@ -289,6 +241,57 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
             _logger.LogError(ex, "Error forming groups from preview for cluster {ClusterId}", request.ClusterId);
             return Result<FormGroupsResponse>.Failure($"Error forming groups from preview: {ex.Message}");
         }
+    }
+
+    private static Polygon? CalculateGroupBoundary(List<Plot> groupPlots)
+    {
+        var plotBoundaries = groupPlots
+            .Where(p => p.Boundary != null)
+            .Select(p => p.Boundary!)
+            .ToList();
+
+        if (plotBoundaries.Count == 0)
+            return null;
+
+        Geometry union = plotBoundaries[0];
+        foreach (var boundary in plotBoundaries.Skip(1))
+        {
+            union = union.Union(boundary);
+        }
+
+        return union switch
+        {
+            Polygon polygon => polygon,
+            MultiPolygon multiPolygon => (Polygon)multiPolygon.ConvexHull(),
+            _ => null
+        };
+    }
+
+    private CreatedGroupDto MapToCreatedGroupDto(
+        Group group,
+        Dictionary<Guid, RiceVariety> varietyDict,
+        Dictionary<Guid, string> supervisorsForResponse)
+    {
+        return new CreatedGroupDto
+        {
+            GroupId = group.Id,
+            RiceVarietyId = (Guid)(group.YearSeason?.RiceVarietyId),
+            RiceVarietyName = group.YearSeason?.RiceVarietyId is Guid riceVarietyId
+                ? varietyDict.GetValueOrDefault(riceVarietyId)?.VarietyName ?? "Unknown"
+                : "Not Set",
+            SupervisorId = group.SupervisorId,
+            SupervisorName = group.SupervisorId.HasValue
+                ? supervisorsForResponse.GetValueOrDefault(group.SupervisorId.Value)
+                : null,
+            PlantingDate = group.PlantingDate!.Value,
+            PlantingWindowStart = group.PlantingDate!.Value,
+            PlantingWindowEnd = group.PlantingDate!.Value,
+            Status = group.Status.ToString(),
+            PlotCount = group.GroupPlots.Count,
+            TotalArea = group.TotalArea!.Value,
+            GroupBoundaryWkt = group.Area != null ? _wktWriter.Write(group.Area) : null,
+            PlotIds = group.GroupPlots.Select(gp => gp.PlotId).ToList()
+        };
     }
 }
 

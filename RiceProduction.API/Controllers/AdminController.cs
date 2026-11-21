@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.AdminFeature.Queries.GetAllUsers;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.AdminRequests;
@@ -42,13 +43,7 @@ public class AdminController : Controller
             };
 
             var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {

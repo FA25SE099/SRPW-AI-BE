@@ -17,6 +17,18 @@ public class ZaloZnsService : IZaloZnsService
     private readonly ILogger<ZaloZnsService> _logger;
     private const string ZnsApiUrl = "https://business.openapi.zalo.me/message/template";
 
+    private static readonly JsonSerializerOptions RequestJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    private static readonly JsonSerializerOptions ResponseJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = true
+    };
+
     public ZaloZnsService(
         HttpClient httpClient,
         ILogger<ZaloZnsService> logger)
@@ -38,13 +50,9 @@ public class ZaloZnsService : IZaloZnsService
                 tracking_id = request.TrackingId
             };
 
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, ZnsApiUrl)
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, ZnsApiUrl)
             {
-                Content = JsonContent.Create(requestBody, options: new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                })
+                Content = JsonContent.Create(requestBody, options: RequestJsonOptions)
             };
 
             httpRequest.Headers.Add("access_token", accessToken);
@@ -52,21 +60,13 @@ public class ZaloZnsService : IZaloZnsService
             _logger.LogInformation("Sending ZNS to phone: {Phone}, template: {TemplateId}, tracking: {TrackingId}",
                 request.Phone, request.TemplateId, request.TrackingId);
 
-            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
             _logger.LogInformation("ZNS API Response: {Response}", responseContent);
 
-            var znsResponse = JsonSerializer.Deserialize<ZnsResponse>(responseContent, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-                PropertyNameCaseInsensitive = true
-            });
-
-            if (znsResponse == null)
-            {
-                throw new InvalidOperationException("Failed to deserialize ZNS response");
-            }
+            var znsResponse = JsonSerializer.Deserialize<ZnsResponse>(responseContent, ResponseJsonOptions)
+                ?? throw new InvalidOperationException("Failed to deserialize ZNS response");
 
             if (znsResponse.Error != 0)
             {
@@ -86,14 +86,14 @@ public class ZaloZnsService : IZaloZnsService
         }
     }
 
-    public async Task<BulkZnsSummary> SendBulkZnsAsync(
+    public Task<BulkZnsSummary> SendBulkZnsAsync(
         List<BulkZnsRequest> requests,
         string accessToken,
         int maxConcurrency = 5,
         int maxRetries = 3,
         CancellationToken cancellationToken = default)
     {
-        return await SendBulkZnsWithProgressAsync(
+        return SendBulkZnsWithProgressAsync(
             requests,
             accessToken,
             null,
@@ -120,10 +120,7 @@ public class ZaloZnsService : IZaloZnsService
         _logger.LogInformation("Starting bulk ZNS send: {TotalRequests} requests with max concurrency: {MaxConcurrency}",
             requests.Count, maxConcurrency);
 
-        // Create retry policy with exponential backoff
         var retryPolicy = CreateRetryPolicy(maxRetries);
-
-        // Create semaphore to limit concurrency
         using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
 
         var tasks = requests.Select(async bulkRequest =>
@@ -139,14 +136,12 @@ public class ZaloZnsService : IZaloZnsService
 
                 results.Add(result);
 
-                // Update counters
                 Interlocked.Increment(ref processedCount);
                 if (result.Success)
                     Interlocked.Increment(ref successCount);
                 else
                     Interlocked.Increment(ref failedCount);
 
-                // Report progress
                 progress?.Report(new BulkZnsProgress
                 {
                     TotalRequests = requests.Count,
@@ -168,7 +163,6 @@ public class ZaloZnsService : IZaloZnsService
         await Task.WhenAll(tasks);
 
         stopwatch.Stop();
-        var endTime = DateTime.UtcNow;
 
         var summary = new BulkZnsSummary
         {
@@ -178,7 +172,7 @@ public class ZaloZnsService : IZaloZnsService
             Results = results.OrderBy(r => r.TrackingId).ToList(),
             TotalDuration = stopwatch.Elapsed,
             StartTime = startTime,
-            EndTime = endTime
+            EndTime = DateTime.UtcNow
         };
 
         _logger.LogInformation(

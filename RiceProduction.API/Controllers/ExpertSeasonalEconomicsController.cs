@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetSeasonalEconomicOverview;
 using RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetSeasonCostAnalysis;
 using RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetSeasonYieldAnalysis;
@@ -34,12 +35,7 @@ namespace RiceProduction.API.Controllers
             };
 
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("costs")]
@@ -58,12 +54,7 @@ namespace RiceProduction.API.Controllers
             };
 
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("yields")]
@@ -80,12 +71,7 @@ namespace RiceProduction.API.Controllers
             };
 
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("comparison")]
@@ -104,12 +90,7 @@ namespace RiceProduction.API.Controllers
             };
 
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
     }
 }

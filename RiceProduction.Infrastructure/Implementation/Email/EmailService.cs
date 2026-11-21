@@ -5,13 +5,115 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using System.Net;
 using System.Net.Mail;
-using System.Text;
 using System.Text.Json;
 
 namespace RiceProduction.Infrastructure.Services
 {
     public class EmailService : IEmailService
     {
+        private static readonly Dictionary<string, string> EmailTemplates = new()
+        {
+            ["user_account_created"] = @"
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+            .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+            .credentials { background-color: #fff; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
+            .credentials strong { color: #4CAF50; }
+            .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+            .footer { background-color: #333; color: white; padding: 15px; text-align: center; border-radius: 0 0 5px 5px; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class='container'>
+            <div class='header'>
+                <h1>Chào mừng đến với Hệ thống Quản lý Sản xuất Lúa</h1>
+            </div>
+            <div class='content'>
+                <p>Xin chào <strong>{{FullName}}</strong>,</p>
+                <p>Tài khoản của bạn đã được tạo thành công trong Hệ thống Quản lý Sản xuất Lúa.</p>
+                
+                <div class='credentials'>
+                    <h3>Thông tin đăng nhập:</h3>
+                    <p><strong>Số tài khoản:</strong> {{Email}}</p>
+                    <p><strong>Mật khẩu tạm thời:</strong> {{TempPassword}}</p>
+                </div>
+                <p>Nếu bạn gặp bất kỳ vấn đề gì khi đăng nhập hoặc cần hỗ trợ, vui lòng liên hệ với quản trị viên hệ thống.</p>
+                
+                <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>
+            </div>
+            <div class='footer'>
+                <p>&copy; 2025 Rice Production Management System. All rights reserved.</p>
+                <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+            </div>
+        </div>
+    </body>
+    </html>",
+            ["password_reset_new"] = @"
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+        .credentials { background-color: #fff; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
+        .credentials strong { color: #4CAF50; }
+        .password-box { background-color: #e8f5e9; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px; }
+        .password-text { font-size: 24px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: 'Courier New', monospace; }
+        .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+        .footer { background-color: #333; color: white; padding: 15px; text-align: center; border-radius: 0 0 5px 5px; font-size: 12px; }
+        .icon { font-size: 20px; margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>🔐 Mật khẩu mới của bạn</h1>
+        </div>
+        <div class='content'>
+            <p>Xin chào <strong>{{FullName}}</strong>,</p>
+            <p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản <strong>{{Email}}</strong>.</p>
+            <p>Mật khẩu mới của bạn đã được tạo thành công:</p>
+            
+            <div class='password-box'>
+                <p style='margin: 0 0 10px 0; color: #666; font-size: 14px;'>Mật khẩu mới của bạn:</p>
+                <div class='password-text'>{{TempPassword}}</div>
+            </div>
+
+            <div class='credentials'>
+                <h3>Thông tin đăng nhập:</h3>
+                <p><strong>Email (Tài khoản):</strong> {{Email}}</p>
+                <p><strong>Mật khẩu mới:</strong> {{TempPassword}}</p>
+            </div>
+
+            <div class='warning'>
+                <h3><span class='icon'>⚠️</span>Lưu ý quan trọng về bảo mật:</h3>
+                <ul>
+                    <li><strong>Vui lòng đổi mật khẩu ngay sau khi đăng nhập</strong></li>
+                    <li>Đây là mật khẩu tạm thời, không nên sử dụng lâu dài</li>
+                    <li>Không chia sẻ mật khẩu với bất kỳ ai</li>
+                    <li>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng liên hệ quản trị viên ngay lập tức</li>
+                    <li>Chọn mật khẩu mới mạnh: ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt</li>
+                </ul>
+            </div>
+
+            <p style='margin-top: 30px;'>Nếu bạn gặp vấn đề khi đăng nhập, vui lòng liên hệ với bộ phận hỗ trợ.</p>
+            
+            <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>
+        </div>
+        <div class='footer'>
+            <p>&copy; 2025 Rice Production Management System. All rights reserved.</p>
+            <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+        </div>
+    </div>
+</body>
+</html>"
+        };
+
         private readonly IConfiguration _configuration;
         private readonly ILogger<EmailService> _logger;
         private readonly IUnitOfWork _unitOfWork;
@@ -42,27 +144,7 @@ namespace RiceProduction.Infrastructure.Services
         {
             try
             {
-                var fromEmail = _configuration["Email:SenderEmail"];
-                var fromName = _configuration["Email:SenderName"] ?? "Rice Production System";
-
-                using var mailMessage = new MailMessage
-                {
-                    From = new MailAddress(fromEmail!, fromName),
-                    Subject = "Notification from Rice Production System",
-                    IsBodyHtml = !string.IsNullOrEmpty(htmlBody)
-                };
-
-                mailMessage.To.Add(to);
-                mailMessage.Body = !string.IsNullOrEmpty(htmlBody) ? htmlBody : textBody ?? "";
-
-                if (!string.IsNullOrEmpty(textBody) && !string.IsNullOrEmpty(htmlBody))
-                {
-                    var plainView = AlternateView.CreateAlternateViewFromString(textBody, null, "text/plain");
-                    var htmlView = AlternateView.CreateAlternateViewFromString(htmlBody, null, "text/html");
-                    mailMessage.AlternateViews.Add(plainView);
-                    mailMessage.AlternateViews.Add(htmlView);
-                }
-
+                using var mailMessage = BuildMailMessage(to, "Notification from Rice Production System", htmlBody, textBody, setBody: true);
                 await _smtpClient.SendMailAsync(mailMessage, cancellationToken);
 
                 var messageId = Guid.NewGuid().ToString();
@@ -107,23 +189,7 @@ namespace RiceProduction.Infrastructure.Services
                     Best regards,
                     Rice Production System";
 
-                var fromEmail = _configuration["Email:SenderEmail"];
-                var fromName = _configuration["Email:SenderName"] ?? "Rice Production System";
-
-                using var mailMessage = new MailMessage
-                {
-                    From = new MailAddress(fromEmail!, fromName),
-                    Subject = "Password Reset Request",
-                    IsBodyHtml = true
-                };
-
-                mailMessage.To.Add(to);
-
-                var plainView = AlternateView.CreateAlternateViewFromString(textBody, null, "text/plain");
-                var htmlView = AlternateView.CreateAlternateViewFromString(htmlBody, null, "text/html");
-                mailMessage.AlternateViews.Add(plainView);
-                mailMessage.AlternateViews.Add(htmlView);
-
+                using var mailMessage = BuildMailMessage(to, "Password Reset Request", htmlBody, textBody, setBody: false);
                 await _smtpClient.SendMailAsync(mailMessage, cancellationToken);
 
                 var messageId = Guid.NewGuid().ToString();
@@ -162,22 +228,7 @@ namespace RiceProduction.Infrastructure.Services
 
                 foreach (var request in requests)
                 {
-                    var emailRequest = new EmailRequest
-                    {
-                        BatchId = batch.Id,
-                        To = request.To,
-                        Cc = request.Cc,
-                        Bcc = request.Bcc,
-                        Subject = request.Subject,
-                        TextBody = request.TextBody ?? "",
-                        HtmlBody = request.HtmlBody,
-                        EmailType = request.EmailType,
-                        Campaign = request.Campaign,
-                        Priority = request.Priority,
-                        ScheduledAt = request.ScheduledAt,
-                        Status = "pending",
-                        MaxRetries = batch.MaxRetries
-                    };
+                    var emailRequest = CreateEmailRequest(batch.Id, batch.MaxRetries, request);
 
                     try
                     {
@@ -239,8 +290,7 @@ namespace RiceProduction.Infrastructure.Services
         {
             try
             {
-                // Simple template replacement - you can enhance this with a proper template engine
-                var templateContent = await GetEmailTemplateAsync(templateName);
+                var templateContent = GetEmailTemplate(templateName);
                 var processedContent = ProcessTemplate(templateContent, templateData);
 
                 return await SendEmailAsync(to, processedContent, null, cancellationToken);
@@ -252,127 +302,70 @@ namespace RiceProduction.Infrastructure.Services
             }
         }
 
-        private async Task<string> GetEmailTemplateAsync(string templateName)
+        private MailMessage BuildMailMessage(string to, string subject, string? htmlBody, string? textBody, bool setBody)
         {
-            // This is a simple implementation - you can enhance it to load from files or database
-            var templates = new Dictionary<string, string>
+            var fromEmail = _configuration["Email:SenderEmail"];
+            var fromName = _configuration["Email:SenderName"] ?? "Rice Production System";
+            var hasHtml = !string.IsNullOrEmpty(htmlBody);
+
+            var mailMessage = new MailMessage
             {
-                ["user_account_created"] = @"
-    <html>
-    <head>
-        <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-            .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
-            .credentials { background-color: #fff; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
-            .credentials strong { color: #4CAF50; }
-            .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-            .footer { background-color: #333; color: white; padding: 15px; text-align: center; border-radius: 0 0 5px 5px; font-size: 12px; }
-        </style>
-    </head>
-    <body>
-        <div class='container'>
-            <div class='header'>
-                <h1>Chào mừng đến với Hệ thống Quản lý Sản xuất Lúa</h1>
-            </div>
-            <div class='content'>
-                <p>Xin chào <strong>{{FullName}}</strong>,</p>
-                <p>Tài khoản của bạn đã được tạo thành công trong Hệ thống Quản lý Sản xuất Lúa.</p>
-                
-                <div class='credentials'>
-                    <h3>Thông tin đăng nhập:</h3>
-                    <p><strong>Số tài khoản:</strong> {{Email}}</p>
-                    <p><strong>Mật khẩu tạm thời:</strong> {{TempPassword}}</p>
-                </div>
-                <p>Nếu bạn gặp bất kỳ vấn đề gì khi đăng nhập hoặc cần hỗ trợ, vui lòng liên hệ với quản trị viên hệ thống.</p>
-                
-                <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>
-            </div>
-            <div class='footer'>
-                <p>&copy; 2025 Rice Production Management System. All rights reserved.</p>
-                <p>Email này được gửi tự động, vui lòng không trả lời.</p>
-            </div>
-        </div>
-    </body>
-    </html>",
-                ["password_reset_new"] = @"
-<html>
-<head>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-        .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
-        .credentials { background-color: #fff; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
-        .credentials strong { color: #4CAF50; }
-        .password-box { background-color: #e8f5e9; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px; }
-        .password-text { font-size: 24px; font-weight: bold; color: #2e7d32; letter-spacing: 2px; font-family: 'Courier New', monospace; }
-        .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-        .footer { background-color: #333; color: white; padding: 15px; text-align: center; border-radius: 0 0 5px 5px; font-size: 12px; }
-        .icon { font-size: 20px; margin-right: 8px; }
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h1>🔐 Mật khẩu mới của bạn</h1>
-        </div>
-        <div class='content'>
-            <p>Xin chào <strong>{{FullName}}</strong>,</p>
-            <p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản <strong>{{Email}}</strong>.</p>
-            <p>Mật khẩu mới của bạn đã được tạo thành công:</p>
-            
-            <div class='password-box'>
-                <p style='margin: 0 0 10px 0; color: #666; font-size: 14px;'>Mật khẩu mới của bạn:</p>
-                <div class='password-text'>{{TempPassword}}</div>
-            </div>
-
-            <div class='credentials'>
-                <h3>Thông tin đăng nhập:</h3>
-                <p><strong>Email (Tài khoản):</strong> {{Email}}</p>
-                <p><strong>Mật khẩu mới:</strong> {{TempPassword}}</p>
-            </div>
-
-            <div class='warning'>
-                <h3><span class='icon'>⚠️</span>Lưu ý quan trọng về bảo mật:</h3>
-                <ul>
-                    <li><strong>Vui lòng đổi mật khẩu ngay sau khi đăng nhập</strong></li>
-                    <li>Đây là mật khẩu tạm thời, không nên sử dụng lâu dài</li>
-                    <li>Không chia sẻ mật khẩu với bất kỳ ai</li>
-                    <li>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng liên hệ quản trị viên ngay lập tức</li>
-                    <li>Chọn mật khẩu mới mạnh: ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt</li>
-                </ul>
-            </div>
-
-            <p style='margin-top: 30px;'>Nếu bạn gặp vấn đề khi đăng nhập, vui lòng liên hệ với bộ phận hỗ trợ.</p>
-            
-            <p>Trân trọng,<br><strong>Đội ngũ Hệ thống Quản lý Sản xuất Lúa</strong></p>
-        </div>
-        <div class='footer'>
-            <p>&copy; 2025 Rice Production Management System. All rights reserved.</p>
-            <p>Email này được gửi tự động, vui lòng không trả lời.</p>
-        </div>
-    </div>
-</body>
-</html>"
+                From = new MailAddress(fromEmail!, fromName),
+                Subject = subject,
+                IsBodyHtml = hasHtml
             };
 
-            return await Task.FromResult(templates.GetValueOrDefault(templateName, "<p>Template not found</p>"));
+            mailMessage.To.Add(to);
+
+            if (setBody)
+            {
+                mailMessage.Body = hasHtml ? htmlBody! : textBody ?? "";
+            }
+
+            if (!string.IsNullOrEmpty(textBody) && hasHtml)
+            {
+                mailMessage.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(textBody, null, "text/plain"));
+                mailMessage.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(htmlBody!, null, "text/html"));
+            }
+
+            return mailMessage;
         }
 
-        private string ProcessTemplate(string template, object data)
+        private static EmailRequest CreateEmailRequest(Guid batchId, int maxRetries, SimpleEmailRequest request) =>
+            new()
+            {
+                BatchId = batchId,
+                To = request.To,
+                Cc = request.Cc,
+                Bcc = request.Bcc,
+                Subject = request.Subject,
+                TextBody = request.TextBody ?? "",
+                HtmlBody = request.HtmlBody,
+                EmailType = request.EmailType,
+                Campaign = request.Campaign,
+                Priority = request.Priority,
+                ScheduledAt = request.ScheduledAt,
+                Status = "pending",
+                MaxRetries = maxRetries
+            };
+
+        private static string GetEmailTemplate(string templateName) =>
+            EmailTemplates.GetValueOrDefault(templateName, "<p>Template not found</p>");
+
+        private static string ProcessTemplate(string template, object data)
         {
             var json = JsonSerializer.Serialize(data);
             var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
 
-            var result = template;
-            if (dict != null)
+            if (dict == null)
             {
-                foreach (var kvp in dict)
-                {
-                    result = result.Replace($"{{{{{kvp.Key}}}}}", kvp.Value?.ToString() ?? "");
-                }
+                return template;
+            }
+
+            var result = template;
+            foreach (var kvp in dict)
+            {
+                result = result.Replace($"{{{{{kvp.Key}}}}}", kvp.Value?.ToString() ?? "");
             }
 
             return result;

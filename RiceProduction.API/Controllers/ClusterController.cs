@@ -1,19 +1,16 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.ClusterFeature.Commands.CreateCluster;
 using RiceProduction.Application.ClusterFeature.Commands.UpdateCluster;
 using RiceProduction.Application.ClusterFeature.Queries.GetAllClustersPaging;
-using RiceProduction.Application.ClusterFeature.Queries.GetClusterHistory;
-using RiceProduction.Application.ClusterFeature.Queries.GetClusterCurrentSeason;
 using RiceProduction.Application.ClusterFeature.Queries.GetClusterAvailableSeasons;
+using RiceProduction.Application.ClusterFeature.Queries.GetClusterCurrentSeason;
+using RiceProduction.Application.ClusterFeature.Queries.GetClusterHistory;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.ClusterRequests;
-using RiceProduction.Application.Common.Models.Request.PlotRequests;
-using RiceProduction.Application.Common.Models.Response.ClusterResponses;
 using RiceProduction.Application.Common.Models.Response.ClusterHistoryResponses;
-using RiceProduction.Application.Common.Models.Response.MaterialResponses;
-using RiceProduction.Application.PlotFeature.Commands.EditPlot;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
+using RiceProduction.Application.Common.Models.Response.ClusterResponses;
 
 namespace RiceProduction.API.Controllers;
 
@@ -29,17 +26,13 @@ public class ClusterController : Controller
         _mediator = mediator;
         _logger = logger;
     }
-    // to done it: create cluster, get cluster manager list, create cluster manager, get cluster list, send sms, change password
+
     [HttpPost]
     public async Task<IActionResult> CreateCluster(CreateClusterCommand command)
     {
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
+
     [HttpPost("Get-all")]
     public async Task<ActionResult<PagedResult<List<ClusterResponse>>>> GetAllClusters([FromBody] ClusterListRequest request)
     {
@@ -54,12 +47,7 @@ public class ClusterController : Controller
                 PhoneNumber = request.PhoneNumber,
                 SortBy = request.SortBy
             };
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
@@ -69,16 +57,9 @@ public class ClusterController : Controller
     }
 
     [HttpPut("Update-name-and-human-resource")]
-    public async Task<ActionResult<Result<UpdateClusterCommand>>> EditClusterNameAndHumanResource([FromBody] UpdateClusterCommand input)
+    public async Task<ActionResult<Result<Guid>>> EditClusterNameAndHumanResource([FromBody] UpdateClusterCommand input)
     {
-        var command = input;
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(input));
     }
 
     [HttpGet("{clusterId}/history")]
@@ -91,9 +72,7 @@ public class ClusterController : Controller
     {
         try
         {
-            Response.Headers.Add("X-Deprecated", "true");
-            Response.Headers.Add("X-Deprecated-Message", "Use GET /api/YearSeason/cluster/{clusterId} instead");
-            Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
+            AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} instead");
 
             var query = new GetClusterHistoryQuery
             {
@@ -103,12 +82,7 @@ public class ClusterController : Controller
                 Limit = limit
             };
 
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
@@ -123,21 +97,14 @@ public class ClusterController : Controller
     {
         try
         {
-            Response.Headers.Add("X-Deprecated", "true");
-            Response.Headers.Add("X-Deprecated-Message", "Use GET /api/YearSeason/cluster/{clusterId} and /api/YearSeason/{id}/dashboard instead");
-            Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
+            AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} and /api/YearSeason/{id}/dashboard instead");
 
             var query = new GetClusterCurrentSeasonQuery
             {
                 ClusterId = clusterId
             };
 
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
@@ -155,9 +122,7 @@ public class ClusterController : Controller
     {
         try
         {
-            Response.Headers.Add("X-Deprecated", "true");
-            Response.Headers.Add("X-Deprecated-Message", "Use GET /api/YearSeason/cluster/{clusterId} instead");
-            Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
+            AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} instead");
 
             var query = new GetClusterAvailableSeasonsQuery
             {
@@ -166,17 +131,19 @@ public class ClusterController : Controller
                 Limit = limit
             };
 
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while getting available seasons for cluster {ClusterId}", clusterId);
             return StatusCode(500, "An error occurred while processing your request");
         }
+    }
+
+    private void AddDeprecationHeaders(string message)
+    {
+        Response.Headers.Add("X-Deprecated", "true");
+        Response.Headers.Add("X-Deprecated-Message", message);
+        Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
     }
 }

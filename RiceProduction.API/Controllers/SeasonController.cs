@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.SeasonFeature.Commands.CreateSeason;
 using RiceProduction.Application.SeasonFeature.Commands.UpdateSeason;
 using RiceProduction.Application.SeasonFeature.Commands.DeleteSeason;
@@ -23,22 +24,14 @@ namespace RiceProduction.API.Controllers
         public async Task<IActionResult> GetAll([FromQuery] GetAllSeasonsQuery query)
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpPost]
         public async Task<IActionResult> CreateSeason([FromBody] CreateSeasonCommand command)
         {
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpPut("{id}")]
@@ -48,12 +41,9 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest(new { message = "Route ID does not match command ID" });
             }
+
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpDelete("{id}")]
@@ -61,23 +51,14 @@ namespace RiceProduction.API.Controllers
         {
             var command = new DeleteSeasonCommand { SeasonId = id };
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("current")]
         public async Task<IActionResult> GetCurrentSeason()
         {
-            var query = new GetCurrentSeasonQuery();
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            var result = await _mediator.Send(new GetCurrentSeasonQuery());
+            return this.ToIActionResult(result);
         }
     }
 }

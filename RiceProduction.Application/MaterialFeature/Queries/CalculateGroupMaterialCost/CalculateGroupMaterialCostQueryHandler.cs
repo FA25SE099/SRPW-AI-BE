@@ -1,12 +1,9 @@
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
-using System.Linq;
-using System;
-using System.Collections.Generic;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateGroupMaterialCost;
 
@@ -27,7 +24,6 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
         {
             var today = DateTime.UtcNow;
 
-            // --- 1. Tải Group và Plots ---
             var group = await _unitOfWork.Repository<Group>().FindAsync(
                 match: g => g.Id == request.GroupId,
                 includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot)
@@ -45,38 +41,28 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
 
             decimal effectiveTotalArea = group.TotalArea.Value;
 
-            // --- 2. Collect all material IDs from the Materials list ---
             var allMaterialIds = request.Materials
                 .Select(m => m.MaterialId)
                 .Distinct()
                 .ToList();
 
-            // --- 3. Tải chi tiết Material và Material Prices ---
             var materialDetails = await _unitOfWork.Repository<Material>()
                 .ListAsync(filter: m => allMaterialIds.Contains(m.Id));
-
             var materialDetailsMap = materialDetails.ToDictionary(m => m.Id, m => m);
 
             var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
                 filter: p => allMaterialIds.Contains(p.MaterialId) && p.ValidFrom <= today
             );
-
             var materialPriceMap = potentialPrices
                 .GroupBy(p => p.MaterialId)
                 .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
                 .ToDictionary(p => p.MaterialId, p => p);
 
-            // --- 4. Initialize tracking dictionaries ---
             decimal totalGroupCost = 0M;
             var priceWarnings = new List<string>();
-            var plotCostDetails = new List<PlotCostDetailResponse>();
-
-            // Dictionary to aggregate all materials
+            var materialCostDetails = new List<MaterialCostDetailResponse>();
             var materialAggregation = new Dictionary<Guid, (decimal TotalQuantity, decimal TotalPackages, decimal TotalCost)>();
 
-            // --- 5. Process Materials ---
-            var materialCostDetails = new List<MaterialCostDetailResponse>();
-            
             foreach (var materialInput in request.Materials)
             {
                 var (materialCost, aggregatedData) = CalculateMaterialCostForGroup(
@@ -87,65 +73,22 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
                     materialPriceMap,
                     priceWarnings);
 
-                if (materialCost != null)
-                {
-                    materialCostDetails.Add(materialCost);
-                    totalGroupCost += materialCost.MaterialTotalCost;
+                if (materialCost == null) continue;
 
-                    // Aggregate for overall summary
-                    if (!materialAggregation.ContainsKey(materialInput.MaterialId))
-                    {
-                        materialAggregation[materialInput.MaterialId] = (0M, 0M, 0M);
-                    }
-                    var current = materialAggregation[materialInput.MaterialId];
-                    materialAggregation[materialInput.MaterialId] = (
-                        current.TotalQuantity + aggregatedData.TotalQuantity,
-                        current.TotalPackages + aggregatedData.TotalPackages,
-                        current.TotalCost + aggregatedData.TotalCost
-                    );
-                }
+                materialCostDetails.Add(materialCost);
+                totalGroupCost += materialCost.MaterialTotalCost;
+
+                materialAggregation.TryGetValue(materialInput.MaterialId, out var current);
+                materialAggregation[materialInput.MaterialId] = (
+                    current.TotalQuantity + aggregatedData.TotalQuantity,
+                    current.TotalPackages + aggregatedData.TotalPackages,
+                    current.TotalCost + aggregatedData.TotalCost
+                );
             }
 
-            // --- 6. Calculate plot cost details (proportional allocation) ---
-            foreach (var groupPlot in group.GroupPlots)
-            {
-                var plot = groupPlot.Plot;
-                var plotArea = plot.Area;
-                if (plotArea <= 0) continue;
+            var plotCostDetails = BuildPlotCostDetails(group.GroupPlots, effectiveTotalArea, totalGroupCost);
+            AppendAggregatedMaterialCosts(materialCostDetails, materialAggregation, materialDetailsMap, materialPriceMap);
 
-                var plotRatio = plotArea / effectiveTotalArea;
-                var allocatedCost = totalGroupCost * plotRatio;
-
-                plotCostDetails.Add(new PlotCostDetailResponse
-                {
-                    PlotId = plot.Id,
-                    PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
-                    PlotArea = plotArea,
-                    AreaRatio = plotRatio,
-                    AllocatedCost = allocatedCost
-                });
-            }
-
-            // --- 7. Create aggregated material cost details ---
-            foreach (var kvp in materialAggregation)
-            {
-                if (!materialDetailsMap.TryGetValue(kvp.Key, out var materialDetail)) continue;
-                if (!materialPriceMap.TryGetValue(kvp.Key, out var priceInfo)) continue;
-
-                materialCostDetails.Add(new MaterialCostDetailResponse
-                {
-                    MaterialId = kvp.Key,
-                    MaterialName = materialDetail.Name,
-                    Unit = materialDetail.Unit,
-                    RequiredQuantity = kvp.Value.TotalQuantity,
-                    PackagesNeeded = kvp.Value.TotalPackages,
-                    EffectivePricePerPackage = priceInfo.PricePerMaterial,
-                    MaterialTotalCost = kvp.Value.TotalCost,
-                    PriceValidFrom = priceInfo.ValidFrom
-                });
-            }
-
-            // --- 8. Build response ---
             var response = new CalculateGroupMaterialCostResponse
             {
                 GroupId = request.GroupId,
@@ -172,7 +115,59 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
         }
     }
 
-    private (MaterialCostDetailResponse? materialCost, (decimal TotalQuantity, decimal TotalPackages, decimal TotalCost) aggregatedData)
+    private static List<PlotCostDetailResponse> BuildPlotCostDetails(
+        IEnumerable<GroupPlot> groupPlots,
+        decimal effectiveTotalArea,
+        decimal totalGroupCost)
+    {
+        var plotCostDetails = new List<PlotCostDetailResponse>();
+
+        foreach (var groupPlot in groupPlots)
+        {
+            var plot = groupPlot.Plot;
+            var plotArea = plot.Area;
+            if (plotArea <= 0) continue;
+
+            var plotRatio = plotArea / effectiveTotalArea;
+            plotCostDetails.Add(new PlotCostDetailResponse
+            {
+                PlotId = plot.Id,
+                PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
+                PlotArea = plotArea,
+                AreaRatio = plotRatio,
+                AllocatedCost = totalGroupCost * plotRatio
+            });
+        }
+
+        return plotCostDetails;
+    }
+
+    private static void AppendAggregatedMaterialCosts(
+        List<MaterialCostDetailResponse> materialCostDetails,
+        Dictionary<Guid, (decimal TotalQuantity, decimal TotalPackages, decimal TotalCost)> materialAggregation,
+        Dictionary<Guid, Material> materialDetailsMap,
+        Dictionary<Guid, MaterialPrice> materialPriceMap)
+    {
+        foreach (var kvp in materialAggregation)
+        {
+            if (!materialDetailsMap.TryGetValue(kvp.Key, out var materialDetail)) continue;
+            if (!materialPriceMap.TryGetValue(kvp.Key, out var priceInfo)) continue;
+
+            materialCostDetails.Add(new MaterialCostDetailResponse
+            {
+                MaterialId = kvp.Key,
+                MaterialName = materialDetail.Name,
+                Unit = materialDetail.Unit,
+                RequiredQuantity = kvp.Value.TotalQuantity,
+                PackagesNeeded = kvp.Value.TotalPackages,
+                EffectivePricePerPackage = priceInfo.PricePerMaterial,
+                MaterialTotalCost = kvp.Value.TotalCost,
+                PriceValidFrom = priceInfo.ValidFrom
+            });
+        }
+    }
+
+    private static (MaterialCostDetailResponse? materialCost, (decimal TotalQuantity, decimal TotalPackages, decimal TotalCost) aggregatedData)
         CalculateMaterialCostForGroup(
             Guid materialId,
             decimal quantityPerHa,
@@ -193,18 +188,9 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
             return (null, (0, 0, 0));
         }
 
-        var amountPerPackage = materialDetail.AmmountPerMaterial.GetValueOrDefault(1M);
-        if (amountPerPackage <= 0) amountPerPackage = 1M;
-
-        // Calculate total quantity needed for entire group area
+        var amountPerPackage = materialDetail.AmmountPerMaterial is > 0 ? materialDetail.AmmountPerMaterial.Value : 1M;
         var requiredQuantity = quantityPerHa * totalArea;
-
-        // Calculate packages needed
-        var packagesNeeded = materialDetail.IsPartition
-            ? requiredQuantity / amountPerPackage
-            : Math.Ceiling(requiredQuantity / amountPerPackage);
-
-        // Calculate total cost
+        var packagesNeeded = MaterialCostHelper.CalculatePackagesNeeded(requiredQuantity, amountPerPackage, materialDetail.IsPartition);
         var totalCost = packagesNeeded * priceInfo.PricePerMaterial;
 
         var materialCost = new MaterialCostDetailResponse

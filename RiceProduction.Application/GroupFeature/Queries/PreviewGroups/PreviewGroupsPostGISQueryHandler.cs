@@ -44,7 +44,7 @@
 
 //            if (cluster == null)
 //            {
-//                return Result<PreviewGroupsResponse>.Failure($"Cluster {request.ClusterId} not found");
+//                return Result<PreviewGroupsResponse>.Failure($"Không tìm thấy cụm {request.ClusterId}");
 //            }
 
 //            // Verify season exists
@@ -53,7 +53,7 @@
 
 //            if (season == null)
 //            {
-//                return Result<PreviewGroupsResponse>.Failure($"Season {request.SeasonId} not found");
+//                return Result<PreviewGroupsResponse>.Failure($"Không tìm thấy vụ mùa {request.SeasonId}");
 //            }
 
 //            // Build grouping parameters
@@ -227,7 +227,7 @@
 //        catch (Exception ex)
 //        {
 //            _logger.LogError(ex, "Error previewing groups for cluster {ClusterId} using PostGIS", request.ClusterId);
-//            return Result<PreviewGroupsResponse>.Failure($"Error previewing groups: {ex.Message}");
+//            return Result<PreviewGroupsResponse>.Failure($"Lỗi xem trước các nhóm: {ex.Message}");
 //        }
 //    }
 
@@ -235,14 +235,14 @@
 //    {
 //        return reason switch
 //        {
-//            "IsolatedLocation" => $"No nearby plots within {parameters.ProximityThreshold}m proximity threshold",
-//            "NotSpatiallyCoherent" => "Would create an elongated chain group (fails spatial coherence check)",
-//            "TooFewPlots" => $"Cluster has fewer than {parameters.MinPlotsPerGroup} plots (minimum required)",
-//            "InsufficientArea" => $"Total cluster area is below {parameters.MinGroupArea} hectares",
-//            "GroupTooLarge" => $"Would exceed maximum area of {parameters.MaxGroupArea} hectares",
-//            "TooManyPlots" => $"Would exceed maximum of {parameters.MaxPlotsPerGroup} plots per group",
-//            "ConstraintViolation" => "Does not meet one or more grouping constraints",
-//            _ => "Unknown reason"
+//            "IsolatedLocation" => $"Không có thửa đất gần trong ngưỡng khoảng cách {parameters.ProximityThreshold}m",
+//            "NotSpatiallyCoherent" => "Sẽ tạo ra nhóm dạng chuỗi kéo dài (không đạt kiểm tra tính liên kết không gian)",
+//            "TooFewPlots" => $"Cụm có ít hơn {parameters.MinPlotsPerGroup} thửa (tối thiểu yêu cầu)",
+//            "InsufficientArea" => $"Tổng diện tích cụm thấp hơn {parameters.MinGroupArea} héc-ta",
+//            "GroupTooLarge" => $"Sẽ vượt quá diện tích tối đa {parameters.MaxGroupArea} héc-ta",
+//            "TooManyPlots" => $"Sẽ vượt quá tối đa {parameters.MaxPlotsPerGroup} thửa mỗi nhóm",
+//            "ConstraintViolation" => "Không đáp ứng một hoặc nhiều ràng buộc nhóm",
+//            _ => "Lý do không xác định"
 //        };
 //    }
 
@@ -255,26 +255,26 @@
 //            case "IsolatedLocation":
 //                if (distanceToNearest.HasValue && distanceToNearest.Value < 5000)
 //                {
-//                    suggestions.Add($"Consider manually assigning to Group {nearestGroupNumber} ({distanceToNearest.Value / 1000:F2}km away)");
+//                    suggestions.Add($"Xem xét gán thủ công vào Nhóm {nearestGroupNumber} (cách {distanceToNearest.Value / 1000:F2}km)");
 //                }
-//                suggestions.Add("Increase proximity threshold if appropriate for this region");
-//                suggestions.Add("Create an exception group for isolated plots");
+//                suggestions.Add("Tăng ngưỡng khoảng cách nếu phù hợp với khu vực này");
+//                suggestions.Add("Tạo nhóm ngoại lệ cho các thửa cô lập");
 //                break;
 
 //            case "NotSpatiallyCoherent":
-//                suggestions.Add("This plot would create a chain group - manually review spatial arrangement");
-//                suggestions.Add("Consider splitting the cluster into multiple smaller groups");
+//                suggestions.Add("Thửa này sẽ tạo ra nhóm dạng chuỗi - xem xét thủ công sắp xếp không gian");
+//                suggestions.Add("Xem xét chia cụm thành nhiều nhóm nhỏ hơn");
 //                break;
 
 //            case "TooFewPlots":
-//                suggestions.Add("Reduce minimum plots per group parameter");
-//                suggestions.Add("Manually merge with nearby small cluster");
-//                suggestions.Add("Create exception group with supervisor approval");
+//                suggestions.Add("Giảm thông số số thửa tối thiểu mỗi tổ");
+//                suggestions.Add("Gộp thủ công với cụm nhỏ gần đó");
+//                suggestions.Add("Tạo tổ ngoại lệ với sự phê duyệt của giám sát viên");
 //                break;
 
 //            case "InsufficientArea":
-//                suggestions.Add("Reduce minimum group area parameter");
-//                suggestions.Add("Merge with nearby group manually");
+//                suggestions.Add("Giảm thông số diện tích tối thiểu tổ");
+//                suggestions.Add("Gộp thủ công với tổ gần đó");
 //                break;
 
 //            case "GroupTooLarge":

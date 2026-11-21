@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PestProtocolRequests;
 using RiceProduction.Application.Common.Models.Response.PestProtocolResponses;
@@ -34,13 +35,7 @@ public class PestProtocolController : Controller
         };
 
         var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(result);
     }
 
     [HttpPost]
@@ -58,7 +53,7 @@ public class PestProtocolController : Controller
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to create pest protocol: {Errors}",
-                    string.Join(", ", result.Errors ?? new string[0]));
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
                 return BadRequest(result);
             }
 
@@ -77,7 +72,6 @@ public class PestProtocolController : Controller
     {
         try
         {
-
             _logger.LogInformation("Update PestProtocol request received for ID: {ProtocolId}", command.Id);
 
             var result = await _mediator.Send(command);
@@ -86,7 +80,7 @@ public class PestProtocolController : Controller
             {
                 _logger.LogWarning(
                     "Failed to update pest protocol ID {ProtocolId}: {Errors}",
-                    command.Id, string.Join(", ", result.Errors ?? new string[0]));
+                    command.Id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
 
                 return BadRequest(result);
             }

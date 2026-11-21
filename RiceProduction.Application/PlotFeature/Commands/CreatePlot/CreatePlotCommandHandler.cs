@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.PlotResponse;
@@ -32,18 +33,16 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
         {
             try
             {
-                // Validate farmer exists
                 var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(
-                    request.FarmerId, 
+                    request.FarmerId,
                     cancellationToken);
-                    
+
                 if (farmer == null)
                 {
                     return Result<PlotResponse>.Failure(
                         $"Farmer with ID '{request.FarmerId}' not found");
                 }
 
-                // Check for duplicate plot
                 var plotRepo = _unitOfWork.Repository<Plot>();
                 var existingPlot = await plotRepo.FindAsync(p =>
                     p.SoThua == request.SoThua &&
@@ -56,19 +55,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                         $"Plot with SoThua={request.SoThua} and SoTo={request.SoTo} already exists for this farmer");
                 }
 
-                // Create default boundary (will be updated later by supervisor)
-                var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
-                var coordinates = new[]
-                {
-                    new Coordinate(0, 0),
-                    new Coordinate(0, 0.001),
-                    new Coordinate(0.001, 0.001),
-                    new Coordinate(0.001, 0),
-                    new Coordinate(0, 0)
-                };
-                var defaultBoundary = geometryFactory.CreatePolygon(coordinates);
-
-                // Create plot
+                var geometryFactory = new GeometryFactory(new PrecisionModel(), PlotGeometryHelper.Wgs84Srid);
                 var plotId = await plotRepo.GenerateNewGuid(Guid.NewGuid());
                 var newPlot = new Plot
                 {
@@ -79,25 +66,19 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     FarmerId = request.FarmerId,
                     SoilType = request.SoilType,
                     Status = PlotStatus.PendingPolygon,
-                    Boundary = defaultBoundary
+                    // Placeholder boundary until a supervisor draws the actual polygon
+                    Boundary = PlotGeometryHelper.CreateDefaultBoundary(geometryFactory)
                 };
 
                 await plotRepo.AddAsync(newPlot);
 
-                // Create PlotCultivation if rice variety specified
                 PlotCultivation? plotCultivation = null;
-                CultivationVersion? cultivationVersion = null;
-                
                 if (!string.IsNullOrWhiteSpace(request.RiceVarietyName))
                 {
-                    var (cultivation, version) = await CreatePlotCultivationAsync(
+                    plotCultivation = await CreatePlotCultivationAsync(
                         plotId,
                         request.Area!.Value,
-                        request.RiceVarietyName,
-                        cancellationToken);
-                        
-                    plotCultivation = cultivation;
-                    cultivationVersion = version;
+                        request.RiceVarietyName);
                 }
 
                 await _unitOfWork.CompleteAsync();
@@ -106,7 +87,6 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     "Created plot {PlotId} (SoThua:{SoThua}, SoTo:{SoTo}) for farmer {FarmerId}",
                     newPlot.Id, newPlot.SoThua, newPlot.SoTo, farmer.Id);
 
-                // Create response
                 var plotResponse = new PlotResponse
                 {
                     PlotId = newPlot.Id,
@@ -148,17 +128,14 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
             }
         }
 
-        private async Task<(PlotCultivation?, CultivationVersion?)> CreatePlotCultivationAsync(
+        private async Task<PlotCultivation?> CreatePlotCultivationAsync(
             Guid plotId,
             decimal area,
-            string riceVarietyName,
-            CancellationToken cancellationToken)
+            string riceVarietyName)
         {
             try
             {
-                // Get rice variety
-                var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
-                var riceVariety = await riceVarietyRepo.FindAsync(
+                var riceVariety = await _unitOfWork.Repository<RiceVariety>().FindAsync(
                     rv => rv.VarietyName == riceVarietyName);
 
                 if (riceVariety == null)
@@ -166,19 +143,20 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     _logger.LogWarning(
                         "Rice variety '{RiceVarietyName}' not found, skipping cultivation creation",
                         riceVarietyName);
-                    return (null, null);
+                    return null;
                 }
 
-                // Get current season
-                var (currentSeason, currentYear) = await GetCurrentSeasonAndYear(cancellationToken);
-                if (currentSeason == null)
+                var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
+                var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now);
+                if (resolvedSeason == null)
                 {
                     _logger.LogWarning(
                         "No current season found, skipping cultivation creation");
-                    return (null, null);
+                    return null;
                 }
 
-                // Create PlotCultivation
+                var (currentSeason, currentYear) = resolvedSeason.Value;
+
                 var plotCultivationId = Guid.NewGuid();
                 var plotCultivation = new PlotCultivation
                 {
@@ -191,10 +169,8 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     Status = CultivationStatus.Planned
                 };
 
-                var plotCultivationRepo = _unitOfWork.Repository<PlotCultivation>();
-                await plotCultivationRepo.AddAsync(plotCultivation);
+                await _unitOfWork.Repository<PlotCultivation>().AddAsync(plotCultivation);
 
-                // Create first version
                 var firstVersion = new CultivationVersion
                 {
                     PlotCultivationId = plotCultivationId,
@@ -205,80 +181,18 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     ActivatedAt = DateTime.UtcNow
                 };
 
-                var cultivationVersionRepo = _unitOfWork.Repository<CultivationVersion>();
-                await cultivationVersionRepo.AddAsync(firstVersion);
+                await _unitOfWork.Repository<CultivationVersion>().AddAsync(firstVersion);
 
                 _logger.LogInformation(
                     "Created cultivation for plot {PlotId} with variety '{RiceVarietyName}' in season {SeasonName} {Year}",
                     plotId, riceVarietyName, currentSeason.SeasonName, currentYear);
 
-                return (plotCultivation, firstVersion);
+                return plotCultivation;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating plot cultivation");
-                return (null, null);
-            }
-        }
-
-        private async Task<(Season? season, int year)> GetCurrentSeasonAndYear(
-            CancellationToken cancellationToken)
-        {
-            var today = DateTime.Now;
-            var currentMonth = today.Month;
-            var currentDay = today.Day;
-
-            var allSeasons = await _unitOfWork.Repository<Season>()
-                .ListAsync(_ => true);
-
-            foreach (var season in allSeasons)
-            {
-                if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
-                {
-                    var startParts = season.StartDate.Split('/');
-                    int startMonth = int.Parse(startParts[0]);
-
-                    int year = today.Year;
-                    if (currentMonth < startMonth && startMonth > 6)
-                    {
-                        year--;
-                    }
-
-                    return (season, year);
-                }
-            }
-
-            return (null, today.Year);
-        }
-
-        private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
-        {
-            try
-            {
-                var startParts = startDateStr.Split('/');
-                var endParts = endDateStr.Split('/');
-
-                int startMonth = int.Parse(startParts[0]);
-                int startDay = int.Parse(startParts[1]);
-                int endMonth = int.Parse(endParts[0]);
-                int endDay = int.Parse(endParts[1]);
-
-                int currentDate = month * 100 + day;
-                int seasonStart = startMonth * 100 + startDay;
-                int seasonEnd = endMonth * 100 + endDay;
-
-                if (seasonStart > seasonEnd)
-                {
-                    return currentDate >= seasonStart || currentDate <= seasonEnd;
-                }
-                else
-                {
-                    return currentDate >= seasonStart && currentDate <= seasonEnd;
-                }
-            }
-            catch
-            {
-                return false;
+                return null;
             }
         }
     }

@@ -1,5 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
+using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.RiceVarietyFeature.Commands;
 using RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVariety;
 using RiceProduction.Application.RiceVarietyFeature.Commands.UpdateRiceVariety;
@@ -26,72 +28,43 @@ namespace RiceProduction.API.Controllers
         public async Task<IActionResult> GetAll([FromQuery] GetAllRiceVarietiesQuery query)
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("categories")]
         public async Task<IActionResult> GetAllCategories([FromQuery] bool? isActive)
         {
-            var query = new GetAllRiceVarietyCategoriesQuery { IsActive = isActive };
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            var result = await _mediator.Send(new GetAllRiceVarietyCategoriesQuery { IsActive = isActive });
+            return this.ToIActionResult(result);
         }
-        
+
         [HttpPost]
         [Route("change-rice-season")]
         public async Task<IActionResult> ChangeRiceSeason([FromBody] ChangeRiceSeasonCommand query)
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpPost("download-excel")]
         public async Task<IActionResult> DownloadRiceVarietiesExcel([FromBody] DownloadAllRiceVarietiesExcelQuery query)
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded || result.Data == null)
-            {
-                return BadRequest(new { message = result.Message });
-            }
-            return result.Data;
+            return ToFileDownloadResult(result);
         }
 
         [HttpGet("download-sample-excel")]
         public async Task<IActionResult> DownloadSampleExcel()
         {
-            var query = new DownloadRiceVarietySampleExcelQuery();
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded || result.Data == null)
-            {
-                return BadRequest(new { message = result.Message });
-            }
-            return result.Data;
+            var result = await _mediator.Send(new DownloadRiceVarietySampleExcelQuery());
+            return ToFileDownloadResult(result);
         }
 
         [HttpPost("create")]
         public async Task<IActionResult> CreateRiceVariety([FromBody] CreateRiceVarietyCommand command)
         {
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpPut("{id}")]
@@ -101,24 +74,21 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest(new { message = "Route ID does not match command ID" });
             }
+
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteRiceVariety(Guid id)
         {
-            var command = new DeleteRiceVarietyCommand { RiceVarietyId = id };
-            var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            var result = await _mediator.Send(new DeleteRiceVarietyCommand { RiceVarietyId = id });
+            return this.ToIActionResult(result);
         }
+
+        private IActionResult ToFileDownloadResult<T>(Result<T> result) where T : class, IActionResult =>
+            result.Succeeded && result.Data != null
+                ? result.Data
+                : BadRequest(new { message = result.Message });
     }
 }

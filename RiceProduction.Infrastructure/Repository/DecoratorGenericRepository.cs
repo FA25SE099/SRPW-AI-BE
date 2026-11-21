@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
@@ -7,20 +7,21 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Threading.Tasks;   
-using Microsoft.EntityFrameworkCore.Query;
+using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Repository
 {
     public class DecoratorGenericRepository<T> : IGenericRepository<T>
         where T : BaseAuditableEntity
     {
+        private const string CachePrefix = "RiceEntity";
+        private static readonly string EntityName = typeof(T).Name;
+        private static readonly string ListAllCacheKey = $"{CachePrefix}_{EntityName}_ListAll";
+
         private readonly IGenericRepository<T> _repository;
         private readonly IMemoryCache _cache;
         private readonly ILogger<DecoratorGenericRepository<T>> _logger;
         private readonly MemoryCacheEntryOptions _cacheOptions;
-
-        private const string CachePrefix = "RiceEntity"; // Prefix for your app/domain
 
         public DecoratorGenericRepository(
             IGenericRepository<T> repository,
@@ -33,14 +34,11 @@ namespace RiceProduction.Infrastructure.Repository
 
             _cacheOptions = new MemoryCacheEntryOptions
             {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) 
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
             };
         }
 
-        public async Task<Guid> GenerateNewGuid(Guid guidInput)
-        {
-            return await _repository.GenerateNewGuid(guidInput);
-        }
+        public Task<Guid> GenerateNewGuid(Guid guidInput) => _repository.GenerateNewGuid(guidInput);
 
         public async Task AddAsync(T entity)
         {
@@ -57,21 +55,13 @@ namespace RiceProduction.Infrastructure.Repository
         public void UpdateRange(IEnumerable<T> entities)
         {
             _repository.UpdateRange(entities);
-            foreach (var entity in entities)
-            {
-                InvalidateByIdCache(entity.Id);
-            }
-            InvalidateListCache();
+            InvalidateEntityCaches(entities);
         }
 
         public void DeleteRange(IEnumerable<T> entities)
         {
             _repository.DeleteRange(entities);
-            foreach (var entity in entities)
-            {
-                InvalidateByIdCache(entity.Id);
-            }
-            InvalidateListCache();
+            InvalidateEntityCaches(entities);
         }
 
         public async Task<bool> DeleteRangeAsync(Expression<Func<T, bool>> predicate)
@@ -81,110 +71,106 @@ namespace RiceProduction.Infrastructure.Repository
             {
                 InvalidateListCache();
             }
+
             return result;
         }
 
-        public async Task<int> CountAsync()
-        {
-            return await _repository.CountAsync();
-        }
+        public Task<int> CountAsync() => _repository.CountAsync();
 
         public T? Delete(T entityToDelete)
         {
             var deleted = _repository.Delete(entityToDelete);
-            InvalidateByIdCache(entityToDelete.Id);
-            InvalidateListCache();
+            InvalidateEntityCaches(entityToDelete.Id);
             return deleted;
         }
 
         public T? Delete(object id)
         {
-            var idGuid = (Guid)id; 
+            var idGuid = (Guid)id;
             var deleted = _repository.Delete(id);
-            InvalidateByIdCache(idGuid);
-            InvalidateListCache();
+            InvalidateEntityCaches(idGuid);
             return deleted;
         }
 
         public void Update(T entity)
         {
             _repository.Update(entity);
-            InvalidateByIdCache(entity.Id);
-            InvalidateListCache();
+            InvalidateEntityCaches(entity.Id);
         }
 
-        public async Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate)
-        {
-            return await _repository.ExistsAsync(predicate);
-        }
+        public Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate) => _repository.ExistsAsync(predicate);
 
-        public async Task<T?> FindAsync(Expression<Func<T, bool>> match)
-        {
-            return await _repository.FindAsync(match);
-        }
+        public Task<T?> FindAsync(Expression<Func<T, bool>> match) => _repository.FindAsync(match);
 
-        public async Task<T?> FindAsync(
+        public Task<T?> FindAsync(
             Expression<Func<T, bool>> match,
-            Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null)
-        {
-            return await _repository.FindAsync(match, includeProperties);
-        }
+            Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null) =>
+            _repository.FindAsync(match, includeProperties);
 
-        public IQueryable<T?> GetQueryable()
-        {
-            throw new NotImplementedException();
-        }
+        public IQueryable<T?> GetQueryable() => throw new NotImplementedException();
 
         public async Task<T?> GetEntityByIdAsync(Guid id)
         {
-            var key = $"{CachePrefix}_{typeof(T).Name}_{id}";
-            return await _cache.GetOrCreateAsync(key, async entry =>
+            return await _cache.GetOrCreateAsync(GetByIdCacheKey(id), async entry =>
             {
                 entry.SetOptions(_cacheOptions);
-                _logger.LogInformation("Cache miss for {EntityType} ID {Id}; fetching from DB", typeof(T).Name, id);
+                _logger.LogInformation("Cache miss for {EntityType} ID {Id}; fetching from DB", EntityName, id);
                 return await _repository.GetEntityByIdAsync(id);
             });
         }
 
         public async Task<IReadOnlyList<T>> ListAllAsync()
         {
-            var key = $"{CachePrefix}_{typeof(T).Name}_ListAll";
-            return await _cache.GetOrCreateAsync(key, async entry =>
+            return await _cache.GetOrCreateAsync(ListAllCacheKey, async entry =>
             {
                 entry.SetOptions(_cacheOptions);
-                _logger.LogInformation("Cache miss for {EntityType} ListAll; fetching from DB", typeof(T).Name);
+                _logger.LogInformation("Cache miss for {EntityType} ListAll; fetching from DB", EntityName);
                 return await _repository.ListAllAsync();
             });
         }
 
-        public async Task<IReadOnlyList<T>> ListAsync(
+        public Task<IReadOnlyList<T>> ListAsync(
             Expression<Func<T, bool>>? filter = null,
             Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null,
-            Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null)
-        {
-            return await _repository.ListAsync(filter, orderBy, includeProperties);
-        }
+            Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null) =>
+            _repository.ListAsync(filter, orderBy, includeProperties);
 
         public async Task<int> SaveChangesAsync()
         {
             var changes = await _repository.SaveChangesAsync();
             InvalidateListCache();
-            _logger.LogInformation("Saved {ChangeCount} changes for {EntityType}; invalidated list cache", changes, typeof(T).Name);
+            _logger.LogInformation("Saved {ChangeCount} changes for {EntityType}; invalidated list cache", changes, EntityName);
             return changes;
+        }
+
+        private static string GetByIdCacheKey(Guid id) => $"{CachePrefix}_{EntityName}_{id}";
+
+        private void InvalidateEntityCaches(Guid id)
+        {
+            InvalidateByIdCache(id);
+            InvalidateListCache();
+        }
+
+        private void InvalidateEntityCaches(IEnumerable<T> entities)
+        {
+            foreach (var entity in entities)
+            {
+                InvalidateByIdCache(entity.Id);
+            }
+
+            InvalidateListCache();
         }
 
         private void InvalidateByIdCache(Guid id)
         {
-            var key = $"{CachePrefix}_{typeof(T).Name}_{id}";
-            _cache.Remove(key);
-            _logger.LogDebug("Invalidated cache for {EntityType} ID {Id}", typeof(T).Name, id);
+            _cache.Remove(GetByIdCacheKey(id));
+            _logger.LogDebug("Invalidated cache for {EntityType} ID {Id}", EntityName, id);
         }
 
         private void InvalidateListCache()
         {
-            var key = $"{CachePrefix}_{typeof(T).Name}_ListAll";
-            _cache.Remove(key);
-            _logger.LogDebug("Invalidated list cache for {EntityType}", typeof(T).Name);
+            _cache.Remove(ListAllCacheKey);
+            _logger.LogDebug("Invalidated list cache for {EntityType}", EntityName);
         }
     }
 }

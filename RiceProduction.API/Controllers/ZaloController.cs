@@ -33,9 +33,9 @@ public class ZaloController : ControllerBase
         {
             RedirectUri = redirectUri ?? string.Empty
         };
-        
+
         var result = await _sender.Send(command);
-        
+
         return Ok(new
         {
             authorizationUrl = result.AuthorizationUrl,
@@ -56,13 +56,13 @@ public class ZaloController : ControllerBase
         try
         {
             var result = await _sender.Send(command);
-            
+
             return Ok(new
             {
                 accessToken = result.AccessToken,
                 refreshToken = result.RefreshToken,
                 expiresIn = result.ExpiresIn,
-                message = "Access token obtained successfully. Token expires in " + result.ExpiresIn + " seconds (approximately 25 hours)."
+                message = $"Access token obtained successfully. Token expires in {result.ExpiresIn} seconds (approximately 25 hours)."
             });
         }
         catch (Exception ex)
@@ -83,7 +83,7 @@ public class ZaloController : ControllerBase
         try
         {
             var result = await _sender.Send(command);
-            
+
             return Ok(new
             {
                 accessToken = result.AccessToken,
@@ -110,7 +110,7 @@ public class ZaloController : ControllerBase
         try
         {
             var result = await _sender.Send(command);
-            
+
             if (result.Error != 0)
             {
                 return BadRequest(new
@@ -149,7 +149,7 @@ public class ZaloController : ControllerBase
         try
         {
             var result = await _sender.Send(command);
-            
+
             return Ok(new
             {
                 success = true,

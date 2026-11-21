@@ -1,17 +1,18 @@
+using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
+using RiceProduction.Application.Auth.Commands.ChangePassword;
+using RiceProduction.Application.Auth.Commands.ForgotPassword;
 using RiceProduction.Application.Auth.Commands.Login;
 using RiceProduction.Application.Auth.Commands.Logout;
 using RiceProduction.Application.Auth.Commands.RefreshToken;
+using RiceProduction.Application.Auth.Commands.ResetPassword;
+using RiceProduction.Application.Auth.Queries.GetUserById;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.Common.Models.Response;
-using System.Security.Claims;
-using RiceProduction.Application.Auth.Queries.GetUserById;
-using RiceProduction.Application.Auth.Commands.ChangePassword;
-using RiceProduction.Application.Auth.Commands.ResetPassword;
-using RiceProduction.Application.Auth.Commands.ForgotPassword;
 
 namespace RiceProduction.API.Controllers;
 
@@ -37,15 +38,9 @@ public class AuthController : ControllerBase
             RememberMe = request.RememberMe ?? true
         };
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(command));
     }
+
     public enum TestRole
     {
         Admin,
@@ -54,63 +49,40 @@ public class AuthController : ControllerBase
         Uav,
         ClusterManager
     }
+
     [HttpGet("login-fast")]
     public async Task<ActionResult<Result<LoginResponse>>> LoginFast([FromQuery] TestRole role, [FromQuery] bool? rememberMe = true)
     {
-        if (!Enum.IsDefined(typeof(TestRole), role))
+        (string Email, string Password)? credentials = role switch
+        {
+            TestRole.Admin => ("admin@ricepro.com", "Admin123!"),
+            TestRole.Supervisor => ("supervisor1@ricepro.com", "Super123!"),
+            TestRole.Expert => ("expert1@ricepro.com", "Expert123!"),
+            TestRole.Uav => ("user@ricepro.com", "User123!"),
+            TestRole.ClusterManager => ("cluster1@ricepro.com", "Manager123!"),
+            _ => null
+        };
+
+        if (credentials is null)
         {
             return BadRequest(new { Error = "Invalid role specified. Supported roles: admin, supervisor, expert, uav, clustermanager." });
         }
 
-        string email = null;
-        string password = null;
-
-        switch (role)
-        {
-            case TestRole.Admin:
-                email = "admin@ricepro.com";
-                password = "Admin123!";
-                break;
-            case TestRole.Supervisor:
-                email = "supervisor1@ricepro.com";
-                password = "Super123!";
-                break;
-            case TestRole.Expert:
-                email = "expert1@ricepro.com";
-                password = "Expert123!";
-                break;
-            case TestRole.Uav:
-                email = "user@ricepro.com";
-                password = "User123!";
-                break;
-            case TestRole.ClusterManager:
-                email = "cluster1@ricepro.com";
-                password = "Manager123!";
-                break;
-            default:
-                return BadRequest(new { Error = "Invalid role specified." });
-        }
-
         var command = new LoginCommand
         {
-            Email = email,
-            Password = password,
+            Email = credentials.Value.Email,
+            Password = credentials.Value.Password,
             RememberMe = rememberMe ?? true
         };
 
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(command));
     }
+
     [HttpPost("logout")]
     [Authorize]
     public async Task<ActionResult<Result<LogoutResponse>>> Logout([FromBody] LogoutRequest? request = null)
     {
-        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId))
+        if (!User.TryGetUserId(out var userId))
         {
             return Unauthorized(Result<LogoutResponse>.Failure("User not authenticated"));
         }
@@ -121,14 +93,7 @@ public class AuthController : ControllerBase
             RefreshToken = request?.RefreshToken
         };
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(command));
     }
 
     [HttpPost("refresh-token")]
@@ -140,26 +105,18 @@ public class AuthController : ControllerBase
             RefreshToken = request.RefreshToken
         };
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(command));
     }
+
     [HttpGet("me")]
-    [Authorize] 
+    [Authorize]
     public async Task<Result<UserDto>> GetCurrentUser()
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-        var query = new GetUserByIdQuery(){UserId = userId};
-        var user = await _mediator.Send(query);
-
-        return user;
+        var query = new GetUserByIdQuery { UserId = userId };
+        return await _mediator.Send(query);
     }
+
     [HttpPost("change-password")]
     [Authorize]
     public async Task<ActionResult<Result>> ChangePassword([FromBody] ChangePasswordRequest request)
@@ -171,15 +128,9 @@ public class AuthController : ControllerBase
             ConfirmPassword = request.ConfirmPassword
         };
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return ToActionResult(await _mediator.Send(command));
     }
+
     [HttpPost("reset-password")]
     public async Task<ActionResult<Result>> ResetPassword([FromBody] ResetPasswordRequest request)
     {
@@ -191,14 +142,7 @@ public class AuthController : ControllerBase
             ConfirmPassword = request.ConfirmPassword
         };
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return ToActionResult(await _mediator.Send(command));
     }
 
     [HttpPost("forgot-password")]
@@ -206,16 +150,12 @@ public class AuthController : ControllerBase
     {
         var command = new ForgotPasswordCommand
         {
-            Email = request.Email,
+            Email = request.Email
         };
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return ToActionResult(await _mediator.Send(command));
     }
+
+    private ActionResult<Result> ToActionResult(Result result) =>
+        result.Succeeded ? Ok(result) : BadRequest(result);
 }

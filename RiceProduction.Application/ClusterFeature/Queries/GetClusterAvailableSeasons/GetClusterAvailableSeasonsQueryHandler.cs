@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ClusterHistoryResponses;
@@ -35,17 +36,12 @@ public class GetClusterAvailableSeasonsQueryHandler
                     $"Cluster with ID {request.ClusterId} not found");
             }
 
-            // Get all seasons
-            var allSeasons = await _unitOfWork.Repository<Season>()
-                .ListAsync(_ => true);
+            var allSeasons = (await _unitOfWork.Repository<Season>()
+                .ListAsync(_ => true)).ToList();
             var seasonsList = allSeasons.OrderBy(s => s.CreatedAt).ToList();
 
-            // Get current season
-            var currentSeasonResult = await GetCurrentSeasonAndYear();
-            var currentSeason = currentSeasonResult.season;
-            var currentYear = currentSeasonResult.year;
+            var (currentSeason, currentYear) = ResolveCurrentSeasonAndYear(allSeasons);
 
-            // Get all groups for this cluster
             var groupsList = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
                 .Include(g => g.YearSeason)
@@ -54,16 +50,14 @@ public class GetClusterAvailableSeasonsQueryHandler
 
             var response = new ClusterSeasonsResponse();
 
-            // Process current season
             if (currentSeason != null)
             {
                 var currentGroups = groupsList
                     .Where(g => g.YearSeason != null && g.YearSeason.SeasonId == currentSeason.Id && g.Year == currentYear)
                     .ToList();
 
-                // Get selection progress for current season
-                var selectionProgress = await CalculateSelectionProgressAsync(
-                    cluster.Id, currentSeason.Id, currentYear, cancellationToken);
+                var (completionRate, pending, canFormGroups) = await CalculateSelectionProgressAsync(
+                    cluster.Id, currentSeason.Id);
 
                 response.CurrentSeason = new CurrentSeasonOption
                 {
@@ -76,22 +70,22 @@ public class GetClusterAvailableSeasonsQueryHandler
                     GroupCount = currentGroups.Count,
                     TotalPlots = await GetPlotCountForGroupsAsync(currentGroups),
                     TotalArea = currentGroups.Sum(g => g.TotalArea ?? 0),
-                    SelectionProgress = selectionProgress.completionRate,
-                    SelectionsPending = selectionProgress.pending,
-                    CanFormGroups = selectionProgress.canFormGroups
+                    SelectionProgress = completionRate,
+                    SelectionsPending = pending,
+                    CanFormGroups = canFormGroups
                 };
             }
 
-            // Process past and upcoming seasons
             var pastSeasons = new List<SeasonOption>();
             var upcomingSeasons = new List<SeasonOption>();
 
             foreach (var season in seasonsList)
             {
                 if (season.Id == currentSeason?.Id)
+                {
                     continue;
+                }
 
-                // Determine if this is past or upcoming
                 bool isPast = IsSeasonPast(season, currentSeason);
                 var year = DetermineYearForSeason(season);
 
@@ -100,7 +94,9 @@ public class GetClusterAvailableSeasonsQueryHandler
                     .ToList();
 
                 if (!request.IncludeEmpty && !seasonGroups.Any())
+                {
                     continue;
+                }
 
                 var seasonOption = new SeasonOption
                 {
@@ -121,7 +117,6 @@ public class GetClusterAvailableSeasonsQueryHandler
                     upcomingSeasons.Add(seasonOption);
             }
 
-            // Sort and apply limit
             response.PastSeasons = pastSeasons
                 .OrderByDescending(s => s.Year)
                 .ThenByDescending(s => s.SeasonName)
@@ -147,32 +142,28 @@ public class GetClusterAvailableSeasonsQueryHandler
 
     private async Task<(decimal completionRate, int pending, bool canFormGroups)> CalculateSelectionProgressAsync(
         Guid clusterId,
-        Guid seasonId,
-        int year,
-        CancellationToken cancellationToken)
+        Guid seasonId)
     {
-        // Get all farmers in the cluster directly by ClusterId
-        var farmers = await _unitOfWork.FarmerRepository
-            .ListAsync(f => f.ClusterId == clusterId);
-        var farmersList = farmers.ToList();
-        var farmerIds = farmersList.Select(f => f.Id).ToList();
+        var farmersList = (await _unitOfWork.FarmerRepository
+            .ListAsync(f => f.ClusterId == clusterId)).ToList();
         var totalFarmers = farmersList.Count;
 
         if (totalFarmers == 0)
+        {
             return (0, 0, false);
+        }
 
-        // Get all plots for these farmers
-        var plots = await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => farmerIds.Contains(p.FarmerId));
-        var plotsList = plots.ToList();
-
-        // Get cultivations for current season
+        var farmerIds = farmersList.Select(f => f.Id).ToList();
+        var plotsList = (await _unitOfWork.Repository<Plot>()
+            .ListAsync(p => farmerIds.Contains(p.FarmerId))).ToList();
+        var plotToFarmerId = plotsList.ToDictionary(p => p.Id, p => p.FarmerId);
         var plotIds = plotsList.Select(p => p.Id).ToList();
+
         var cultivations = await _unitOfWork.Repository<PlotCultivation>()
             .ListAsync(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == seasonId);
 
         var farmersWithSelection = cultivations
-            .Select(pc => plotsList.First(p => p.Id == pc.PlotId).FarmerId)
+            .Select(pc => plotToFarmerId[pc.PlotId])
             .Distinct()
             .Count();
 
@@ -186,7 +177,9 @@ public class GetClusterAvailableSeasonsQueryHandler
     private async Task<int> GetPlotCountForGroupsAsync(List<Group> groups)
     {
         if (!groups.Any())
+        {
             return 0;
+        }
 
         var groupIds = groups.Select(g => g.Id).ToList();
         var groupPlots = await _unitOfWork.Repository<GroupPlot>()
@@ -195,91 +188,38 @@ public class GetClusterAvailableSeasonsQueryHandler
         return groupPlots.Count();
     }
 
-    private bool IsSeasonPast(Season season, Season? currentSeason)
-    {
-        if (currentSeason == null)
-            return false;
+    private static bool IsSeasonPast(Season season, Season? currentSeason) =>
+        currentSeason != null && season.CreatedAt < currentSeason.CreatedAt;
 
-        // Simple comparison - can be enhanced
-        return season.CreatedAt < currentSeason.CreatedAt;
-    }
-
-    private int DetermineYearForSeason(Season season)
+    private static int DetermineYearForSeason(Season season)
     {
         var today = DateTime.Now;
-        var startParts = season.StartDate.Split('/');
-        if (startParts.Length != 2)
-            return today.Year;
-
-        int startMonth = int.Parse(startParts[0]);
-
-        // If season starts late in year, it might span into next year
-        if (startMonth >= 10)
+        if (!SeasonDateHelper.TryParseMonthDay(season.StartDate, out var startMonth, out _))
         {
-            return today.Month < startMonth ? today.Year - 1 : today.Year;
+            return today.Year;
         }
 
-        return today.Year;
+        return startMonth >= 10 && today.Month < startMonth ? today.Year - 1 : today.Year;
     }
 
-    private async Task<(Season? season, int year)> GetCurrentSeasonAndYear()
+    private static (Season? Season, int Year) ResolveCurrentSeasonAndYear(IEnumerable<Season> seasons)
     {
         var today = DateTime.Now;
-        var currentMonth = today.Month;
-        var currentDay = today.Day;
 
-        var allSeasons = await _unitOfWork.Repository<Season>()
-            .ListAsync(_ => true);
-
-        foreach (var season in allSeasons)
+        foreach (var season in seasons)
         {
-            if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
+            if (!SeasonDateHelper.IsDateInSeasonRange(today.Month, today.Day, season.StartDate, season.EndDate))
             {
-                var startParts = season.StartDate.Split('/');
-                int startMonth = int.Parse(startParts[0]);
-
-                int year = today.Year;
-                if (currentMonth < startMonth && startMonth > 6)
-                {
-                    year--;
-                }
-
-                return (season, year);
+                continue;
             }
+
+            SeasonDateHelper.TryParseMonthDay(season.StartDate, out var startMonth, out _);
+            int year = today.Month < startMonth && startMonth > 6 ? today.Year - 1 : today.Year;
+
+            return (season, year);
         }
 
         return (null, today.Year);
-    }
-
-    private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
-    {
-        try
-        {
-            var startParts = startDateStr.Split('/');
-            var endParts = endDateStr.Split('/');
-
-            int startMonth = int.Parse(startParts[0]);
-            int startDay = int.Parse(startParts[1]);
-            int endMonth = int.Parse(endParts[0]);
-            int endDay = int.Parse(endParts[1]);
-
-            int currentDate = month * 100 + day;
-            int seasonStart = startMonth * 100 + startDay;
-            int seasonEnd = endMonth * 100 + endDay;
-
-            if (seasonStart > seasonEnd)
-            {
-                return currentDate >= seasonStart || currentDate <= seasonEnd;
-            }
-            else
-            {
-                return currentDate >= seasonStart && currentDate <= seasonEnd;
-            }
-        }
-        catch
-        {
-            return false;
-        }
     }
 }
 

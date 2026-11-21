@@ -34,7 +34,6 @@ public class ValidateProductionPlanAgainstYearSeasonQueryHandler
                 Warnings = new List<ValidationIssue>()
             };
 
-            // Load group with YearSeason
             var group = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
                 .Include(g => g.YearSeason)
@@ -43,26 +42,13 @@ public class ValidateProductionPlanAgainstYearSeasonQueryHandler
 
             if (group == null)
             {
-                validation.IsValid = false;
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "GROUP_NOT_FOUND",
-                    Message = $"Group with ID {request.GroupId} not found",
-                    Severity = "Error"
-                });
+                AddError(validation, "GROUP_NOT_FOUND", $"Group with ID {request.GroupId} not found");
                 return Result<ProductionPlanValidationDto>.Success(validation);
             }
 
-            // Check if group has YearSeason
             if (group.YearSeasonId == null || group.YearSeason == null)
             {
-                validation.IsValid = false;
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "YEARSEASON_MISSING",
-                    Message = "Group is not assigned to a YearSeason. Cannot create production plan.",
-                    Severity = "Error"
-                });
+                AddError(validation, "YEARSEASON_MISSING", "Group is not assigned to a YearSeason. Cannot create production plan.");
                 return Result<ProductionPlanValidationDto>.Success(validation);
             }
 
@@ -70,134 +56,8 @@ public class ValidateProductionPlanAgainstYearSeasonQueryHandler
             var now = DateTime.UtcNow;
             var basePlantingDate = DateTime.SpecifyKind(request.BasePlantingDate, DateTimeKind.Utc);
 
-            // Build context
-            validation.YearSeasonContext = new YearSeasonValidationContext
-            {
-                YearSeasonId = yearSeason.Id,
-                SeasonName = yearSeason.Season?.SeasonName ?? "Unknown",
-                Year = yearSeason.Year,
-                Status = yearSeason.Status.ToString(),
-                StartDate = yearSeason.StartDate,
-                EndDate = yearSeason.EndDate,
-                PlanningWindowStart = yearSeason.PlanningWindowStart,
-                PlanningWindowEnd = yearSeason.PlanningWindowEnd,
-                AllowedPlantingFlexibilityDays = yearSeason.AllowedPlantingFlexibilityDays,
-                GroupPlantingDate = group.PlantingDate,
-                DaysUntilPlanningWindowEnd = yearSeason.PlanningWindowEnd.HasValue 
-                    ? (int)(yearSeason.PlanningWindowEnd.Value - now).TotalDays 
-                    : null,
-                DaysUntilSeasonStart = (int)(yearSeason.StartDate - now).TotalDays,
-                IsPlanningWindowOpen = (!yearSeason.PlanningWindowStart.HasValue || now >= yearSeason.PlanningWindowStart.Value) &&
-                                      (!yearSeason.PlanningWindowEnd.HasValue || now <= yearSeason.PlanningWindowEnd.Value)
-            };
-
-            // Validate YearSeason Status
-            if (yearSeason.Status == SeasonStatus.Draft)
-            {
-                validation.IsValid = false;
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "YEARSEASON_DRAFT",
-                    Message = "YearSeason is still in Draft status. Planning window has not opened yet.",
-                    Severity = "Error"
-                });
-            }
-
-            if (yearSeason.Status == SeasonStatus.Completed)
-            {
-                validation.IsValid = false;
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "YEARSEASON_COMPLETED",
-                    Message = "YearSeason has completed. Cannot create new production plans.",
-                    Severity = "Error"
-                });
-            }
-
-            // Validate Planning Window Start
-            if (yearSeason.PlanningWindowStart.HasValue && now < yearSeason.PlanningWindowStart.Value)
-            {
-                validation.IsValid = false;
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "PLANNING_WINDOW_NOT_OPEN",
-                    Message = $"Planning window has not opened yet. Opens on {yearSeason.PlanningWindowStart.Value:yyyy-MM-dd HH:mm}",
-                    Severity = "Error"
-                });
-            }
-
-            // Validate Planning Window End
-            if (yearSeason.PlanningWindowEnd.HasValue && now > yearSeason.PlanningWindowEnd.Value)
-            {
-                validation.Warnings.Add(new ValidationIssue
-                {
-                    Code = "PLANNING_WINDOW_CLOSED",
-                    Message = $"Planning window closed on {yearSeason.PlanningWindowEnd.Value:yyyy-MM-dd HH:mm}. Late submission may require special approval.",
-                    Severity = "Warning"
-                });
-            }
-            else if (yearSeason.PlanningWindowEnd.HasValue)
-            {
-                var daysRemaining = (yearSeason.PlanningWindowEnd.Value - now).TotalDays;
-                if (daysRemaining <= 3 && daysRemaining > 0)
-                {
-                    validation.Warnings.Add(new ValidationIssue
-                    {
-                        Code = "PLANNING_WINDOW_CLOSING",
-                        Message = $"Planning window closes in {Math.Ceiling(daysRemaining)} days on {yearSeason.PlanningWindowEnd.Value:yyyy-MM-dd HH:mm}",
-                        Severity = "Warning"
-                    });
-                }
-            }
-
-            // Validate BasePlantingDate within Season
-            if (basePlantingDate < yearSeason.StartDate || basePlantingDate > yearSeason.EndDate)
-            {
-                validation.IsValid = false;
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "PLANTING_DATE_OUT_OF_RANGE",
-                    Message = $"BasePlantingDate ({basePlantingDate:yyyy-MM-dd}) must be within YearSeason period ({yearSeason.StartDate:yyyy-MM-dd} to {yearSeason.EndDate:yyyy-MM-dd})",
-                    Severity = "Error"
-                });
-            }
-
-            // Validate Planting Date is in the future
-            if (basePlantingDate < now)
-            {
-                validation.Warnings.Add(new ValidationIssue
-                {
-                    Code = "PLANTING_DATE_IN_PAST",
-                    Message = $"BasePlantingDate ({basePlantingDate:yyyy-MM-dd}) is in the past",
-                    Severity = "Warning"
-                });
-            }
-
-            // Validate Planting Flexibility
-            if (group.PlantingDate.HasValue && yearSeason.AllowedPlantingFlexibilityDays > 0)
-            {
-                var daysDiff = Math.Abs((basePlantingDate - group.PlantingDate.Value).Days);
-                if (daysDiff > yearSeason.AllowedPlantingFlexibilityDays)
-                {
-                    validation.Warnings.Add(new ValidationIssue
-                    {
-                        Code = "PLANTING_DATE_FLEXIBILITY_EXCEEDED",
-                        Message = $"BasePlantingDate differs from group's median planting date by {daysDiff} days (allowed: {yearSeason.AllowedPlantingFlexibilityDays} days). Group median: {group.PlantingDate.Value:yyyy-MM-dd}",
-                        Severity = "Warning"
-                    });
-                }
-            }
-
-            // Check if season has already started
-            if (now > yearSeason.StartDate)
-            {
-                validation.Warnings.Add(new ValidationIssue
-                {
-                    Code = "SEASON_ALREADY_STARTED",
-                    Message = $"YearSeason has already started on {yearSeason.StartDate:yyyy-MM-dd}. Creating plans after season start may cause delays.",
-                    Severity = "Warning"
-                });
-            }
+            validation.YearSeasonContext = BuildYearSeasonContext(yearSeason, group, now);
+            ValidateYearSeasonRules(validation, yearSeason, group, basePlantingDate, now);
 
             _logger.LogInformation(
                 "Validated production plan for group {GroupId} against YearSeason {YearSeasonId}. Valid: {IsValid}, Errors: {ErrorCount}, Warnings: {WarningCount}",
@@ -210,6 +70,134 @@ public class ValidateProductionPlanAgainstYearSeasonQueryHandler
             _logger.LogError(ex, "Error validating production plan against YearSeason for group {GroupId}", request.GroupId);
             return Result<ProductionPlanValidationDto>.Failure($"Error validating production plan: {ex.Message}");
         }
+    }
+
+    private static YearSeasonValidationContext BuildYearSeasonContext(
+        YearSeason yearSeason,
+        Group group,
+        DateTime now) => new()
+    {
+        YearSeasonId = yearSeason.Id,
+        SeasonName = yearSeason.Season?.SeasonName ?? "Unknown",
+        Year = yearSeason.Year,
+        Status = yearSeason.Status.ToString(),
+        StartDate = yearSeason.StartDate,
+        EndDate = yearSeason.EndDate,
+        PlanningWindowStart = yearSeason.PlanningWindowStart,
+        PlanningWindowEnd = yearSeason.PlanningWindowEnd,
+        AllowedPlantingFlexibilityDays = yearSeason.AllowedPlantingFlexibilityDays,
+        GroupPlantingDate = group.PlantingDate,
+        DaysUntilPlanningWindowEnd = yearSeason.PlanningWindowEnd.HasValue
+            ? (int)(yearSeason.PlanningWindowEnd.Value - now).TotalDays
+            : null,
+        DaysUntilSeasonStart = (int)(yearSeason.StartDate - now).TotalDays,
+        IsPlanningWindowOpen = (!yearSeason.PlanningWindowStart.HasValue || now >= yearSeason.PlanningWindowStart.Value) &&
+                               (!yearSeason.PlanningWindowEnd.HasValue || now <= yearSeason.PlanningWindowEnd.Value)
+    };
+
+    private static void ValidateYearSeasonRules(
+        ProductionPlanValidationDto validation,
+        YearSeason yearSeason,
+        Group group,
+        DateTime basePlantingDate,
+        DateTime now)
+    {
+        if (yearSeason.Status == SeasonStatus.Draft)
+        {
+            AddError(validation, "YEARSEASON_DRAFT", "YearSeason is still in Draft status. Planning window has not opened yet.");
+        }
+
+        if (yearSeason.Status == SeasonStatus.Completed)
+        {
+            AddError(validation, "YEARSEASON_COMPLETED", "YearSeason has completed. Cannot create new production plans.");
+        }
+
+        if (yearSeason.PlanningWindowStart.HasValue && now < yearSeason.PlanningWindowStart.Value)
+        {
+            AddError(
+                validation,
+                "PLANNING_WINDOW_NOT_OPEN",
+                $"Planning window has not opened yet. Opens on {yearSeason.PlanningWindowStart.Value:yyyy-MM-dd HH:mm}");
+        }
+
+        if (yearSeason.PlanningWindowEnd.HasValue)
+        {
+            if (now > yearSeason.PlanningWindowEnd.Value)
+            {
+                AddWarning(
+                    validation,
+                    "PLANNING_WINDOW_CLOSED",
+                    $"Planning window closed on {yearSeason.PlanningWindowEnd.Value:yyyy-MM-dd HH:mm}. Late submission may require special approval.");
+            }
+            else
+            {
+                var daysRemaining = (yearSeason.PlanningWindowEnd.Value - now).TotalDays;
+                if (daysRemaining is > 0 and <= 3)
+                {
+                    AddWarning(
+                        validation,
+                        "PLANNING_WINDOW_CLOSING",
+                        $"Planning window closes in {Math.Ceiling(daysRemaining)} days on {yearSeason.PlanningWindowEnd.Value:yyyy-MM-dd HH:mm}");
+                }
+            }
+        }
+
+        if (basePlantingDate < yearSeason.StartDate || basePlantingDate > yearSeason.EndDate)
+        {
+            AddError(
+                validation,
+                "PLANTING_DATE_OUT_OF_RANGE",
+                $"BasePlantingDate ({basePlantingDate:yyyy-MM-dd}) must be within YearSeason period ({yearSeason.StartDate:yyyy-MM-dd} to {yearSeason.EndDate:yyyy-MM-dd})");
+        }
+
+        if (basePlantingDate < now)
+        {
+            AddWarning(
+                validation,
+                "PLANTING_DATE_IN_PAST",
+                $"BasePlantingDate ({basePlantingDate:yyyy-MM-dd}) is in the past");
+        }
+
+        if (group.PlantingDate.HasValue && yearSeason.AllowedPlantingFlexibilityDays > 0)
+        {
+            var daysDiff = Math.Abs((basePlantingDate - group.PlantingDate.Value).Days);
+            if (daysDiff > yearSeason.AllowedPlantingFlexibilityDays)
+            {
+                AddWarning(
+                    validation,
+                    "PLANTING_DATE_FLEXIBILITY_EXCEEDED",
+                    $"BasePlantingDate differs from group's median planting date by {daysDiff} days (allowed: {yearSeason.AllowedPlantingFlexibilityDays} days). Group median: {group.PlantingDate.Value:yyyy-MM-dd}");
+            }
+        }
+
+        if (now > yearSeason.StartDate)
+        {
+            AddWarning(
+                validation,
+                "SEASON_ALREADY_STARTED",
+                $"YearSeason has already started on {yearSeason.StartDate:yyyy-MM-dd}. Creating plans after season start may cause delays.");
+        }
+    }
+
+    private static void AddError(ProductionPlanValidationDto validation, string code, string message)
+    {
+        validation.IsValid = false;
+        validation.Errors.Add(new ValidationIssue
+        {
+            Code = code,
+            Message = message,
+            Severity = "Error"
+        });
+    }
+
+    private static void AddWarning(ProductionPlanValidationDto validation, string code, string message)
+    {
+        validation.Warnings.Add(new ValidationIssue
+        {
+            Code = code,
+            Message = message,
+            Severity = "Warning"
+        });
     }
 }
 

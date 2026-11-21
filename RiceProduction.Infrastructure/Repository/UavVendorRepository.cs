@@ -3,28 +3,27 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Repository
 {
     public class UavVendorRepository : IUavVendorRepository
     {
-        private readonly ApplicationDbContext _context;
         private readonly DbSet<UavVendor> _uavVendor;
 
         public UavVendorRepository(ApplicationDbContext context)
         {
-            _context = context;
             _uavVendor = context.Set<UavVendor>();
         }
+
         public void UpdateRange(IEnumerable<UavVendor> entities)
         {
-            _context.Set<UavVendor>().UpdateRange(entities);
+            _uavVendor.UpdateRange(entities);
         }
+
         public void Update(UavVendor entity)
         {
-            _context.Set<UavVendor>().Update(entity);
+            _uavVendor.Update(entity);
         }
 
         public async Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default)
@@ -34,118 +33,85 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<IEnumerable<UavVendor>> FindAsync(Expression<Func<UavVendor, bool>> predicate, CancellationToken cancellationToken = default)
         {
-            return await _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
-                .ToListAsync(cancellationToken);
+            return await QueryWithDetails().ToListAsync(cancellationToken);
         }
 
         public async Task<IEnumerable<UavVendor?>> GetAllUavVendorAsync(CancellationToken cancellationToken = default)
         {
-            return await _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
-                .ToListAsync(cancellationToken);
+            return await QueryWithDetails().ToListAsync(cancellationToken);
         }
 
         public async Task<(IEnumerable<UavVendor?>, int totalCount)> GetAllUavVendorByNameOrEmailAndPhoneNumberPagingAsync(int pageNumber, int pageSize, string? search, string? phoneNumber, CancellationToken cancellationToken = default)
         {
-            var query = _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
-                .AsQueryable();
+            var query = QueryWithDetails();
             var totalCount = await query.CountAsync(cancellationToken);
             search = search?.ToLower();
+
             if (!string.IsNullOrEmpty(search))
             {
                 query = query.Where(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
                                          (f.VendorName != null && f.VendorName.ToLower().Contains(search)) ||
                                          (f.Email != null && f.Email.ToLower().Contains(search)));
             }
+
             if (!string.IsNullOrEmpty(phoneNumber))
             {
                 query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber));
             }
-            if (pageSize == 0)
-            {
-                return (await query
-                .OrderBy(s => s.FullName)
-                .ToListAsync(cancellationToken), totalCount);
-            }
-            return (await query
-                .OrderBy(s => s.FullName)
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync(cancellationToken), totalCount);
+
+            var items = await ApplyOrderingAndPaging(query, pageNumber, pageSize)
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
         }
 
         public async Task<(IEnumerable<UavVendor?>, int totalCount)> GetAllUavVendorByNameOrEmailAndPhoneNumberAndByGroupIdOrClusterIdOrNamePagingAsync(int pageNumber, int pageSize, string? search, string? groupSearch, string? phoneNumber, CancellationToken cancellationToken = default)
         {
-            var query = _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
-                .AsQueryable();
+            var query = QueryWithDetails();
             var totalCount = await query.CountAsync(cancellationToken);
             search = search?.ToLower();
+
             if (!string.IsNullOrEmpty(search))
             {
                 query = query.Where(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
                                          (f.Email != null && f.Email.ToLower().Contains(search)));
             }
+
             if (!string.IsNullOrEmpty(phoneNumber))
             {
                 query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber));
             }
+
             if (!string.IsNullOrEmpty(groupSearch))
             {
                 query = query.Where(f => f.UavServiceOrders != null
-                && (f.UavServiceOrders.Any(sv => sv.GroupId.ToString().ToLower().Contains(groupSearch))
-                    || f.UavServiceOrders.Any(sv => sv.Group.Cluster.ClusterName.ToLower().Contains(groupSearch))
-                    || f.UavServiceOrders.Any(sv => sv.Group.Cluster.Id.ToString().ToLower().Contains(groupSearch))));
+                    && (f.UavServiceOrders.Any(sv => sv.GroupId.ToString().ToLower().Contains(groupSearch))
+                        || f.UavServiceOrders.Any(sv => sv.Group.Cluster.ClusterName.ToLower().Contains(groupSearch))
+                        || f.UavServiceOrders.Any(sv => sv.Group.Cluster.Id.ToString().ToLower().Contains(groupSearch))));
             }
-            if (pageSize == 0)
-            {
-                return (await query
-                .OrderBy(s => s.FullName)
-                .ToListAsync(cancellationToken), totalCount);
-            }
-            return (await query
-                .OrderBy(s => s.FullName)
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync(cancellationToken), totalCount);
+
+            var items = await ApplyOrderingAndPaging(query, pageNumber, pageSize)
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
         }
 
         public async Task<UavVendor?> GetUavVendorByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
+            return await QueryWithDetails()
                 .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
         }
 
-
         public async Task<UavVendor?> GetUavVendorByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default)
         {
-            return await _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
+            return await QueryWithDetails()
                 .FirstOrDefaultAsync(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber), cancellationToken);
         }
 
         public async Task<UavVendor?> GetUavVendorByNameOrEmail(string search, CancellationToken cancellationToken = default)
         {
             search = search.ToLower();
-            return await _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
+            return await QueryWithDetails()
                 .FirstOrDefaultAsync(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
                                           (f.VendorName != null && f.VendorName.ToLower().Contains(search)) ||
                                           (f.Email != null && f.Email.ToLower().Contains(search)), cancellationToken);
@@ -153,34 +119,47 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<UavVendor?> GetUavVendorByClusterId(Guid ClusterId, CancellationToken cancellationToken = default)
         {
-            return await _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
+            return await QueryWithDetails()
                 .FirstOrDefaultAsync(f => f.UavServiceOrders != null
-                && f.UavServiceOrders.Any(sv => sv.Group.Cluster.Id.ToString().ToLower().Contains(ClusterId.ToString().ToLower())));
+                    && f.UavServiceOrders.Any(sv => sv.Group.Cluster.Id.ToString().ToLower().Contains(ClusterId.ToString().ToLower())), cancellationToken);
         }
 
         public async Task<(IEnumerable<UavVendor> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<UavVendor, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
-            var query = _uavVendor
-                .Include(s => s.AssignedTasks)
-                .Include(s => s.UavInvoices)
-                .Include(s => s.UavServiceOrders)
-                .AsQueryable();
+            var query = QueryWithDetails();
             if (predicate != null)
             {
                 query = query.Where(predicate);
             }
 
             var totalCount = await query.CountAsync(cancellationToken);
-            var items = await query.OrderBy(f => f.FullName).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            var items = await query
+                .OrderBy(f => f.FullName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
             return (items, totalCount);
         }
 
         public IQueryable<UavVendor> GetQueryable()
         {
             return _uavVendor.AsQueryable();
+        }
+
+        private IQueryable<UavVendor> QueryWithDetails()
+        {
+            return _uavVendor
+                .Include(s => s.AssignedTasks)
+                .Include(s => s.UavInvoices)
+                .Include(s => s.UavServiceOrders);
+        }
+
+        private static IQueryable<UavVendor> ApplyOrderingAndPaging(IQueryable<UavVendor> query, int pageNumber, int pageSize)
+        {
+            var ordered = query.OrderBy(s => s.FullName);
+            return pageSize == 0
+                ? ordered
+                : ordered.Skip((pageNumber - 1) * pageSize).Take(pageSize);
         }
     }
 }

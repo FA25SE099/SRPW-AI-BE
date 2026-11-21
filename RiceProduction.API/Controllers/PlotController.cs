@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequests;
@@ -25,7 +26,6 @@ using RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason;
 using RiceProduction.Application.PlotFeature.Queries.GetPlotsAwaitingPolygon;
 using RiceProduction.Application.PlotFeature.Queries.GetPlotsByYearSeason;
 using RiceProduction.Application.PlotFeature.Queries.PreviewPlotImport;
-using RiceProduction.Domain.Entities;
 using static RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate.UpdateCoordinateCommand;
 
 namespace RiceProduction.API.Controllers
@@ -34,9 +34,11 @@ namespace RiceProduction.API.Controllers
     [ApiController]
     public class PlotController : ControllerBase
     {
+        private static readonly string[] AllowedExcelExtensions = { ".xlsx", ".xls" };
+        private const long MaxExcelFileSize = 10 * 1024 * 1024;
+
         private readonly IMediator _mediator;
         private readonly ILogger<PlotController> _logger;
-
         private readonly IUser _currentUser;
 
         public PlotController(IMediator mediator, ILogger<PlotController> logger, IUser currentUser)
@@ -170,8 +172,8 @@ namespace RiceProduction.API.Controllers
 
                 if (!result.Succeeded)
                 {
-                    _logger.LogWarning("Failed to create plot: {Errors}", 
-                        string.Join(", ", result.Errors ?? new string[0]));
+                    _logger.LogWarning("Failed to create plot: {Errors}",
+                        string.Join(", ", result.Errors ?? Array.Empty<string>()));
                     return BadRequest(result);
                 }
 
@@ -200,8 +202,8 @@ namespace RiceProduction.API.Controllers
 
                 if (!result.Succeeded)
                 {
-                    _logger.LogWarning("Failed to create plots in bulk: {Errors}", 
-                        string.Join(", ", result.Errors ?? new string[0]));
+                    _logger.LogWarning("Failed to create plots in bulk: {Errors}",
+                        string.Join(", ", result.Errors ?? Array.Empty<string>()));
                     return BadRequest(result);
                 }
 
@@ -336,38 +338,10 @@ namespace RiceProduction.API.Controllers
         {
             try
             {
-                if (excelFile == null || excelFile.Length == 0)
+                var validationError = ValidateExcelImportFile(excelFile);
+                if (validationError != null)
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Excel file is required",
-                        errors = new[] { "Excel file is required" }
-                    });
-                }
-
-                var allowedExtensions = new[] { ".xlsx", ".xls" };
-                var fileExtension = Path.GetExtension(excelFile.FileName).ToLowerInvariant();
-
-                if (!allowedExtensions.Contains(fileExtension))
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Only Excel files (.xlsx, .xls) are allowed",
-                        errors = new[] { $"Invalid file extension: {fileExtension}" }
-                    });
-                }
-
-                const int maxFileSize = 10 * 1024 * 1024;
-                if (excelFile.Length > maxFileSize)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "File size cannot exceed 10MB",
-                        errors = new[] { $"File size: {excelFile.Length} bytes exceeds 10MB" }
-                    });
+                    return validationError;
                 }
 
                 var query = new PreviewPlotImportQuery
@@ -475,38 +449,10 @@ namespace RiceProduction.API.Controllers
         {
             try
             {
-                if (excelFile == null || excelFile.Length == 0)
+                var validationError = ValidateExcelImportFile(excelFile);
+                if (validationError != null)
                 {
-                    return BadRequest(new
-                    {
-                        success = false, // ✅ Đổi từ 'succeeded' thành 'success'
-                        message = "Excel file is required",
-                        errors = new[] { "Excel file is required" }
-                    });
-                }
-
-                var allowedExtensions = new[] { ".xlsx", ".xls" };
-                var fileExtension = Path.GetExtension(excelFile.FileName).ToLowerInvariant();
-
-                if (!allowedExtensions.Contains(fileExtension))
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Only Excel files (.xlsx, .xls) are allowed",
-                        errors = new[] { $"Invalid file extension: {fileExtension}" }
-                    });
-                }
-
-                const int maxFileSize = 10 * 1024 * 1024;
-                if (excelFile.Length > maxFileSize)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "File size cannot exceed 10MB",
-                        errors = new[] { $"File size: {excelFile.Length} bytes exceeds 10MB" }
-                    });
+                    return validationError;
                 }
 
                 var command = new ImportPlotByExcelCommand
@@ -587,19 +533,11 @@ namespace RiceProduction.API.Controllers
         {
             try
             {
-                // Get current cluster manager ID if authenticated
-                Guid? clusterManagerId = null;
-                var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
+                var query = new DownloadPlotImportTemplateQuery
                 {
-                    clusterManagerId = userId;
-                }
-
-                var query = new DownloadPlotImportTemplateQuery 
-                { 
-                    ClusterManagerId = clusterManagerId 
+                    ClusterManagerId = User.TryGetUserId(out var userId) ? userId : null
                 };
-                
+
                 var result = await _mediator.Send(query);
 
                 if (!result.Succeeded)
@@ -629,15 +567,7 @@ namespace RiceProduction.API.Controllers
         {
             try
             {
-                // If no cluster manager ID provided, try to get from current user
-                if (!clusterManagerId.HasValue)
-                {
-                    var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                    if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
-                    {
-                        clusterManagerId = userId;
-                    }
-                }
+                clusterManagerId ??= User.TryGetUserId(out var userId) ? userId : null;
 
                 var query = new ExportPlotDataQuery
                 {
@@ -698,10 +628,8 @@ namespace RiceProduction.API.Controllers
                     message = "Please upload a valid Excel file"
                 });
             }
-            var allowedExtensions = new[] { ".xlsx", ".xls" };
             var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
-
-            if (!allowedExtensions.Contains(fileExtension))
+            if (!AllowedExcelExtensions.Contains(fileExtension))
             {
                 return BadRequest(new
                 {
@@ -709,8 +637,8 @@ namespace RiceProduction.API.Controllers
                     message = "Invalid file format. Please upload an Excel file (.xlsx or .xls)"
                 });
             }
-            const long maxFileSize = 10 * 1024 * 1024; 
-            if (file.Length > maxFileSize)
+
+            if (file.Length > MaxExcelFileSize)
             {
                 return BadRequest(new
                 {
@@ -751,8 +679,8 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<Result<bool>>> UpdatePlotCoordinate(
-    Guid plotId,
-    [FromBody] UpdateCoordinateRequest request)
+            Guid plotId,
+            [FromBody] UpdateCoordinateRequest request)
         {
             try
             {
@@ -857,5 +785,40 @@ namespace RiceProduction.API.Controllers
             }
         }
 
+        private IActionResult? ValidateExcelImportFile(IFormFile? excelFile)
+        {
+            if (excelFile == null || excelFile.Length == 0)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Excel file is required",
+                    errors = new[] { "Excel file is required" }
+                });
+            }
+
+            var fileExtension = Path.GetExtension(excelFile.FileName).ToLowerInvariant();
+            if (!AllowedExcelExtensions.Contains(fileExtension))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Only Excel files (.xlsx, .xls) are allowed",
+                    errors = new[] { $"Invalid file extension: {fileExtension}" }
+                });
+            }
+
+            if (excelFile.Length > MaxExcelFileSize)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "File size cannot exceed 10MB",
+                    errors = new[] { $"File size: {excelFile.Length} bytes exceeds 10MB" }
+                });
+            }
+
+            return null;
+        }
     }
 }

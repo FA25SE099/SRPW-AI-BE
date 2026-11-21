@@ -83,34 +83,15 @@ public class GetPlotsAwaitingPolygonQueryHandler
                 .Include(p => p.Farmer)
                 .Where(predicate);
 
-            var allTasksQuery = _unitOfWork.Repository<PlotPolygonTask>()
+            var activeTasksQuery = _unitOfWork.Repository<PlotPolygonTask>()
                 .GetQueryable()
                 .Include(t => t.AssignedToSupervisor)
                 .Where(t => t.Status != "Completed" && t.Status != "Cancelled");
 
-            var tasksToUpdate = await allTasksQuery
-                .Where(t => t.Status != "Late" && 
-                           (t.Status == "Pending" || t.Status == "InProgress") &&
-                           (DateTime.UtcNow - t.AssignedAt).Days > 5)
-                .ToListAsync(cancellationToken);
-
-            if (tasksToUpdate.Any())
-            {
-                foreach (var task in tasksToUpdate)
-                {
-                    task.Status = "Late";
-                }
-                await _unitOfWork.CompleteAsync();
-                _logger.LogInformation("Updated {Count} polygon tasks to Late status", tasksToUpdate.Count);
-            }
-
-            var tasksQuery = _unitOfWork.Repository<PlotPolygonTask>()
-                .GetQueryable()
-                .Include(t => t.AssignedToSupervisor)
-                .Where(t => t.Status != "Completed" && t.Status != "Cancelled");
+            await MarkOverdueTasksLateAsync(activeTasksQuery, cancellationToken);
 
             var combinedQuery = from plot in plotsQuery
-                                join task in tasksQuery on plot.Id equals task.PlotId into taskGroup
+                                join task in activeTasksQuery on plot.Id equals task.PlotId into taskGroup
                                 from task in taskGroup.DefaultIfEmpty()
                                 select new { Plot = plot, Task = task };
 
@@ -121,14 +102,9 @@ public class GetPlotsAwaitingPolygonQueryHandler
 
             if (request.HasActiveTask.HasValue)
             {
-                if (request.HasActiveTask.Value)
-                {
-                    combinedQuery = combinedQuery.Where(x => x.Task != null);
-                }
-                else
-                {
-                    combinedQuery = combinedQuery.Where(x => x.Task == null);
-                }
+                combinedQuery = request.HasActiveTask.Value
+                    ? combinedQuery.Where(x => x.Task != null)
+                    : combinedQuery.Where(x => x.Task == null);
             }
 
             if (!string.IsNullOrWhiteSpace(request.TaskStatus))
@@ -145,51 +121,11 @@ public class GetPlotsAwaitingPolygonQueryHandler
                 .Take(request.PageSize)
                 .ToListAsync(cancellationToken);
 
-            var dtos = pagedData.Select(item =>
-            {
-                var plot = item.Plot;
-                var task = item.Task;
+            var nowUtc = DateTime.UtcNow;
+            var dtos = pagedData
+                .Select(item => MapToDto(item.Plot, item.Task, nowUtc))
+                .ToList();
 
-                var daysWaiting = (DateTime.UtcNow - plot.CreatedAt).Days;
-
-                int? taskDaysOverdue = task != null
-                    ? (DateTime.UtcNow - task.AssignedAt).Days - 5
-                    : null;
-
-                // Fix negative values (not overdue yet)
-                if (taskDaysOverdue.HasValue && taskDaysOverdue.Value < 0)
-                {
-                    taskDaysOverdue = null;
-                }
-
-                // ← RETURN MUST BE HERE, outside the if!
-                return new PlotAwaitingPolygonDto
-                {
-                    PlotId = plot.Id,
-                    SoThua = plot.SoThua,
-                    SoTo = plot.SoTo,
-                    Area = plot.Area,
-                    Status = plot.Status.ToString(),
-                    SoilType = plot.SoilType,
-
-                    FarmerId = plot.FarmerId,
-                    FarmerName = plot.Farmer?.FullName,
-                    FarmerPhone = plot.Farmer?.PhoneNumber,
-                    FarmerAddress = plot.Farmer?.Address,
-
-                    CreatedAt = plot.CreatedAt.DateTime,
-                    DaysAwaitingPolygon = daysWaiting,
-
-                    HasActiveTask = task != null,
-                    TaskId = task?.Id,
-                    AssignedToSupervisorId = task?.AssignedToSupervisorId,
-                    AssignedToSupervisorName = task?.AssignedToSupervisor?.FullName,
-                    TaskStatus = task?.Status,
-                    TaskAssignedAt = task?.AssignedAt,
-                    TaskPriority = task?.Priority,
-                    TaskDaysOverdue = taskDaysOverdue
-                };
-            }).ToList();
             return PagedResult<IEnumerable<PlotAwaitingPolygonDto>>.Success(
                 data: dtos,
                 currentPage: request.PageNumber,
@@ -206,62 +142,111 @@ public class GetPlotsAwaitingPolygonQueryHandler
         }
     }
 
-    private IQueryable<T> ApplySorting<T>(IQueryable<T> query, string? sortBy, bool descending) where T : class
+    private async Task MarkOverdueTasksLateAsync(
+        IQueryable<PlotPolygonTask> activeTasksQuery,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(sortBy))
-            sortBy = "DaysWaiting";
+        var tasksToUpdate = await activeTasksQuery
+            .Where(t => t.Status != "Late" &&
+                       (t.Status == "Pending" || t.Status == "InProgress") &&
+                       (DateTime.UtcNow - t.AssignedAt).Days > 5)
+            .ToListAsync(cancellationToken);
 
+        if (!tasksToUpdate.Any())
+        {
+            return;
+        }
+
+        foreach (var task in tasksToUpdate)
+        {
+            task.Status = "Late";
+        }
+
+        await _unitOfWork.CompleteAsync();
+        _logger.LogInformation("Updated {Count} polygon tasks to Late status", tasksToUpdate.Count);
+    }
+
+    private static PlotAwaitingPolygonDto MapToDto(Plot plot, PlotPolygonTask? task, DateTime nowUtc)
+    {
+        int? taskDaysOverdue = null;
+        if (task != null)
+        {
+            var overdueDays = (nowUtc - task.AssignedAt).Days - 5;
+            if (overdueDays >= 0)
+            {
+                taskDaysOverdue = overdueDays;
+            }
+        }
+
+        return new PlotAwaitingPolygonDto
+        {
+            PlotId = plot.Id,
+            SoThua = plot.SoThua,
+            SoTo = plot.SoTo,
+            Area = plot.Area,
+            Status = plot.Status.ToString(),
+            SoilType = plot.SoilType,
+
+            FarmerId = plot.FarmerId,
+            FarmerName = plot.Farmer?.FullName,
+            FarmerPhone = plot.Farmer?.PhoneNumber,
+            FarmerAddress = plot.Farmer?.Address,
+
+            CreatedAt = plot.CreatedAt.DateTime,
+            DaysAwaitingPolygon = (nowUtc - plot.CreatedAt).Days,
+
+            HasActiveTask = task != null,
+            TaskId = task?.Id,
+            AssignedToSupervisorId = task?.AssignedToSupervisorId,
+            AssignedToSupervisorName = task?.AssignedToSupervisor?.FullName,
+            TaskStatus = task?.Status,
+            TaskAssignedAt = task?.AssignedAt,
+            TaskPriority = task?.Priority,
+            TaskDaysOverdue = taskDaysOverdue
+        };
+    }
+
+    private static IQueryable<T> ApplySorting<T>(IQueryable<T> query, string? sortBy, bool descending) where T : class
+    {
         var parameter = Expression.Parameter(typeof(T), "x");
+        var normalizedSort = string.IsNullOrWhiteSpace(sortBy) ? "dayswaiting" : sortBy.ToLowerInvariant();
         Expression propertyAccess;
 
-        switch (sortBy.ToLowerInvariant())
+        switch (normalizedSort)
         {
-            case "dayswaiting":
-                var plotProperty = Expression.Property(parameter, "Plot");
-                var createdProperty = Expression.Property(plotProperty, "CreatedAt");
-                propertyAccess = createdProperty;
-                descending = !descending;
-                break;
-
             case "priority":
                 var taskProperty = Expression.Property(parameter, "Task");
-                var priorityProperty = Expression.Property(taskProperty, "Priority");
                 propertyAccess = Expression.Condition(
                     Expression.Equal(taskProperty, Expression.Constant(null)),
                     Expression.Constant(0, typeof(int)),
-                    priorityProperty
-                );
+                    Expression.Property(taskProperty, "Priority"));
                 break;
 
             case "farmername":
-                var plotProp = Expression.Property(parameter, "Plot");
-                var farmerProp = Expression.Property(plotProp, "Farmer");
-                var nameProp = Expression.Property(farmerProp, "FullName");
-                propertyAccess = nameProp;
+                propertyAccess = Expression.Property(
+                    Expression.Property(Expression.Property(parameter, "Plot"), "Farmer"),
+                    "FullName");
                 break;
 
             case "area":
-                var plotAreaProp = Expression.Property(parameter, "Plot");
-                propertyAccess = Expression.Property(plotAreaProp, "Area");
+                propertyAccess = Expression.Property(Expression.Property(parameter, "Plot"), "Area");
                 break;
 
             default:
-                var defaultPlotProp = Expression.Property(parameter, "Plot");
-                propertyAccess = Expression.Property(defaultPlotProp, "CreatedAt");
+                propertyAccess = Expression.Property(Expression.Property(parameter, "Plot"), "CreatedAt");
                 descending = !descending;
                 break;
         }
 
         var lambda = Expression.Lambda(propertyAccess, parameter);
         var methodName = descending ? "OrderByDescending" : "OrderBy";
-        
+
         var resultExpression = Expression.Call(
             typeof(Queryable),
             methodName,
-            new Type[] { typeof(T), propertyAccess.Type },
+            new[] { typeof(T), propertyAccess.Type },
             query.Expression,
-            Expression.Quote(lambda)
-        );
+            Expression.Quote(lambda));
 
         return query.Provider.CreateQuery<T>(resultExpression);
     }

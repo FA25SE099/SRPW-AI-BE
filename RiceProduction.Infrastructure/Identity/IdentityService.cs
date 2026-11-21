@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -51,27 +52,15 @@ public class IdentityService : IIdentityService
         }
 
         var roles = await _userManager.GetRolesAsync(user);
-        var userDto = new UserDto
+        return new UserDto
         {
             Id = user.Id.ToString(),
             UserName = user.FullName ?? "User don't have Fullname yet",
             Email = user.Email ?? "User don't have Email yet",
             Role = roles.FirstOrDefault() ?? string.Empty
         };
-        return userDto;
     }
 
-
-    //public async Task<IList<string>> GetUserRolesAsync(Guid userId)
-    //{
-    //    var user = await _userManager.FindByIdAsync(userId.ToString());
-    //    if (user == null)
-    //    {
-    //        return new List<string>();
-    //    }
-
-    //    return await _userManager.GetRolesAsync(user);
-    //}
     public async Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string password)
     {
         var user = new ApplicationUser
@@ -123,70 +112,29 @@ public class IdentityService : IIdentityService
 
     public async Task<AuthenticationResult> LoginAsync(string emailOrPhone, string password, bool isEmail = true)
     {
-        ApplicationUser? user = null;
-        
-        if (isEmail)
-        {
-            user = await _userManager.FindByEmailAsync(emailOrPhone);
-        }
-        else
-        {
-            user = await _userManager.Users.FirstOrDefaultAsync(u => u.PhoneNumber == emailOrPhone);
-        }
-        
+        var user = isEmail
+            ? await _userManager.FindByEmailAsync(emailOrPhone)
+            : await _userManager.Users.FirstOrDefaultAsync(u => u.PhoneNumber == emailOrPhone);
+
         if (user == null)
         {
-            return new AuthenticationResult
-            {
-                Succeeded = false,
-                Errors = new[] { isEmail ? "Invalid email or password." : "Invalid phone number or password." }
-            };
+            return FailedAuth(isEmail ? "Invalid email or password." : "Invalid phone number or password.");
         }
 
         var result = await _signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
         if (!result.Succeeded)
         {
-            var errors = new List<string>();
-            if (result.IsLockedOut)
-                errors.Add("Account is locked out.");
-            else if (result.IsNotAllowed)
-                errors.Add("Account is not allowed to sign in.");
-            else
-                errors.Add("Invalid email or password.");
-
-            return new AuthenticationResult
+            var error = result switch
             {
-                Succeeded = false,
-                Errors = errors
+                { IsLockedOut: true } => "Account is locked out.",
+                { IsNotAllowed: true } => "Account is not allowed to sign in.",
+                _ => "Invalid email or password."
             };
+
+            return FailedAuth(error);
         }
 
-        var roles = await _userManager.GetRolesAsync(user);
-        var accessToken = _tokenService.GenerateAccessToken(user.Id, user.UserName!, user.Email!, roles);
-        var refreshToken = _tokenService.GenerateRefreshToken();
-
-        // Store refresh token
-        var refreshTokenEntity = new RefreshToken
-        {
-            Token = refreshToken,
-            UserId = user.Id,
-            ExpiresAt = DateTime.UtcNow.AddDays(7) // Configure this
-        };
-
-        _context.RefreshTokens.Add(refreshTokenEntity);
-        await _context.SaveChangesAsync();
-
-        return new AuthenticationResult
-        {
-            Succeeded = true,
-            AccessToken = accessToken,
-            RefreshToken = refreshToken,
-            ExpiresAt = _tokenService.GetTokenExpiration(accessToken),
-            UserId = user.Id.ToString(),
-            UserName = user.UserName,
-            Email = user.Email,
-            Roles = roles
-        };
+        return await GenerateTokensAndBuildResultAsync(user);
     }
 
     public async Task<Result> LogoutAsync(Guid userId, string? refreshToken = null)
@@ -227,29 +175,15 @@ public class IdentityService : IIdentityService
         {
             return Result.Failure(new[] { $"Logout failed: {ex.Message}" });
         }
-    
     }
 
     public async Task<AuthenticationResult> RefreshTokenAsync(RefreshTokenRequest request)
     {
         var principal = _tokenService.GetPrincipalFromExpiredToken(request.AccessToken);
-        if (principal == null)
-        {
-            return new AuthenticationResult
-            {
-                Succeeded = false,
-                Errors = new[] { "Invalid access token." }
-            };
-        }
-
-        var userIdString = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userIdString = principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId))
         {
-            return new AuthenticationResult
-            {
-                Succeeded = false,
-                Errors = new[] { "Invalid access token." }
-            };
+            return FailedAuth("Invalid access token.");
         }
 
         var refreshTokenEntity = await _context.RefreshTokens
@@ -257,55 +191,16 @@ public class IdentityService : IIdentityService
 
         if (refreshTokenEntity == null || !refreshTokenEntity.IsActive)
         {
-            return new AuthenticationResult
-            {
-                Succeeded = false,
-                Errors = new[] { "Invalid refresh token." }
-            };
+            return FailedAuth("Invalid refresh token.");
         }
 
         var user = await _userManager.FindByIdAsync(userId.ToString());
         if (user == null)
         {
-            return new AuthenticationResult
-            {
-                Succeeded = false,
-                Errors = new[] { "User not found." }
-            };
+            return FailedAuth("User not found.");
         }
 
-        // Revoke the current refresh token
-        refreshTokenEntity.IsRevoked = true;
-        refreshTokenEntity.RevokedAt = DateTime.UtcNow;
-
-        // Generate new tokens
-        var roles = await _userManager.GetRolesAsync(user);
-        var newAccessToken = _tokenService.GenerateAccessToken(user.Id, user.UserName!, user.Email!, roles);
-        var newRefreshToken = _tokenService.GenerateRefreshToken();
-
-        // Store new refresh token
-        var newRefreshTokenEntity = new RefreshToken
-        {
-            Token = newRefreshToken,
-            UserId = user.Id,
-            ExpiresAt = DateTime.UtcNow.AddDays(7)
-        };
-
-        refreshTokenEntity.ReplacedByToken = newRefreshToken;
-        _context.RefreshTokens.Add(newRefreshTokenEntity);
-        await _context.SaveChangesAsync();
-
-        return new AuthenticationResult
-        {
-            Succeeded = true,
-            AccessToken = newAccessToken,
-            RefreshToken = newRefreshToken,
-            ExpiresAt = _tokenService.GetTokenExpiration(newAccessToken),
-            UserId = user.Id.ToString(),
-            UserName = user.UserName,
-            Email = user.Email,
-            Roles = roles
-        };
+        return await GenerateTokensAndBuildResultAsync(user, replacedToken: refreshTokenEntity);
     }
 
     public async Task<bool> IsTokenValidAsync(Guid userId, string refreshToken)
@@ -337,5 +232,44 @@ public class IdentityService : IIdentityService
         {
             return Result.Failure(new[] { $"Failed to revoke tokens: {ex.Message}" });
         }
+    }
+
+    private static AuthenticationResult FailedAuth(params string[] errors) =>
+        new() { Succeeded = false, Errors = errors };
+
+    private async Task<AuthenticationResult> GenerateTokensAndBuildResultAsync(
+        ApplicationUser user,
+        RefreshToken? replacedToken = null)
+    {
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = _tokenService.GenerateAccessToken(user.Id, user.UserName!, user.Email!, roles);
+        var refreshToken = _tokenService.GenerateRefreshToken();
+
+        if (replacedToken != null)
+        {
+            replacedToken.IsRevoked = true;
+            replacedToken.RevokedAt = DateTime.UtcNow;
+            replacedToken.ReplacedByToken = refreshToken;
+        }
+
+        _context.RefreshTokens.Add(new RefreshToken
+        {
+            Token = refreshToken,
+            UserId = user.Id,
+            ExpiresAt = DateTime.UtcNow.AddDays(7)
+        });
+        await _context.SaveChangesAsync();
+
+        return new AuthenticationResult
+        {
+            Succeeded = true,
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresAt = _tokenService.GetTokenExpiration(accessToken),
+            UserId = user.Id.ToString(),
+            UserName = user.UserName,
+            Email = user.Email,
+            Roles = roles
+        };
     }
 }

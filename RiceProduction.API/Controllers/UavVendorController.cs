@@ -1,12 +1,9 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
-using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerList;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Request.ClusterManagerRequests;
 using RiceProduction.Application.Common.Models.Request.UavVendorRequests;
-using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 using RiceProduction.Application.Common.Models.Response.UavVendorResponses;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
 using RiceProduction.Application.UavVendorFeature.Commands.UpdateUavVendor;
@@ -34,14 +31,10 @@ public class UavVendorController : Controller
     [HttpGet]
     public async Task<IActionResult> GetUavVendors()
     {
-        var query = new GetAllUavVendorQuery();
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        var result = await _mediator.Send(new GetAllUavVendorQuery());
+        return this.ToIActionResult(result);
     }
+
     [HttpPost]
     public async Task<IActionResult> CreateUavVendor([FromBody] UavVendorRequest request)
     {
@@ -59,22 +52,14 @@ public class UavVendorController : Controller
             OperatingSchedule = request.OperatingSchedule
         };
         var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(result);
     }
 
     [HttpPut]
     public async Task<IActionResult> UpdateUavVendor([FromBody] UpdateUavVendorCommand command)
     {
         var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(result);
     }
 
     [HttpPost("get-by-id")]
@@ -83,11 +68,7 @@ public class UavVendorController : Controller
         try
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return result.Succeeded ? Ok(result) : BadRequest(result);
         }
         catch (Exception ex)
         {
@@ -95,6 +76,7 @@ public class UavVendorController : Controller
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
+
     [HttpGet("profile")]
     public async Task<IActionResult> GetUavVendorProfile()
     {
@@ -103,16 +85,9 @@ public class UavVendorController : Controller
         {
             return Unauthorized(Result<UavVendorResponse>.Failure("User is not authenticated.", "Unauthorized"));
         }
-        var query = new GetUavVendorByIdQuery
-        {
-            UavVendorId = userId.Value
-        };
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+
+        var result = await _mediator.Send(new GetUavVendorByIdQuery { UavVendorId = userId.Value });
+        return this.ToIActionResult(result);
     }
 
     [HttpPost("get-all")]
@@ -121,11 +96,7 @@ public class UavVendorController : Controller
         try
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
@@ -133,6 +104,4 @@ public class UavVendorController : Controller
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-
-
 }

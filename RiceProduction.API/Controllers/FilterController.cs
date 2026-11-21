@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.FilterFeature.Queries.GetEnumValues;
 
 namespace RiceProduction.API.Controllers;
@@ -15,106 +16,49 @@ public class FilterController : ControllerBase
         _mediator = mediator;
     }
 
-    
     [HttpGet("enums")]
     [ProducesResponseType(typeof(EnumValuesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetEnumValues([FromQuery] string? enumType = null)
     {
-        var query = new GetEnumValuesQuery { EnumType = enumType };
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        var result = await _mediator.Send(new GetEnumValuesQuery { EnumType = enumType });
+        return this.ToIActionResult(result);
     }
 
-    /// <summary>
-    /// Get PlotStatus enum values
-    /// </summary>
     [HttpGet("plot-statuses")]
     [ProducesResponseType(typeof(List<EnumValueDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetPlotStatuses()
-    {
-        var query = new GetEnumValuesQuery { EnumType = "PlotStatus" };
-        var result = await _mediator.Send(query);
+    public Task<IActionResult> GetPlotStatuses() =>
+        GetEnumValuesByType("PlotStatus", d => d.PlotStatuses);
 
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(new { data = result.Data?.PlotStatuses, succeeded = true });
-    }
-
-    /// <summary>
-    /// Get TaskStatus enum values
-    /// </summary>
     [HttpGet("task-statuses")]
     [ProducesResponseType(typeof(List<EnumValueDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetTaskStatuses()
-    {
-        var query = new GetEnumValuesQuery { EnumType = "TaskStatus" };
-        var result = await _mediator.Send(query);
+    public Task<IActionResult> GetTaskStatuses() =>
+        GetEnumValuesByType("TaskStatus", d => d.TaskStatuses);
 
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(new { data = result.Data?.TaskStatuses, succeeded = true });
-    }
-
-    /// <summary>
-    /// Get TaskType enum values
-    /// </summary>
     [HttpGet("task-types")]
     [ProducesResponseType(typeof(List<EnumValueDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetTaskTypes()
-    {
-        var query = new GetEnumValuesQuery { EnumType = "TaskType" };
-        var result = await _mediator.Send(query);
+    public Task<IActionResult> GetTaskTypes() =>
+        GetEnumValuesByType("TaskType", d => d.TaskTypes);
 
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(new { data = result.Data?.TaskTypes, succeeded = true });
-    }
-
-    /// <summary>
-    /// Get TaskPriority enum values
-    /// </summary>
     [HttpGet("task-priorities")]
     [ProducesResponseType(typeof(List<EnumValueDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetTaskPriorities()
-    {
-        var query = new GetEnumValuesQuery { EnumType = "TaskPriority" };
-        var result = await _mediator.Send(query);
+    public Task<IActionResult> GetTaskPriorities() =>
+        GetEnumValuesByType("TaskPriority", d => d.TaskPriorities);
 
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(new { data = result.Data?.TaskPriorities, succeeded = true });
-    }
     [HttpGet("group-statuses")]
     [ProducesResponseType(typeof(List<EnumValueDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetGroupStatuses()
+    public Task<IActionResult> GetGroupStatuses() =>
+        GetEnumValuesByType("GroupStatus", d => d.GroupStatuses);
+
+    private async Task<IActionResult> GetEnumValuesByType(string enumType, Func<EnumValuesResponse, object?> selector)
     {
-        var query = new GetEnumValuesQuery { EnumType = "GroupStatus" };
-        var result = await _mediator.Send(query);
+        var result = await _mediator.Send(new GetEnumValuesQuery { EnumType = enumType });
 
         if (!result.Succeeded)
         {
             return BadRequest(result);
         }
 
-        return Ok(new { data = result.Data?.GroupStatuses, succeeded = true });
+        return Ok(new { data = result.Data != null ? selector(result.Data) : null, succeeded = true });
     }
 }

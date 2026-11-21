@@ -42,13 +42,7 @@ public class LateFarmerRecordController : ControllerBase
             _logger.LogInformation("Creating late farmer record for cultivation task {TaskId}", command.CultivationTaskId);
 
             var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return result.Succeeded ? Ok(result) : BadRequest(result);
         }
         catch (Exception ex)
         {
@@ -64,31 +58,12 @@ public class LateFarmerRecordController : ControllerBase
     [ProducesResponseType(typeof(Result<FarmerLateCountDTO>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Result<FarmerLateCountDTO>>> GetLateCountByFarmerId(Guid farmerId)
-    {
-        try
-        {
-            if (farmerId == Guid.Empty)
-            {
-                return BadRequest(Result<FarmerLateCountDTO>.Failure("Invalid Farmer ID"));
-            }
-
-            var query = new GetLateCountByFarmerIdQuery { FarmerId = farmerId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return NotFound(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting late count for farmer {FarmerId}", farmerId);
-            return StatusCode(500, Result<FarmerLateCountDTO>.Failure("An error occurred while processing your request"));
-        }
-    }
+    public Task<ActionResult<Result<FarmerLateCountDTO>>> GetLateCountByFarmerId(Guid farmerId) =>
+        ExecuteByIdQueryAsync(
+            farmerId,
+            "Invalid Farmer ID",
+            new GetLateCountByFarmerIdQuery { FarmerId = farmerId },
+            "Error occurred while getting late count for farmer {FarmerId}");
 
     /// <summary>
     /// Get detailed late records for a specific farmer including the list of all late records
@@ -97,31 +72,12 @@ public class LateFarmerRecordController : ControllerBase
     [ProducesResponseType(typeof(Result<FarmerLateDetailDTO>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Result<FarmerLateDetailDTO>>> GetLateDetailByFarmerId(Guid farmerId)
-    {
-        try
-        {
-            if (farmerId == Guid.Empty)
-            {
-                return BadRequest(Result<FarmerLateDetailDTO>.Failure("Invalid Farmer ID"));
-            }
-
-            var query = new GetLateDetailByFarmerIdQuery { FarmerId = farmerId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return NotFound(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting late detail for farmer {FarmerId}", farmerId);
-            return StatusCode(500, Result<FarmerLateDetailDTO>.Failure("An error occurred while processing your request"));
-        }
-    }
+    public Task<ActionResult<Result<FarmerLateDetailDTO>>> GetLateDetailByFarmerId(Guid farmerId) =>
+        ExecuteByIdQueryAsync(
+            farmerId,
+            "Invalid Farmer ID",
+            new GetLateDetailByFarmerIdQuery { FarmerId = farmerId },
+            "Error occurred while getting late detail for farmer {FarmerId}");
 
     /// <summary>
     /// Get the total number of late records for a specific plot
@@ -130,31 +86,12 @@ public class LateFarmerRecordController : ControllerBase
     [ProducesResponseType(typeof(Result<PlotLateCountDTO>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Result<PlotLateCountDTO>>> GetLateCountByPlotId(Guid plotId)
-    {
-        try
-        {
-            if (plotId == Guid.Empty)
-            {
-                return BadRequest(Result<PlotLateCountDTO>.Failure("Invalid Plot ID"));
-            }
-
-            var query = new GetLateCountByPlotIdQuery { PlotId = plotId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return NotFound(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting late count for plot {PlotId}", plotId);
-            return StatusCode(500, Result<PlotLateCountDTO>.Failure("An error occurred while processing your request"));
-        }
-    }
+    public Task<ActionResult<Result<PlotLateCountDTO>>> GetLateCountByPlotId(Guid plotId) =>
+        ExecuteByIdQueryAsync(
+            plotId,
+            "Invalid Plot ID",
+            new GetLateCountByPlotIdQuery { PlotId = plotId },
+            "Error occurred while getting late count for plot {PlotId}");
 
     /// <summary>
     /// Get list of farmers with late records in a cluster (use expertId to get all related, or supervisorId to get only from managed groups)
@@ -162,44 +99,24 @@ public class LateFarmerRecordController : ControllerBase
     [HttpGet("farmers")]
     [ProducesResponseType(typeof(PagedResult<IEnumerable<FarmerWithLateCountDTO>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<PagedResult<IEnumerable<FarmerWithLateCountDTO>>>> GetLateFarmersInCluster(
+    public Task<ActionResult<PagedResult<IEnumerable<FarmerWithLateCountDTO>>>> GetLateFarmersInCluster(
         [FromQuery] Guid? agronomyExpertId = null,
         [FromQuery] Guid? supervisorId = null,
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 10,
-        [FromQuery] string? searchTerm = null)
-    {
-        try
-        {
-            if (!agronomyExpertId.HasValue && !supervisorId.HasValue)
-            {
-                return BadRequest(PagedResult<IEnumerable<FarmerWithLateCountDTO>>.Failure("Either AgronomyExpertId or SupervisorId must be provided"));
-            }
-
-            var query = new GetLateFarmersInClusterQuery
+        [FromQuery] string? searchTerm = null) =>
+        ExecuteClusterPagedQueryAsync(
+            agronomyExpertId,
+            supervisorId,
+            new GetLateFarmersInClusterQuery
             {
                 AgronomyExpertId = agronomyExpertId,
                 SupervisorId = supervisorId,
                 PageNumber = pageNumber,
                 PageSize = pageSize,
                 SearchTerm = searchTerm
-            };
-
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting late farmers in cluster");
-            return StatusCode(500, PagedResult<IEnumerable<FarmerWithLateCountDTO>>.Failure("An error occurred while processing your request"));
-        }
-    }
+            },
+            "Error occurred while getting late farmers in cluster");
 
     /// <summary>
     /// Get list of plots with late records in a cluster (use expertId to get all related, or supervisorId to get only from managed groups)
@@ -207,42 +124,68 @@ public class LateFarmerRecordController : ControllerBase
     [HttpGet("plots")]
     [ProducesResponseType(typeof(PagedResult<IEnumerable<PlotWithLateCountDTO>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<PagedResult<IEnumerable<PlotWithLateCountDTO>>>> GetLatePlotsInCluster(
+    public Task<ActionResult<PagedResult<IEnumerable<PlotWithLateCountDTO>>>> GetLatePlotsInCluster(
         [FromQuery] Guid? agronomyExpertId = null,
         [FromQuery] Guid? supervisorId = null,
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 10,
-        [FromQuery] string? searchTerm = null)
-    {
-        try
-        {
-            if (!agronomyExpertId.HasValue && !supervisorId.HasValue)
-            {
-                return BadRequest(PagedResult<IEnumerable<PlotWithLateCountDTO>>.Failure("Either AgronomyExpertId or SupervisorId must be provided"));
-            }
-
-            var query = new GetLatePlotsInClusterQuery
+        [FromQuery] string? searchTerm = null) =>
+        ExecuteClusterPagedQueryAsync(
+            agronomyExpertId,
+            supervisorId,
+            new GetLatePlotsInClusterQuery
             {
                 AgronomyExpertId = agronomyExpertId,
                 SupervisorId = supervisorId,
                 PageNumber = pageNumber,
                 PageSize = pageSize,
                 SearchTerm = searchTerm
-            };
+            },
+            "Error occurred while getting late plots in cluster");
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
+    private async Task<ActionResult<Result<T>>> ExecuteByIdQueryAsync<T>(
+        Guid id,
+        string invalidIdMessage,
+        IRequest<Result<T>> query,
+        string errorLogTemplate)
+    {
+        try
+        {
+            if (id == Guid.Empty)
             {
-                return BadRequest(result);
+                return BadRequest(Result<T>.Failure(invalidIdMessage));
             }
 
-            return Ok(result);
+            var result = await _mediator.Send(query);
+            return result.Succeeded ? Ok(result) : NotFound(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error occurred while getting late plots in cluster");
-            return StatusCode(500, PagedResult<IEnumerable<PlotWithLateCountDTO>>.Failure("An error occurred while processing your request"));
+            _logger.LogError(ex, errorLogTemplate, id);
+            return StatusCode(500, Result<T>.Failure("An error occurred while processing your request"));
+        }
+    }
+
+    private async Task<ActionResult<PagedResult<T>>> ExecuteClusterPagedQueryAsync<T>(
+        Guid? agronomyExpertId,
+        Guid? supervisorId,
+        IRequest<PagedResult<T>> query,
+        string errorLogMessage)
+    {
+        try
+        {
+            if (!agronomyExpertId.HasValue && !supervisorId.HasValue)
+            {
+                return BadRequest(PagedResult<T>.Failure("Either AgronomyExpertId or SupervisorId must be provided"));
+            }
+
+            var result = await _mediator.Send(query);
+            return result.Succeeded ? Ok(result) : BadRequest(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, errorLogMessage);
+            return StatusCode(500, PagedResult<T>.Failure("An error occurred while processing your request"));
         }
     }
 }

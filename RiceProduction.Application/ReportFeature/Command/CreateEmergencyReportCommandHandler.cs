@@ -2,6 +2,7 @@
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Domain.Common;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using System.Text.Json;
@@ -10,6 +11,8 @@ namespace RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmerg
 
 public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergencyReportCommand, Result<Guid>>
 {
+    private static readonly HashSet<string> ValidAlertTypes = new() { "pest", "weather", "disease", "other" };
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IUser _currentUser;
     private readonly IStorageService _storageService;
@@ -37,108 +40,29 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
 
         try
         {
-            if (!request.PlotCultivationId.HasValue && !request.GroupId.HasValue && !request.ClusterId.HasValue)
+            var fieldValidation = ValidateRequiredFields(request, out var normalizedAlertType);
+            if (fieldValidation != null)
             {
-                return Result<Guid>.Failure("At least one affected entity (PlotCultivation, Group, or Cluster) must be specified.");
+                return fieldValidation;
             }
 
-            // 3. Validate required fields
-            var alertType = request.AlertType?.Trim().ToLower();
-            if (string.IsNullOrWhiteSpace(alertType))
+            var entityValidation = await ValidateReferencedEntitiesAsync(request);
+            if (entityValidation != null)
             {
-                return Result<Guid>.Failure("Alert type is required. Must be 'Pest', 'Weather', 'Disease', or 'Other'.");
+                return entityValidation;
             }
 
-            if (alertType != "pest" && alertType != "weather" && alertType != "disease" && alertType != "other")
-            {
-                return Result<Guid>.Failure("Alert type must be either 'Pest', 'Weather', 'Disease', or 'Other'.");
-            }
+            var source = ResolveAlertSource(_currentUser.Roles);
 
-            if (string.IsNullOrWhiteSpace(request.Title))
-            {
-                return Result<Guid>.Failure("Title is required.");
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Description))
-            {
-                return Result<Guid>.Failure("Description is required.");
-            }
-
-            if (request.PlotCultivationId.HasValue)
-            {
-                var plotExists = await _unitOfWork.Repository<PlotCultivation>()
-                    .ExistsAsync(c => c.Id == request.PlotCultivationId);
-
-                if (!plotExists)
-                {
-                    return Result<Guid>.Failure($"PlotCultivation with ID {request.PlotCultivationId.Value} not found.");
-                }
-            }
-
-            if (request.GroupId.HasValue)
-            {
-                var groupExists = await _unitOfWork.Repository<Group>()
-                    .ExistsAsync(c => c.Id == request.GroupId);
-
-                if (!groupExists)
-                {
-                    return Result<Guid>.Failure($"Group with ID {request.GroupId.Value} not found.");
-                }
-            }
-
-            if (request.ClusterId.HasValue)
-            {
-                var clusterExists = await _unitOfWork.ClusterRepository!
-                    .ExistClusterAsync(request.ClusterId.Value);
-
-                if (!clusterExists)
-                {
-                    return Result<Guid>.Failure($"Cluster with ID {request.ClusterId.Value} not found.");
-                }
-            }
-
-            // Validate AffectedCultivationTaskId if provided
-            if (request.AffectedCultivationTaskId.HasValue)
-            {
-                var taskExists = await _unitOfWork.Repository<CultivationTask>()
-                    .ExistsAsync(t => t.Id == request.AffectedCultivationTaskId.Value);
-
-                if (!taskExists)
-                {
-                    return Result<Guid>.Failure($"Cultivation Task with ID {request.AffectedCultivationTaskId.Value} not found.");
-                }
-            }
-
-            // 5. Determine the source based on user role
-            var userRoles = _currentUser.Roles ?? new List<string>();
-            AlertSource source;
-
-            if (userRoles.Contains("Farmer"))
-            {
-                source = AlertSource.FarmerReport;
-            }
-            else if (userRoles.Contains("Supervisor"))
-            {
-                source = AlertSource.SupervisorInspection;
-            }
-            else
-            {
-                source = AlertSource.System;
-            }
-
-            var normalizedAlertType = char.ToUpper(alertType[0]) + alertType.Substring(1);
-
-            // Upload Images (Parallel Upload)
             var uploadedUrls = new List<string>();
             if (request.Images != null && request.Images.Any())
             {
-                string folder = $"emergency-reports/{normalizedAlertType.ToLower()}";
+                var folder = $"emergency-reports/{normalizedAlertType.ToLower()}";
                 var uploadTasks = request.Images.Select(file => _storageService.UploadAsync(file, folder));
                 var results = await Task.WhenAll(uploadTasks);
                 uploadedUrls = results.Select(r => r.Url).ToList();
             }
 
-            var hasImages = uploadedUrls.Any();
             var emergencyReport = new EmergencyReport
             {
                 Source = source,
@@ -156,7 +80,6 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                 NotificationSentAt = null
             };
 
-            // Store AI Detection Results if provided
             if (request.AiDetectionResult != null && request.AiDetectionResult.HasPest)
             {
                 emergencyReport.HasAiAnalysis = true;
@@ -173,7 +96,6 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                     emergencyReport.AiDetectedPestCount, emergencyReport.AiAverageConfidence);
             }
 
-            // 9. Save to database
             await _unitOfWork.Repository<EmergencyReport>().AddAsync(emergencyReport);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -181,7 +103,7 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                 "Emergency report created successfully. ID: {ReportId}, Type: {AlertType}, Source: {Source}, Reporter: {UserId}, Images: {ImageCount}, AI Analysis: {HasAI}, AffectedTask: {TaskId}",
                 emergencyReport.Id, emergencyReport.AlertType, emergencyReport.Source, userId.Value, uploadedUrls.Count, emergencyReport.HasAiAnalysis, emergencyReport.AffectedCultivationTaskId);
 
-            var message = hasImages
+            var message = uploadedUrls.Any()
                 ? $"Emergency report created successfully with {uploadedUrls.Count} image(s) uploaded."
                 : "Emergency report created successfully.";
 
@@ -197,5 +119,104 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
             _logger.LogError(ex, "Error creating emergency report for user {UserId}", userId.Value);
             return Result<Guid>.Failure("An error occurred while creating the emergency report.");
         }
+    }
+
+    private static Result<Guid>? ValidateRequiredFields(
+        CreateEmergencyReportCommand request,
+        out string normalizedAlertType)
+    {
+        normalizedAlertType = string.Empty;
+
+        if (!request.PlotCultivationId.HasValue && !request.GroupId.HasValue && !request.ClusterId.HasValue)
+        {
+            return Result<Guid>.Failure("At least one affected entity (PlotCultivation, Group, or Cluster) must be specified.");
+        }
+
+        var alertType = request.AlertType?.Trim().ToLower();
+        if (string.IsNullOrWhiteSpace(alertType))
+        {
+            return Result<Guid>.Failure("Alert type is required. Must be 'Pest', 'Weather', 'Disease', or 'Other'.");
+        }
+
+        if (!ValidAlertTypes.Contains(alertType))
+        {
+            return Result<Guid>.Failure("Alert type must be either 'Pest', 'Weather', 'Disease', or 'Other'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            return Result<Guid>.Failure("Title is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Description))
+        {
+            return Result<Guid>.Failure("Description is required.");
+        }
+
+        normalizedAlertType = char.ToUpper(alertType[0]) + alertType.Substring(1);
+        return null;
+    }
+
+    private async Task<Result<Guid>?> ValidateReferencedEntitiesAsync(CreateEmergencyReportCommand request)
+    {
+        var plotValidation = await ValidateOptionalEntityExistsAsync<PlotCultivation>(request.PlotCultivationId, "PlotCultivation");
+        if (plotValidation != null)
+        {
+            return plotValidation;
+        }
+
+        var groupValidation = await ValidateOptionalEntityExistsAsync<Group>(request.GroupId, "Group");
+        if (groupValidation != null)
+        {
+            return groupValidation;
+        }
+
+        if (request.ClusterId.HasValue)
+        {
+            var clusterExists = await _unitOfWork.ClusterRepository!.ExistClusterAsync(request.ClusterId.Value);
+            if (!clusterExists)
+            {
+                return Result<Guid>.Failure($"Cluster with ID {request.ClusterId.Value} not found.");
+            }
+        }
+
+        return await ValidateOptionalEntityExistsAsync<CultivationTask>(request.AffectedCultivationTaskId, "Cultivation Task");
+    }
+
+    private async Task<Result<Guid>?> ValidateOptionalEntityExistsAsync<TEntity>(
+        Guid? entityId,
+        string entityDisplayName)
+        where TEntity : BaseAuditableEntity
+    {
+        if (!entityId.HasValue)
+        {
+            return null;
+        }
+
+        var exists = await _unitOfWork.Repository<TEntity>().ExistsAsync(e => e.Id == entityId.Value);
+        return exists
+            ? null
+            : Result<Guid>.Failure($"{entityDisplayName} with ID {entityId.Value} not found.");
+    }
+
+    private static AlertSource ResolveAlertSource(IEnumerable<string>? userRoles)
+    {
+        var roles = userRoles?.ToList();
+        if (roles == null)
+        {
+            return AlertSource.System;
+        }
+
+        if (roles.Contains("Farmer"))
+        {
+            return AlertSource.FarmerReport;
+        }
+
+        if (roles.Contains("Supervisor"))
+        {
+            return AlertSource.SupervisorInspection;
+        }
+
+        return AlertSource.System;
     }
 }

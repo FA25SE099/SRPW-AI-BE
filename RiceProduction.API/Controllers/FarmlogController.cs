@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmLogFeature.Commands.CreateFarmLog;
@@ -23,7 +23,7 @@ public class FarmlogController : ControllerBase
         _mediator = mediator;
         _currentUser = currentUser;
     }
-    
+
     [HttpPost("farm-logs")]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
@@ -40,15 +40,9 @@ public class FarmlogController : ControllerBase
         command.FarmerId = farmerId.Value;
 
         var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(result);
     }
-    
+
     [HttpPost("farm-logs/by-cultivation")]
     [ProducesResponseType(typeof(PagedResult<List<FarmLogDetailResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -62,13 +56,7 @@ public class FarmlogController : ControllerBase
         };
 
         var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(result);
     }
 
     [HttpPost("farm-logs/by-production-plan-task")]
@@ -85,17 +73,7 @@ public class FarmlogController : ControllerBase
         };
 
         var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            if (result.Message?.Contains("not found") == true)
-            {
-                return NotFound(result);
-            }
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return ToNotFoundOrBadRequestResult(result);
     }
 
     [HttpPost("farm-logs/by-cultivation-task")]
@@ -112,14 +90,16 @@ public class FarmlogController : ControllerBase
         };
 
         var result = await _mediator.Send(query);
+        return ToNotFoundOrBadRequestResult(result);
+    }
 
+    private IActionResult ToNotFoundOrBadRequestResult<T>(PagedResult<T> result)
+    {
         if (!result.Succeeded)
         {
-            if (result.Message?.Contains("not found") == true)
-            {
-                return NotFound(result);
-            }
-            return BadRequest(result);
+            return result.Message?.Contains("not found") == true
+                ? NotFound(result)
+                : BadRequest(result);
         }
 
         return Ok(result);

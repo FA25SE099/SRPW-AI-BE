@@ -1,84 +1,68 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore.Query;
-using MiniExcelLibs;
+﻿using Microsoft.EntityFrameworkCore.Query;
 using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.Common.Models;
 using RiceProduction.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Infrastructure.Repository
 {
     public class FarmerRepository : IFarmerRepository
     {
-        private readonly ApplicationDbContext _context;
         private readonly DbSet<Farmer> _farmers;
 
         public FarmerRepository(ApplicationDbContext context)
         {
-            _context = context;
             _farmers = context.Set<Farmer>();
         }
 
         public async Task<int> CountAsync(Expression<Func<Farmer, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
-            if (predicate != null)
-            {
-                return await _farmers.CountAsync(predicate, cancellationToken);
-
-            }
-
-            return await _farmers.CountAsync(cancellationToken);
+            return predicate != null
+                ? await _farmers.CountAsync(predicate, cancellationToken)
+                : await _farmers.CountAsync(cancellationToken);
         }
 
-        public async Task<bool> ExistAsync (Guid id, CancellationToken cancellationToken = default)
+        public async Task<bool> ExistAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _farmers.AnyAsync (f => f.Id == id, cancellationToken);
+            return await _farmers.AnyAsync(f => f.Id == id, cancellationToken);
         }
 
         public async Task<IEnumerable<Farmer>> FindAsync(Expression<Func<Farmer, bool>> predicate, CancellationToken cancellationToken = default)
         {
-            return await _farmers.Include(f => f.OwnedPlots)
+            return await QueryWithOwnedPlots()
                 .Where(predicate)
                 .ToListAsync(cancellationToken);
         }
 
         public async Task<IEnumerable<Farmer?>> GetAllFarmerAsync(CancellationToken cancellationToken = default)
         {
-            return await _farmers
-                .Include(f => f.OwnedPlots)
+            return await QueryWithOwnedPlots()
                 .Where(f => f.IsActive)
                 .OrderBy(f => f.FullName)
                 .ToListAsync(cancellationToken);
         }
 
-
         public async Task<Farmer?> GetFarmerByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _farmers
-                .Include(f => f.OwnedPlots)
+            return await QueryWithOwnedPlots()
                 .Include(f => f.FarmerAssignments)
-                .ThenInclude(a => a.Supervisor)
+                    .ThenInclude(a => a.Supervisor)
                 .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
         }
 
         public async Task<Farmer?> GetFarmerByPhoneNumber(string phoneNumber, CancellationToken cancellationToken = default)
         {
-            return await _farmers
-                .Include (f => f.OwnedPlots)
+            return await QueryWithOwnedPlots()
                 .FirstOrDefaultAsync(f => f.PhoneNumber != null && f.PhoneNumber == phoneNumber, cancellationToken);
         }
 
         public async Task<Farmer?> GetFarmerByPlotId(Guid plotId, CancellationToken cancellationToken = default)
         {
-            return await _farmers
-                .Include(f => f.OwnedPlots)
-                .FirstOrDefaultAsync(f => f.OwnedPlots != null && f.OwnedPlots
-                .Any(p => p.Id == plotId), cancellationToken);
+            return await QueryWithOwnedPlots()
+                .FirstOrDefaultAsync(f => f.OwnedPlots != null && f.OwnedPlots.Any(p => p.Id == plotId), cancellationToken);
         }
 
         public async Task<Farmer?> GetFarmerDetailByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -90,7 +74,6 @@ namespace RiceProduction.Infrastructure.Repository
                             .ThenInclude(g => g.ProductionPlans)
                                 .ThenInclude(pp => pp.CurrentProductionStages)
                                     .ThenInclude(ps => ps.ProductionPlanTasks)
-                .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group)
                 .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(g => g.YearSeason).ThenInclude(ys => ys.RiceVariety)
                 .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(c => c.Cluster)
                 .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(s => s.Supervisor)
@@ -100,30 +83,32 @@ namespace RiceProduction.Infrastructure.Repository
 
         public async Task<(IEnumerable<Farmer> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<Farmer, bool>>? predicate = null, CancellationToken cancellationToken = default)
         {
-            var query = _farmers.Include(f => f.OwnedPlots).AsQueryable();
+            var query = QueryWithOwnedPlots();
             if (predicate != null)
             {
                 query = query.Where(predicate);
             }
 
             var totalCount = await query.CountAsync(cancellationToken);
-            var items = await query.OrderBy(f => f.FullName).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            var items = await query
+                .OrderBy(f => f.FullName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
             return (items, totalCount);
         }
-
-
 
         public IQueryable<Farmer> GetQueryable()
         {
             return _farmers.AsQueryable();
         }
+
         public async Task<IReadOnlyList<Farmer>> ListAsync(
-    Expression<Func<Farmer , bool>>? filter = null,
-    Func<IQueryable<Farmer>, IOrderedQueryable<Farmer>>? orderBy = null,
-    Func<IQueryable<Farmer>, IIncludableQueryable<Farmer, object>>? includeProperties = null
-)
+            Expression<Func<Farmer, bool>>? filter = null,
+            Func<IQueryable<Farmer>, IOrderedQueryable<Farmer>>? orderBy = null,
+            Func<IQueryable<Farmer>, IIncludableQueryable<Farmer, object>>? includeProperties = null)
         {
-            IQueryable<Farmer> query = _context.Set<Farmer>();
+            IQueryable<Farmer> query = _farmers;
 
             if (filter != null)
             {
@@ -139,9 +124,13 @@ namespace RiceProduction.Infrastructure.Repository
             {
                 query = orderBy(query);
             }
+
             return await query.ToListAsync();
         }
 
-
+        private IQueryable<Farmer> QueryWithOwnedPlots()
+        {
+            return _farmers.Include(f => f.OwnedPlots);
+        }
     }
 }

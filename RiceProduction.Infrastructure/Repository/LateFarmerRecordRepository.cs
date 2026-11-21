@@ -9,22 +9,16 @@ namespace RiceProduction.Infrastructure.Repository;
 
 public class LateFarmerRecordRepository : ILateFarmerRecordRepository
 {
-    private readonly ApplicationDbContext _context;
     private readonly DbSet<LateFarmerRecord> _lateFarmerRecords;
 
     public LateFarmerRecordRepository(ApplicationDbContext context)
     {
-        _context = context;
         _lateFarmerRecords = context.Set<LateFarmerRecord>();
     }
 
     public async Task<LateFarmerRecord?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _lateFarmerRecords
-            .Include(l => l.Farmer)
-            .Include(l => l.CultivationTask)
-                .ThenInclude(ct => ct.PlotCultivation)
-                    .ThenInclude(pc => pc.Plot)
+        return await QueryWithBasicDetails()
             .Include(l => l.CultivationTask.PlotCultivation.Season)
             .Include(l => l.CultivationTask.PlotCultivation.Plot.GroupPlots)
                 .ThenInclude(gp => gp.Group)
@@ -34,44 +28,27 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
 
     public async Task<IEnumerable<LateFarmerRecord>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return await _lateFarmerRecords
-            .Include(l => l.Farmer)
-            .Include(l => l.CultivationTask)
-                .ThenInclude(ct => ct.PlotCultivation)
-                    .ThenInclude(pc => pc.Plot)
+        return await QueryWithBasicDetails()
             .ToListAsync(cancellationToken);
     }
 
     public async Task<int> GetLateCountByFarmerIdAsync(Guid farmerId, CancellationToken cancellationToken = default)
     {
-        // Only count late records from active versions
-        return await _lateFarmerRecords
-            .Include(l => l.CultivationTask)
-                .ThenInclude(ct => ct.Version)
-            .Where(l => l.FarmerId == farmerId 
-                && l.CultivationTask.Version != null 
-                && l.CultivationTask.Version.IsActive)
-            .CountAsync(cancellationToken);
+        return await QueryActiveVersionRecords()
+            .CountAsync(l => l.FarmerId == farmerId, cancellationToken);
     }
 
     public async Task<int> GetLateCountByPlotIdAsync(Guid plotId, CancellationToken cancellationToken = default)
     {
-        // Only count late records from active versions
-        return await _lateFarmerRecords
+        return await QueryActiveVersionRecords()
             .Include(l => l.CultivationTask)
                 .ThenInclude(ct => ct.PlotCultivation)
-            .Include(l => l.CultivationTask)
-                .ThenInclude(ct => ct.Version)
-            .Where(l => l.CultivationTask.PlotCultivation.PlotId == plotId
-                && l.CultivationTask.Version != null
-                && l.CultivationTask.Version.IsActive)
-            .CountAsync(cancellationToken);
+            .CountAsync(l => l.CultivationTask.PlotCultivation.PlotId == plotId, cancellationToken);
     }
 
     public async Task<IEnumerable<LateFarmerRecord>> GetLateRecordsByFarmerIdAsync(Guid farmerId, CancellationToken cancellationToken = default)
     {
-        // Only get late records from active versions
-        return await _lateFarmerRecords
+        return await QueryActiveVersionRecords()
             .Include(l => l.Farmer)
             .Include(l => l.CultivationTask)
                 .ThenInclude(ct => ct.PlotCultivation)
@@ -80,19 +57,14 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
                             .ThenInclude(gp => gp.Group)
                                 .ThenInclude(g => g.Cluster)
             .Include(l => l.CultivationTask.PlotCultivation.Season)
-            .Include(l => l.CultivationTask)
-                .ThenInclude(ct => ct.Version)
-            .Where(l => l.FarmerId == farmerId
-                && l.CultivationTask.Version != null
-                && l.CultivationTask.Version.IsActive)
+            .Where(l => l.FarmerId == farmerId)
             .OrderByDescending(l => l.RecordedAt)
             .ToListAsync(cancellationToken);
     }
 
     public async Task<IEnumerable<LateFarmerRecord>> GetLateRecordsByPlotIdAsync(Guid plotId, CancellationToken cancellationToken = default)
     {
-        // Only get late records from active versions
-        return await _lateFarmerRecords
+        return await QueryActiveVersionRecords()
             .Include(l => l.Farmer)
             .Include(l => l.CultivationTask)
                 .ThenInclude(ct => ct.PlotCultivation)
@@ -100,11 +72,7 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
                         .ThenInclude(p => p.GroupPlots)
                             .ThenInclude(gp => gp.Group)
             .Include(l => l.CultivationTask.PlotCultivation.Season)
-            .Include(l => l.CultivationTask)
-                .ThenInclude(ct => ct.Version)
-            .Where(l => l.CultivationTask.PlotCultivation.PlotId == plotId
-                && l.CultivationTask.Version != null
-                && l.CultivationTask.Version.IsActive)
+            .Where(l => l.CultivationTask.PlotCultivation.PlotId == plotId)
             .OrderByDescending(l => l.RecordedAt)
             .ToListAsync(cancellationToken);
     }
@@ -115,12 +83,7 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
         Expression<Func<LateFarmerRecord, bool>>? predicate = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _lateFarmerRecords
-            .Include(l => l.Farmer)
-            .Include(l => l.CultivationTask)
-                .ThenInclude(ct => ct.PlotCultivation)
-                    .ThenInclude(pc => pc.Plot)
-            .AsQueryable();
+        var query = QueryWithBasicDetails();
 
         if (predicate != null)
         {
@@ -142,7 +105,7 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
         Func<IQueryable<LateFarmerRecord>, IOrderedQueryable<LateFarmerRecord>>? orderBy = null,
         Func<IQueryable<LateFarmerRecord>, IIncludableQueryable<LateFarmerRecord, object>>? includeProperties = null)
     {
-        IQueryable<LateFarmerRecord> query = _context.Set<LateFarmerRecord>();
+        IQueryable<LateFarmerRecord> query = _lateFarmerRecords;
 
         if (filter != null)
         {
@@ -170,5 +133,23 @@ public class LateFarmerRecordRepository : ILateFarmerRecordRepository
     public async Task AddAsync(LateFarmerRecord entity, CancellationToken cancellationToken = default)
     {
         await _lateFarmerRecords.AddAsync(entity, cancellationToken);
+    }
+
+    private IQueryable<LateFarmerRecord> QueryWithBasicDetails()
+    {
+        return _lateFarmerRecords
+            .Include(l => l.Farmer)
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot);
+    }
+
+    // Only include late records belonging to active cultivation task versions
+    private IQueryable<LateFarmerRecord> QueryActiveVersionRecords()
+    {
+        return _lateFarmerRecords
+            .Include(l => l.CultivationTask)
+                .ThenInclude(ct => ct.Version)
+            .Where(l => l.CultivationTask.Version != null && l.CultivationTask.Version.IsActive);
     }
 }

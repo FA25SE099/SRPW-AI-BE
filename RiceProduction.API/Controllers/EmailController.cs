@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.EmailFeature.Commands.SendEmail;
 
@@ -35,7 +36,7 @@ public class EmailController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to send email to {To}: {Errors}",
-                    command.To, string.Join(", ", result.Errors ?? []));
+                    command.To, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -46,7 +47,7 @@ public class EmailController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while sending email to {To}", command.To);
-            return StatusCode(500, Result<string>.Failure("An error occurred while processing your request"));
+            return InternalServerError<string>();
         }
     }
 
@@ -67,8 +68,7 @@ public class EmailController : ControllerBase
 
             if (!result.Succeeded)
             {
-                _logger.LogWarning("Failed to send bulk email: {Errors}",
-                    string.Join(", ", result.Errors ?? []));
+                _logger.LogWarning("Failed to send bulk email: {Errors}", FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -78,7 +78,7 @@ public class EmailController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while sending bulk email");
-            return StatusCode(500, Result<string>.Failure("An error occurred while processing your request"));
+            return InternalServerError<string>();
         }
     }
 
@@ -99,7 +99,7 @@ public class EmailController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to send password reset email to {Email}: {Errors}",
-                    command.Email, string.Join(", ", result.Errors ?? []));
+                    command.Email, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -110,7 +110,7 @@ public class EmailController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while sending password reset email to {Email}", command.Email);
-            return StatusCode(500, Result<string>.Failure("An error occurred while processing your request"));
+            return InternalServerError<string>();
         }
     }
 
@@ -146,7 +146,7 @@ public class EmailController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to send templated email to {To}: {Errors}",
-                    command.To, string.Join(", ", result.Errors ?? []));
+                    command.To, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -157,7 +157,7 @@ public class EmailController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while sending templated email to {To}", command.To);
-            return StatusCode(500, Result<string>.Failure("An error occurred while processing your request"));
+            return InternalServerError<string>();
         }
     }
 
@@ -171,20 +171,13 @@ public class EmailController : ControllerBase
     {
         try
         {
-            var query = new GetEmailBatchStatusQuery { BatchId = batchId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            var result = await _mediator.Send(new GetEmailBatchStatusQuery { BatchId = batchId });
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving batch status for {BatchId}", batchId);
-            return StatusCode(500, Result<object>.Failure("An error occurred while processing your request"));
+            return InternalServerError<object>();
         }
     }
 
@@ -199,13 +192,7 @@ public class EmailController : ControllerBase
         try
         {
             var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
@@ -241,7 +228,7 @@ public class EmailController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to send test email to {To}: {Errors}",
-                    command.To, string.Join(", ", result.Errors ?? []));
+                    command.To, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -252,9 +239,15 @@ public class EmailController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while sending test email to {To}", command.To);
-            return StatusCode(500, Result<string>.Failure("An error occurred while processing your request"));
+            return InternalServerError<string>();
         }
     }
+
+    private static string FormatErrors(IEnumerable<string>? errors) =>
+        string.Join(", ", errors ?? Array.Empty<string>());
+
+    private ActionResult<Result<T>> InternalServerError<T>() =>
+        StatusCode(500, Result<T>.Failure("An error occurred while processing your request"));
 }
 
 // Supporting command classes

@@ -29,21 +29,12 @@ public class EmergencyProtocolController : ControllerBase
         {
             _logger.LogInformation("GetAll emergency protocols request received");
 
-            //var query = new GetAllEmergencyProtocolsQuery
-            //{
-            //    CurrentPage = currentPage,
-            //    PageSize = pageSize,
-            //    CategoryId = categoryId,
-            //    SearchTerm = searchTerm,
-            //    IsActive = isActive
-            //};
-
             var result = await _mediator.Send(query);
 
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to retrieve emergency protocols: {Errors}",
-                    string.Join(", ", result.Errors ?? new string[0]));
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
                 return BadRequest(result);
             }
 
@@ -69,7 +60,7 @@ public class EmergencyProtocolController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to retrieve emergency protocol detail for ID {ProtocolId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
                 return BadRequest(result);
             }
 
@@ -97,7 +88,7 @@ public class EmergencyProtocolController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to create emergency protocol: {Errors}",
-                    string.Join(", ", result.Errors ?? new string[0]));
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
                 return BadRequest(result);
             }
 
@@ -116,7 +107,6 @@ public class EmergencyProtocolController : ControllerBase
     {
         try
         {
-
             _logger.LogInformation("UpdateEmergencyProtocol request received for ID: {ProtocolId}", command.EmergencyProtocolId);
 
             var result = await _mediator.Send(command);
@@ -125,7 +115,7 @@ public class EmergencyProtocolController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to update emergency protocol ID {ProtocolId}: {Errors}",
-                    command.EmergencyProtocolId, string.Join(", ", result.Errors ?? new string[0]));
+                    command.EmergencyProtocolId, string.Join(", ", result.Errors ?? Array.Empty<string>()));
 
                 return BadRequest(result);
             }
@@ -138,8 +128,7 @@ public class EmergencyProtocolController : ControllerBase
             _logger.LogError(ex,
                 "Unexpected error occurred while updating emergency protocol ID: {ProtocolId}",
                 command.EmergencyProtocolId);
-            return StatusCode(500, Result<Guid>.Failure(
-                "An unexpected error occurred"));
+            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
         }
     }
 }

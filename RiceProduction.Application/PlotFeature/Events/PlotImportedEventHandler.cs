@@ -30,100 +30,11 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
             return;
         }
 
-        ClusterManager? clusterManager = null;
-        if (notification.ClusterManagerId.HasValue)
-        {
-            clusterManager = await _unitOfWork.ClusterManagerRepository
-                .GetClusterManagerByIdAsync(notification.ClusterManagerId.Value, cancellationToken);
-        }
-
-        IEnumerable<Supervisor> availableSupervisors;
-        
-        // Strategy 1: Try to get supervisors directly from the cluster (best approach)
-        if (clusterManager?.ClusterId != null)
-        {
-            _logger.LogInformation(
-                "Attempting to find supervisors for cluster {ClusterId} using direct cluster relationship",
-                clusterManager.ClusterId);
-
-            // Get supervisors directly assigned to the cluster with available capacity
-            availableSupervisors = await _unitOfWork.SupervisorRepository
-                .ListAsync(s => s.ClusterId == clusterManager.ClusterId);
-            
-            if (availableSupervisors.Any())
-            {
-                _logger.LogInformation(
-                    "Found {SupervisorCount} available supervisors directly assigned to cluster {ClusterId}",
-                    availableSupervisors.Count(), clusterManager.ClusterId);
-            }
-            else
-            {
-                // Strategy 2: Fallback to supervisors managing groups in this cluster
-                _logger.LogWarning(
-                    "No supervisors directly assigned to cluster {ClusterId}, trying group-based lookup",
-                    clusterManager.ClusterId);
-                
-                var groups = await _unitOfWork.Repository<Group>()
-                    .ListAsync(g => g.ClusterId == clusterManager.ClusterId && g.SupervisorId != null);
-                
-                var supervisorIds = groups.Select(g => g.SupervisorId!.Value).Distinct().ToList();
-                
-                if (supervisorIds.Any())
-                {
-                    availableSupervisors = await _unitOfWork.SupervisorRepository
-                        .ListAsync(s => supervisorIds.Contains(s.Id) && 
-                                       s.CurrentFarmerCount < s.MaxFarmerCapacity);
-                    
-                    if (availableSupervisors.Any())
-                    {
-                        _logger.LogInformation(
-                            "Found {SupervisorCount} available supervisors via group assignments in cluster {ClusterId}",
-                            availableSupervisors.Count(), clusterManager.ClusterId);
-                    }
-                    else
-                    {
-                        _logger.LogWarning(
-                            "Found supervisors in cluster {ClusterId} via groups, but all are at capacity",
-                            clusterManager.ClusterId);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "No supervisors found in groups for cluster {ClusterId}",
-                        clusterManager.ClusterId);
-                }
-                
-                // Strategy 3: Last resort - get any available supervisor system-wide
-                if (!availableSupervisors.Any())
-                {
-                    _logger.LogWarning(
-                        "No cluster-specific supervisors available for cluster {ClusterId}, falling back to system-wide search",
-                        clusterManager.ClusterId);
-                    
-                    availableSupervisors = await _unitOfWork.SupervisorRepository
-                        .ListAsync(s => s.CurrentFarmerCount < s.MaxFarmerCapacity);
-                    
-                    if (availableSupervisors.Any())
-                    {
-                        _logger.LogInformation(
-                            "Found {SupervisorCount} available supervisors system-wide (not cluster-specific)",
-                            availableSupervisors.Count());
-                    }
-                }
-            }
-        }
-        else
-        {
-            // No cluster context - use system-wide supervisor pool
-            _logger.LogInformation("No cluster context available, searching for supervisors system-wide");
-            
-            availableSupervisors = await _unitOfWork.SupervisorRepository
-                .ListAsync(s => s.CurrentFarmerCount < s.MaxFarmerCapacity);
-        }
+        var availableSupervisors = await ResolveAvailableSupervisorsAsync(
+            notification.ClusterManagerId,
+            cancellationToken);
 
         var supervisorList = availableSupervisors.OrderBy(s => s.CurrentFarmerCount).ToList();
-        
         if (!supervisorList.Any())
         {
             _logger.LogWarning("No available supervisors found for polygon task assignment");
@@ -134,9 +45,11 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
         var plots = await _unitOfWork.Repository<Plot>()
             .ListAsync(p => plotIds.Contains(p.Id));
 
-        // Check for existing pending or in-progress tasks for these plots
-        var existingTasks = await _unitOfWork.Repository<PlotPolygonTask>()
-            .ListAsync(t => plotIds.Contains(t.PlotId) && 
+        var polygonTaskRepo = _unitOfWork.Repository<PlotPolygonTask>();
+        var notificationRepo = _unitOfWork.Repository<Notification>();
+
+        var existingTasks = await polygonTaskRepo
+            .ListAsync(t => plotIds.Contains(t.PlotId) &&
                            (t.Status == "Pending" || t.Status == "InProgress"));
         var plotsWithExistingTasks = existingTasks.Select(t => t.PlotId).ToHashSet();
 
@@ -144,13 +57,12 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
             "Found {ExistingTaskCount} plots with existing polygon tasks, will skip assignment",
             plotsWithExistingTasks.Count);
 
-        int supervisorIndex = 0;
-        int tasksCreated = 0;
-        int skipped = 0;
+        var supervisorIndex = 0;
+        var tasksCreated = 0;
+        var skipped = 0;
 
         foreach (var plot in plots)
         {
-            // Skip if plot already has a pending or in-progress task
             if (plotsWithExistingTasks.Contains(plot.Id))
             {
                 _logger.LogDebug(
@@ -161,7 +73,7 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
             }
 
             var supervisor = supervisorList[supervisorIndex % supervisorList.Count];
-            
+
             var polygonTask = new PlotPolygonTask
             {
                 PlotId = plot.Id,
@@ -173,9 +85,9 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
                 Notes = $"Auto-assigned: Draw polygon boundary for Plot - SoThua: {plot.SoThua}, SoTo: {plot.SoTo}, Area: {plot.Area} ha (imported via Excel)"
             };
 
-            await _unitOfWork.Repository<PlotPolygonTask>().AddAsync(polygonTask);
+            await polygonTaskRepo.AddAsync(polygonTask);
 
-            var notification_msg = new Notification
+            var supervisorNotification = new Notification
             {
                 RecipientId = supervisor.Id.ToString(),
                 ActivityType = "polygon_task_assigned",
@@ -186,7 +98,7 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
                 Status = "pending"
             };
 
-            await _unitOfWork.Repository<Notification>().AddAsync(notification_msg);
+            await notificationRepo.AddAsync(supervisorNotification);
 
             supervisorIndex++;
             tasksCreated++;
@@ -200,5 +112,92 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
             supervisorList.Count,
             skipped);
     }
-}
 
+    private async Task<IReadOnlyList<Supervisor>> ResolveAvailableSupervisorsAsync(
+        Guid? clusterManagerId,
+        CancellationToken cancellationToken)
+    {
+        ClusterManager? clusterManager = null;
+        if (clusterManagerId.HasValue)
+        {
+            clusterManager = await _unitOfWork.ClusterManagerRepository
+                .GetClusterManagerByIdAsync(clusterManagerId.Value, cancellationToken);
+        }
+
+        if (clusterManager?.ClusterId == null)
+        {
+            _logger.LogInformation("No cluster context available, searching for supervisors system-wide");
+            return await _unitOfWork.SupervisorRepository
+                .ListAsync(s => s.CurrentFarmerCount < s.MaxFarmerCapacity);
+        }
+
+        var clusterId = clusterManager.ClusterId;
+
+        // Strategy 1: Supervisors directly assigned to the cluster
+        _logger.LogInformation(
+            "Attempting to find supervisors for cluster {ClusterId} using direct cluster relationship",
+            clusterId);
+
+        var directSupervisors = await _unitOfWork.SupervisorRepository
+            .ListAsync(s => s.ClusterId == clusterId);
+
+        if (directSupervisors.Any())
+        {
+            _logger.LogInformation(
+                "Found {SupervisorCount} available supervisors directly assigned to cluster {ClusterId}",
+                directSupervisors.Count, clusterId);
+            return directSupervisors;
+        }
+
+        // Strategy 2: Supervisors managing groups in this cluster with available capacity
+        _logger.LogWarning(
+            "No supervisors directly assigned to cluster {ClusterId}, trying group-based lookup",
+            clusterId);
+
+        var groups = await _unitOfWork.Repository<Group>()
+            .ListAsync(g => g.ClusterId == clusterId && g.SupervisorId != null);
+        var supervisorIds = groups.Select(g => g.SupervisorId!.Value).Distinct().ToList();
+
+        if (supervisorIds.Any())
+        {
+            var groupSupervisors = await _unitOfWork.SupervisorRepository
+                .ListAsync(s => supervisorIds.Contains(s.Id) &&
+                               s.CurrentFarmerCount < s.MaxFarmerCapacity);
+
+            if (groupSupervisors.Any())
+            {
+                _logger.LogInformation(
+                    "Found {SupervisorCount} available supervisors via group assignments in cluster {ClusterId}",
+                    groupSupervisors.Count, clusterId);
+                return groupSupervisors;
+            }
+
+            _logger.LogWarning(
+                "Found supervisors in cluster {ClusterId} via groups, but all are at capacity",
+                clusterId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "No supervisors found in groups for cluster {ClusterId}",
+                clusterId);
+        }
+
+        // Strategy 3: Fallback to any available supervisor system-wide
+        _logger.LogWarning(
+            "No cluster-specific supervisors available for cluster {ClusterId}, falling back to system-wide search",
+            clusterId);
+
+        var systemSupervisors = await _unitOfWork.SupervisorRepository
+            .ListAsync(s => s.CurrentFarmerCount < s.MaxFarmerCapacity);
+
+        if (systemSupervisors.Any())
+        {
+            _logger.LogInformation(
+                "Found {SupervisorCount} available supervisors system-wide (not cluster-specific)",
+                systemSupervisors.Count);
+        }
+
+        return systemSupervisors;
+    }
+}

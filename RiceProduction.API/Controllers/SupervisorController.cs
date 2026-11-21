@@ -1,13 +1,13 @@
-﻿using Google.Protobuf.WellKnownTypes;
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.SupervisorRequests;
 using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
+using RiceProduction.Application.ReportFeature.Queries.GetReportsBySupervisor;
 using RiceProduction.Application.SupervisorFeature.Commands.CompletePolygonAssignment;
 using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
 using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisor;
@@ -23,9 +23,6 @@ using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorByCluste
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorProfile;
 using RiceProduction.Application.SupervisorFeature.Queries.ValidatePolygonArea;
 using RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason;
-using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
-using RiceProduction.Domain.Entities;
-using System.Security.Claims;
 
 namespace RiceProduction.API.Controllers;
 
@@ -128,8 +125,7 @@ public class SupervisorController : Controller
     [Authorize(Roles = "Supervisor")]
     public async Task<ActionResult<Result<List<PlotPolygonTaskDto>>>> GetMyPolygonTasks([FromQuery] string? status = null)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(Result<List<PlotPolygonTaskDto>>.Failure("User not authenticated"));
         }
@@ -184,8 +180,7 @@ public class SupervisorController : Controller
         Guid taskId,
         [FromBody] CompletePolygonRequest request)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(Result<bool>.Failure("User not authenticated"));
         }
@@ -218,8 +213,7 @@ public class SupervisorController : Controller
         [FromQuery] Guid? seasonId = null,
         [FromQuery] int? year = null)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(Result<List<GroupBySeasonResponse>>.Failure("User not authenticated"));
         }
@@ -248,8 +242,7 @@ public class SupervisorController : Controller
     [Authorize(Roles = "Supervisor")]
     public async Task<ActionResult<Result<PlanDetailsResponse>>> GetPlanDetails(Guid planId)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(Result<PlanDetailsResponse>.Failure("User not authenticated"));
         }
@@ -274,8 +267,7 @@ public class SupervisorController : Controller
     [Authorize(Roles = "Supervisor")]
     public async Task<ActionResult<Result<List<AvailableSeasonYearDto>>>> GetAvailableSeasons()
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(Result<List<AvailableSeasonYearDto>>.Failure("User not authenticated"));
         }
@@ -300,8 +292,7 @@ public class SupervisorController : Controller
     [Obsolete("Use /group-by-season endpoint instead")]
     public async Task<ActionResult<Result<MyGroupResponse>>> GetMyGroup([FromQuery] Guid? seasonId = null)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(Result<MyGroupResponse>.Failure("User not authenticated"));
         }
@@ -333,8 +324,7 @@ public class SupervisorController : Controller
         [FromQuery] int? year = null,
         [FromQuery] bool includeCurrentSeason = false)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(Result<List<GroupHistorySummary>>.Failure("User not authenticated"));
         }
@@ -367,8 +357,7 @@ public class SupervisorController : Controller
     public async Task<ActionResult<PagedResult<List<FarmerDTO>>>> GetFarmers(
         [FromBody] GetFarmersBySupervisorRequest request)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(PagedResult<List<FarmerDTO>>.Failure("User not authenticated"));
         }
@@ -403,13 +392,12 @@ public class SupervisorController : Controller
     public async Task<ActionResult<PagedResult<List<ReportItemResponse>>>> GetReports(
         [FromBody] GetReportsBySupervisorRequest request)
     {
-        var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var supervisorId))
+        if (!User.TryGetUserId(out var supervisorId))
         {
             return Unauthorized(PagedResult<List<ReportItemResponse>>.Failure("User not authenticated"));
         }
 
-        var query = new RiceProduction.Application.ReportFeature.Queries.GetReportsBySupervisor.GetReportsBySupervisorQuery
+        var query = new GetReportsBySupervisorQuery
         {
             SupervisorId = supervisorId,
             CurrentPage = request.CurrentPage,
@@ -475,8 +463,8 @@ public class SupervisorController : Controller
     {
         try
         {
-            var query = new Application.SupervisorFeature.Queries.GetAllSupervisor.GetAllSupervisorQueries();
-            var result = await _mediator.Send(query); 
+            var query = new GetAllSupervisorQueries();
+            var result = await _mediator.Send(query);
 
             if (result == null || !result.Any())
             {
