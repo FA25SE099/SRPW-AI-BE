@@ -60,13 +60,8 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                 return Result<Guid>.Failure("Emergency report is not linked to a valid plot.", "PlotNotFound");
             }
 
-            var plotCultivation = emergencyReport.PlotCultivation;
-            if (plotCultivation == null)
-            {
-                return Result<Guid>.Failure("PlotCultivation not found for this emergency report.", "PlotCultivationNotFound");
-            }
+            var plotCultivation = emergencyReport.PlotCultivation!;
 
-            // 2. Validate Production Plan exists (optional context, but good to check)
             var plan = await _unitOfWork.Repository<ProductionPlan>()
                 .GetQueryable()
                 .Include(p => p.Group)
@@ -79,14 +74,12 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                     "PlanNotFound");
             }
 
-            // Optional: validate plot belongs to the plan's group
-            var groupPlots = plan.Group?.GroupPlots?.Select(gp => gp.Plot).ToList() ?? new List<Plot>();
-            if (plan.Group == null || !groupPlots.Any(p => p.Id == plot.Id))
+            var plotBelongsToGroup = plan.Group?.GroupPlots?.Any(gp => gp.Plot.Id == plot.Id) ?? false;
+            if (!plotBelongsToGroup)
             {
                 _logger.LogWarning("Plot {PlotId} does not belong to Production Plan {PlanId} group, but continuing for emergency.", plot.Id, plan.Id);
             }
 
-            // 3. Validate all requested materials exist
             var requestedMaterialIds = request.EmergencyTasks
                 .SelectMany(t => t.Materials)
                 .Select(m => m.MaterialId)
@@ -110,7 +103,6 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                 }
             }
 
-            // 4. Check for duplicate version name
             var existingVersions = await _unitOfWork.Repository<CultivationVersion>()
                 .ListAsync(v => v.PlotCultivationId == plotCultivation.Id);
 
@@ -122,7 +114,6 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                     "DuplicateVersionName");
             }
 
-            // 5. Create new CultivationVersion (will activate at the end)
             var nextOrder = existingVersions.Any() ? existingVersions.Max(v => v.VersionOrder) + 1 : 1;
 
             var newVersion = new CultivationVersion
@@ -130,7 +121,7 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                 PlotCultivationId = plotCultivation.Id,
                 VersionName = request.NewVersionName.Trim(),
                 VersionOrder = nextOrder,
-                IsActive = false, 
+                IsActive = false,
                 Reason = request.ResolutionReason?.Trim() ?? $"Emergency response: {emergencyReport.Title}",
                 ActivatedAt = null,
                 CreatedAt = DateTime.UtcNow,
@@ -142,57 +133,9 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
             _logger.LogInformation("Created CultivationVersion '{VersionName}' (Order {Order}) for Plot {PlotId}",
                 newVersion.VersionName, newVersion.VersionOrder, plot.Id);
 
-            var cultivationTasks = new List<CultivationTask>();
             var plotArea = plot.Area;
-
-            for (int i = 0; i < request.EmergencyTasks.Count; i++)
-            {
-                var emergencyTask = request.EmergencyTasks[i];
-
-                var task = new CultivationTask
-                {
-                    ProductionPlanTaskId = null,
-                    PlotCultivationId = plotCultivation.Id,
-                    VersionId = newVersion.Id,
-
-                    CultivationTaskName = string.IsNullOrWhiteSpace(emergencyTask.TaskName)
-                        ? $"Emergency: {emergencyReport.AlertType} - {plot.SoThua}/{plot.SoTo}"
-                        : emergencyTask.TaskName.Trim(),
-
-                    Description = string.IsNullOrWhiteSpace(emergencyTask.Description)
-                        ? $"Emergency intervention | Area: {plotArea:F2} ha | Report: {emergencyReport.Title}"
-                        : emergencyTask.Description.Trim(),
-
-                    TaskType = emergencyTask.TaskType ?? TaskType.PestControl,
-                    Status = TaskStatus.EmergencyApproval,
-                    ExecutionOrder = emergencyTask.ExecutionOrder ?? (i + 1),
-                    ScheduledEndDate = emergencyTask.ScheduledEndDate ?? DateTime.UtcNow.AddDays(7),
-                    
-                    AssignedToUserId = emergencyTask.AssignedToUserId,
-                    AssignedToVendorId = emergencyTask.AssignedToVendorId,
-
-                    IsContingency = true,
-                    ContingencyReason = emergencyTask.ContingencyReason
-                        ?? request.ResolutionReason
-                        ?? $"Emergency alert: {emergencyReport.AlertType}",
-
-                    CreatedAt = DateTime.UtcNow,
-                    
-                };
-
-                // Add materials with actual quantities
-                foreach (var mat in emergencyTask.Materials)
-                {
-                    task.CultivationTaskMaterials.Add(new CultivationTaskMaterial
-                    {
-                        MaterialId = mat.MaterialId,
-                        ActualQuantity = mat.Quantity,
-                        Notes = mat.Notes ?? $"Emergency use – {emergencyReport.Title}"
-                    });
-                }
-
-                cultivationTasks.Add(task);
-            }
+            var cultivationTasks = BuildEmergencyCultivationTasks(
+                request, emergencyReport, plot, plotCultivation.Id, newVersion.Id);
 
             await _unitOfWork.Repository<CultivationTask>().AddRangeAsync(cultivationTasks);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -216,7 +159,6 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 9. Mark emergency report as resolved
             emergencyReport.Status = AlertStatus.Resolved;
             emergencyReport.ResolvedBy = expertId;
             emergencyReport.ResolvedAt = DateTime.UtcNow;
@@ -246,22 +188,63 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
             return Result<Guid>.Failure("Failed to create emergency plan.", "CreateEmergencyPlanFailed");
         }
     }
+
+    private static List<CultivationTask> BuildEmergencyCultivationTasks(
+        CreateEmergencyPlanForPlotCommand request,
+        EmergencyReport emergencyReport,
+        Plot plot,
+        Guid plotCultivationId,
+        Guid versionId)
+    {
+        var cultivationTasks = new List<CultivationTask>(request.EmergencyTasks.Count);
+
+        for (int i = 0; i < request.EmergencyTasks.Count; i++)
+        {
+            var emergencyTask = request.EmergencyTasks[i];
+
+            var task = new CultivationTask
+            {
+                ProductionPlanTaskId = null,
+                PlotCultivationId = plotCultivationId,
+                VersionId = versionId,
+
+                CultivationTaskName = string.IsNullOrWhiteSpace(emergencyTask.TaskName)
+                    ? $"Emergency: {emergencyReport.AlertType} - {plot.SoThua}/{plot.SoTo}"
+                    : emergencyTask.TaskName.Trim(),
+
+                Description = string.IsNullOrWhiteSpace(emergencyTask.Description)
+                    ? $"Emergency intervention | Area: {plot.Area:F2} ha | Report: {emergencyReport.Title}"
+                    : emergencyTask.Description.Trim(),
+
+                TaskType = emergencyTask.TaskType ?? TaskType.PestControl,
+                Status = TaskStatus.EmergencyApproval,
+                ExecutionOrder = emergencyTask.ExecutionOrder ?? (i + 1),
+                ScheduledEndDate = emergencyTask.ScheduledEndDate ?? DateTime.UtcNow.AddDays(7),
+
+                AssignedToUserId = emergencyTask.AssignedToUserId,
+                AssignedToVendorId = emergencyTask.AssignedToVendorId,
+
+                IsContingency = true,
+                ContingencyReason = emergencyTask.ContingencyReason
+                    ?? request.ResolutionReason
+                    ?? $"Emergency alert: {emergencyReport.AlertType}",
+
+                CreatedAt = DateTime.UtcNow
+            };
+
+            foreach (var mat in emergencyTask.Materials)
+            {
+                task.CultivationTaskMaterials.Add(new CultivationTaskMaterial
+                {
+                    MaterialId = mat.MaterialId,
+                    ActualQuantity = mat.Quantity,
+                    Notes = mat.Notes ?? $"Emergency use – {emergencyReport.Title}"
+                });
+            }
+
+            cultivationTasks.Add(task);
+        }
+
+        return cultivationTasks;
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

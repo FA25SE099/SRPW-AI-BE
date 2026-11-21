@@ -35,13 +35,11 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     return Result<SeasonalEconomicOverviewResponse>.Failure("Season not found");
                 }
 
-                // First get plot IDs for the group if GroupId is specified
-                var plotIds = new List<Guid>();
-                if (request.GroupId.HasValue)
-                {
-                    var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken);
-                    plotIds = plots.Select(p => p.Id).ToList();
-                }
+                var plotIds = request.GroupId.HasValue
+                    ? (await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken))
+                        .Select(p => p.Id)
+                        .ToList()
+                    : new List<Guid>();
 
                 var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                     filter: pc => pc.SeasonId == request.SeasonId &&
@@ -73,7 +71,7 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                             .ThenInclude(uso => uso.Group)
                                 .ThenInclude(g => g.YearSeason));
 
-                var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
+                var totalArea = plotCultivations.Sum(GetArea);
                 var uniqueFarmers = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().Count();
                 var uniqueGroups = plotCultivations
                     .SelectMany(pc => pc.Plot.GroupPlots)
@@ -87,52 +85,19 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
 
                 var totalActualMaterialCost = allTasks.Sum(ct => ct.ActualMaterialCost);
                 var totalActualServiceCost = allTasks.Sum(ct => ct.ActualServiceCost);
-                var totalUavCost = uavInvoices.Where(inv => inv.Status == InvoiceStatus.Paid || inv.Status == InvoiceStatus.Paid)
+                var totalUavCost = uavInvoices
+                    .Where(inv => inv.Status == InvoiceStatus.Paid)
                     .Sum(inv => inv.TotalAmount);
                 var totalActualCost = totalActualMaterialCost + totalActualServiceCost + totalUavCost;
 
-                var totalEstimatedCost = plotCultivations
-                    .SelectMany(pc => pc.CultivationTasks)
+                var totalEstimatedCost = allTasks
                     .SelectMany(ct => ct.ProductionPlanTask.ProductionPlanTaskMaterials)
                     .Sum(pptm => pptm.EstimatedAmount ?? 0);
 
-                var totalExpectedYield = plotCultivations.Sum(pc =>
-                {
-                    var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == pc.RiceVarietyId);
-                    var expectedYieldPerHa = varietySeason?.ExpectedYieldPerHectare ?? 0;
-                    var area = pc.Area ?? pc.Plot.Area;
-                    return expectedYieldPerHa * area;
-                });
-
+                var totalExpectedYield = CalculateTotalExpectedYield(plotCultivations, riceVarietySeasons);
                 var totalActualYield = plotCultivations.Sum(pc => pc.ActualYield ?? 0);
                 var harvestedCount = plotCultivations.Count(pc => pc.Status == CultivationStatus.Completed);
-                var pendingHarvestCount = plotCultivations.Count(pc =>
-                    pc.Status == CultivationStatus.InProgress || pc.Status == CultivationStatus.InProgress);
-
-                var varietyDistribution = plotCultivations
-                    .GroupBy(pc => new { pc.RiceVarietyId, pc.RiceVariety.VarietyName })
-                    .Select(g => new RiceVarietyDistribution
-                    {
-                        RiceVarietyId = g.Key.RiceVarietyId,
-                        VarietyName = g.Key.VarietyName,
-                        CultivationCount = g.Count(),
-                        TotalArea = g.Sum(pc => pc.Area ?? pc.Plot.Area),
-                        Percentage = totalArea > 0 ? (g.Sum(pc => pc.Area ?? pc.Plot.Area) / totalArea) * 100 : 0
-                    })
-                    .OrderByDescending(v => v.TotalArea)
-                    .ToList();
-
-                var statusBreakdown = plotCultivations
-                    .GroupBy(pc => pc.Status)
-                    .Select(g => new CultivationStatusBreakdown
-                    {
-                        Status = g.Key,
-                        Count = g.Count(),
-                        TotalArea = g.Sum(pc => pc.Area ?? pc.Plot.Area),
-                        Percentage = plotCultivations.Count > 0 ? (g.Count() / (decimal)plotCultivations.Count) * 100 : 0
-                    })
-                    .OrderByDescending(s => s.Count)
-                    .ToList();
+                var pendingHarvestCount = plotCultivations.Count(pc => pc.Status == CultivationStatus.InProgress);
 
                 var response = new SeasonalEconomicOverviewResponse
                 {
@@ -141,7 +106,6 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     StartDate = season.StartDate,
                     EndDate = season.EndDate,
                     IsActive = season.IsActive,
-
                     Cultivation = new CultivationSummary
                     {
                         TotalPlotCultivations = plotCultivations.Count,
@@ -152,7 +116,6 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                         CompletedTasks = completedTasks,
                         TaskCompletionRate = totalTasks > 0 ? (completedTasks / (decimal)totalTasks) * 100 : 0
                     },
-
                     Costs = new CostSummary
                     {
                         TotalEstimatedCost = totalEstimatedCost,
@@ -163,7 +126,6 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                         CostPerHectare = totalArea > 0 ? totalActualCost / totalArea : 0,
                         UavServiceCost = totalUavCost
                     },
-
                     Yields = new YieldSummary
                     {
                         TotalExpectedYield = totalExpectedYield,
@@ -173,9 +135,8 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                         HarvestedCultivations = harvestedCount,
                         PendingHarvest = pendingHarvestCount
                     },
-
-                    VarietyDistribution = varietyDistribution,
-                    StatusBreakdown = statusBreakdown
+                    VarietyDistribution = BuildVarietyDistribution(plotCultivations, totalArea),
+                    StatusBreakdown = BuildStatusBreakdown(plotCultivations)
                 };
 
                 _logger.LogInformation(
@@ -193,6 +154,63 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     "An error occurred while retrieving seasonal economic overview");
             }
         }
+
+        private static decimal GetArea(PlotCultivation pc) => pc.Area ?? pc.Plot.Area;
+
+        private static decimal CalculateTotalExpectedYield(
+            IReadOnlyList<PlotCultivation> plotCultivations,
+            IReadOnlyList<RiceVarietySeason> riceVarietySeasons)
+        {
+            var varietySeasonsByVarietyId = riceVarietySeasons
+                .GroupBy(rvs => rvs.RiceVarietyId)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            return plotCultivations.Sum(pc =>
+            {
+                var expectedYieldPerHa = varietySeasonsByVarietyId.GetValueOrDefault(pc.RiceVarietyId)?.ExpectedYieldPerHectare ?? 0;
+                return expectedYieldPerHa * GetArea(pc);
+            });
+        }
+
+        private static List<RiceVarietyDistribution> BuildVarietyDistribution(
+            IReadOnlyList<PlotCultivation> plotCultivations,
+            decimal totalArea) =>
+            plotCultivations
+                .GroupBy(pc => new { pc.RiceVarietyId, pc.RiceVariety.VarietyName })
+                .Select(g =>
+                {
+                    var varietyArea = g.Sum(GetArea);
+
+                    return new RiceVarietyDistribution
+                    {
+                        RiceVarietyId = g.Key.RiceVarietyId,
+                        VarietyName = g.Key.VarietyName,
+                        CultivationCount = g.Count(),
+                        TotalArea = varietyArea,
+                        Percentage = totalArea > 0 ? (varietyArea / totalArea) * 100 : 0
+                    };
+                })
+                .OrderByDescending(v => v.TotalArea)
+                .ToList();
+
+        private static List<CultivationStatusBreakdown> BuildStatusBreakdown(
+            IReadOnlyList<PlotCultivation> plotCultivations) =>
+            plotCultivations
+                .GroupBy(pc => pc.Status)
+                .Select(g =>
+                {
+                    var count = g.Count();
+
+                    return new CultivationStatusBreakdown
+                    {
+                        Status = g.Key,
+                        Count = count,
+                        TotalArea = g.Sum(GetArea),
+                        Percentage = plotCultivations.Count > 0 ? (count / (decimal)plotCultivations.Count) * 100 : 0
+                    };
+                })
+                .OrderByDescending(s => s.Count)
+                .ToList();
     }
 }
 

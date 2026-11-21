@@ -1,7 +1,7 @@
 using MediatR;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.StandardPlanFeature.Queries.GetAllStandardPlans;
 using RiceProduction.Application.StandardPlanFeature.Queries.GetStandardPlanDetail;
@@ -13,7 +13,6 @@ using RiceProduction.Application.StandardPlanFeature.Queries.DownloadStandardPla
 
 namespace RiceProduction.API.Controllers;
 
-//[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class StandardPlanController : ControllerBase
@@ -46,8 +45,8 @@ public class StandardPlanController : ControllerBase
 
             if (!result.Succeeded)
             {
-                _logger.LogWarning("Failed to create standard plan: {Errors}", 
-                    string.Join(", ", result.Errors ?? new string[0]));
+                _logger.LogWarning("Failed to create standard plan: {Errors}",
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
                 return BadRequest(result);
             }
 
@@ -60,7 +59,7 @@ public class StandardPlanController : ControllerBase
             return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
         }
     }
-  
+
     [HttpGet]
     public async Task<ActionResult<Result<List<StandardPlanDto>>>> GetAll(
         [FromQuery] Guid? categoryId = null,
@@ -82,11 +81,11 @@ public class StandardPlanController : ControllerBase
 
             if (!result.Succeeded)
             {
-                _logger.LogWarning("Failed to retrieve standard plans: {Errors}", string.Join(", ", result.Errors ?? new string[0]));
-                return BadRequest(result);
+                _logger.LogWarning("Failed to retrieve standard plans: {Errors}",
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
             }
 
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
@@ -107,14 +106,11 @@ public class StandardPlanController : ControllerBase
 
             if (!result.Succeeded)
             {
-                _logger.LogWarning("Failed to retrieve standard plan detail for ID {StandardPlanId}: {Errors}", 
-                    id, string.Join(", ", result.Errors ?? new string[0]));
-                
-                
-                return BadRequest(result);
+                _logger.LogWarning("Failed to retrieve standard plan detail for ID {StandardPlanId}: {Errors}",
+                    id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
             }
 
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
@@ -123,9 +119,7 @@ public class StandardPlanController : ControllerBase
         }
     }
 
-
     [HttpGet("{id:guid}/review")]
-
     public async Task<ActionResult<Result<StandardPlanReviewDto>>> ReviewStandardPlan(
         Guid id,
         [FromQuery] DateTime sowDate,
@@ -150,18 +144,15 @@ public class StandardPlanController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to review standard plan ID {StandardPlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
-
-
-                return BadRequest(result);
+                    id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
             }
 
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Unexpected error occurred while reviewing standard plan ID: {StandardPlanId}", 
+            _logger.LogError(ex,
+                "Unexpected error occurred while reviewing standard plan ID: {StandardPlanId}",
                 id);
             return StatusCode(500, Result<StandardPlanReviewDto>.Failure(
                 "An unexpected error occurred"));
@@ -190,17 +181,15 @@ public class StandardPlanController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to update standard plan ID {StandardPlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
-
-                return BadRequest(result);
+                    id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
             }
 
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Unexpected error occurred while updating standard plan ID: {StandardPlanId}", 
+            _logger.LogError(ex,
+                "Unexpected error occurred while updating standard plan ID: {StandardPlanId}",
                 id);
             return StatusCode(500, Result<Guid>.Failure(
                 "An unexpected error occurred"));
@@ -210,23 +199,17 @@ public class StandardPlanController : ControllerBase
     [HttpPost("download-excel")]
     public async Task<IActionResult> DownloadStandardPlansExcel([FromBody] DownloadAllStandardPlansExcelQuery query)
     {
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded || result.Data == null)
-        {
-            return BadRequest(new { message = result.Message });
-        }
-        return result.Data;
+        return ToFileActionResult(await _mediator.Send(query));
     }
 
     [HttpGet("download-sample-excel")]
     public async Task<IActionResult> DownloadSampleExcel()
     {
-        var query = new DownloadStandardPlanSampleExcelQuery();
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded || result.Data == null)
-        {
-            return BadRequest(new { message = result.Message });
-        }
-        return result.Data;
+        return ToFileActionResult(await _mediator.Send(new DownloadStandardPlanSampleExcelQuery()));
     }
+
+    private IActionResult ToFileActionResult<T>(Result<T> result) where T : IActionResult =>
+        result.Succeeded && result.Data != null
+            ? result.Data
+            : BadRequest(new { message = result.Message });
 }

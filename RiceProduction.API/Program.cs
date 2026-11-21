@@ -1,34 +1,22 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
+using RiceProduction.API.Common;
 using RiceProduction.API.Middlewares;
 using RiceProduction.API.Services;
-using RiceProduction.API.Common;
 using RiceProduction.Application;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Infrastructure;
 using RiceProduction.Infrastructure.Data;
-using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using Serilog;
 using Serilog.Events;
 using Serilog.Sinks.Grafana.Loki;
-using Serilog.Formatting.Json;
 using System.Text;
-using System.Text.Json.Serialization;
 
-// Configure Npgsql to handle timestamps as UTC
-
-
-    var builder = WebApplication.CreateBuilder(args);
-
+var builder = WebApplication.CreateBuilder(args);
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -48,7 +36,7 @@ Log.Logger = new LoggerConfiguration()
             new LokiLabel { Key = "environment", Value = "production" }
         },
         propertiesAsLabels: new[] { "level" },
-        textFormatter: new LokiJsonTextFormatter()  
+        textFormatter: new LokiJsonTextFormatter()
     )
     .CreateBootstrapLogger();
 
@@ -59,82 +47,15 @@ builder.Services.AddOpenTelemetry()
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
             .AddRuntimeInstrumentation()
-            .AddPrometheusExporter();  
+            .AddPrometheusExporter();
     });
 
-//builder.Host.UseSerilog();
-//Log.Logger = new LoggerConfiguration()
-//    .ReadFrom.Configuration(builder.Configuration)
-//    .Enrich.FromLogContext()
-//    .Enrich.WithThreadId()
-//    .CreateLogger();
-
-//var otel = builder.Configuration.GetSection("OpenTelemetry");
-//var serviceName = otel["ServiceName"] ?? "RiceProduction.API";
-//var serviceVersion = otel["ServiceVersion"] ?? "1.0.0";
-//var otlpEndpoint = otel.GetSection("Otlp")["Endpoint"];
-//var otlpHeaders = otel.GetSection("Otlp")["Headers"];
-var isProduction = builder.Configuration.GetValue<bool>("IsProduction"); // or builder.Environment.IsProduction()
-
-//if (!string.IsNullOrEmpty(otlpEndpoint))
-//{
-//    var resourceBuilder = ResourceBuilder.CreateDefault()
-//        .AddService(serviceName: serviceName, serviceVersion: serviceVersion)
-//        .AddAttributes(new Dictionary<string, object>
-//        {
-//            ["deployment.environment"] = builder.Environment.EnvironmentName.ToLowerInvariant(),
-//            ["host.name"] = Environment.MachineName
-//            // add more static attributes if needed
-//        });
-
-//    // === Logs ===
-//    builder.Logging.AddOpenTelemetry(logging =>
-//    {
-//        logging.SetResourceBuilder(resourceBuilder);
-//        logging.IncludeFormattedMessage = true;
-//        logging.IncludeScopes = true;
-//        logging.ParseStateValues = true;
-
-//        logging.AddOtlpExporter(otlp =>
-//        {
-//            otlp.Endpoint = new Uri(otlpEndpoint!); // ! asserts non-null because we checked above
-//            otlp.Headers = otlpHeaders;             // e.g. "Authorization=Basic ..."
-//        });
-//    });
-
-//    // === Traces + Metrics ===
-//    builder.Services.AddOpenTelemetry()
-//        .ConfigureResource(rb => rb.Clear().AddService(serviceName, serviceVersion)) // or reuse resourceBuilder
-//        .WithTracing(tracing => tracing
-//            .SetResourceBuilder(resourceBuilder)
-//            .SetErrorStatusOnException()               // recommended
-//            .AddAspNetCoreInstrumentation()
-//            .AddHttpClientInstrumentation()
-//            .AddOtlpExporter(otlp =>
-//            {
-//                otlp.Endpoint = new Uri(otlpEndpoint);
-//                otlp.Headers = otlpHeaders;
-//            }))
-//        .WithMetrics(metrics => metrics
-//            .SetResourceBuilder(resourceBuilder)
-//            .AddAspNetCoreInstrumentation()
-//            .AddHttpClientInstrumentation()
-//            .AddRuntimeInstrumentation()
-//            .AddOtlpExporter(otlp =>
-//            {
-//                otlp.Endpoint = new Uri(otlpEndpoint);
-//                otlp.Headers = otlpHeaders;
-//            }));
-//}
-
+var isProduction = builder.Configuration.GetValue<bool>("IsProduction");
 
 builder.AddApplicationServices();
 builder.AddInfrastructureServices();
 
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-    });
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -147,8 +68,8 @@ builder.Services.AddSwaggerGen(c =>
                       "Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Scheme = "bearer",             
-        BearerFormat = "JWT"             
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
 
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -166,14 +87,23 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3000", "https://srpw-ai-fe-phtr.vercel.app", "https://srpw-ai-fe-i3gi-dxwvy4apx-trincse182497-1426s-projects.vercel.app/", "http://riceproduction.online", "https://riceproduction.online", "http://www.riceproduction.online", "https://www.riceproduction.online") 
+        policy.WithOrigins(
+                "http://localhost:3000",
+                "https://localhost:3000",
+                "https://srpw-ai-fe-phtr.vercel.app",
+                "https://srpw-ai-fe-i3gi-dxwvy4apx-trincse182497-1426s-projects.vercel.app/",
+                "http://riceproduction.online",
+                "https://riceproduction.online",
+                "http://www.riceproduction.online",
+                "https://www.riceproduction.online")
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials()  
+            .AllowCredentials()
             .WithExposedHeaders("Location");
     });
 
@@ -188,16 +118,16 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowRiceProduction", policy =>
     {
         policy.WithOrigins(
-            "http://riceproduction.online",
-            "https://riceproduction.online",
-            "http://www.riceproduction.online",
-            "https://www.riceproduction.online"
-        )
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials(); 
+                "http://riceproduction.online",
+                "https://riceproduction.online",
+                "http://www.riceproduction.online",
+                "https://www.riceproduction.online")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
+
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUser, CurrentUser>();
 
@@ -232,9 +162,9 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+
 var app = builder.Build();
 var seedDatabase = builder.Configuration.GetValue<bool>("SeedDatabase");
-
 
 if (seedDatabase)
 {
@@ -242,24 +172,19 @@ if (seedDatabase)
     var services = scope.ServiceProvider;
     try
     {
-        var context = services.GetRequiredService<ApplicationDbContext>();
         var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
 
         if (app.Environment.IsDevelopment() && !isProduction)
         {
             await initializer.InitialiseAsync();
         }
-        //if (isProduction)
-        //{
-        //}
+
         if (isProduction)
         {
             await initializer.ResetDatabaseAsync();
-            //await initializer.SeedAsync();
         }
 
         await initializer.SeedAsyncAdminOnly();
-        //await initializer.SeedAsync();
     }
     catch (Exception ex)
     {
@@ -267,39 +192,6 @@ if (seedDatabase)
         logger.LogError(ex, "An error occurred creating the DB or seeding data.");
     }
 }
-
-//if (seedDatabase)
-//{
-//    using var scope = app.Services.CreateScope();
-//    var services = scope.ServiceProvider;
-//    var logger = services.GetRequiredService<ILogger<Program>>();
-
-//    try
-//    {
-//        var initializer = services.GetRequiredService<ApplicationDbContextInitialiser>();
-
-//        logger.LogWarning("Seeding database started");
-
-//        await initializer.InitialiseAsync();
-
-//        var resetDb = builder.Configuration.GetValue<bool>("ResetDatabase");
-//        if (resetDb)
-//        {
-//            logger.LogWarning("ResetDatabase = true → truncating data");
-//            await initializer.ResetDatabaseAsync();
-//        }
-
-//        //await initializer.SeedAsync();
-//        await initializer.SeedAsyncAdminOnly();
-
-//        logger.LogWarning("Seeding database completed");
-//    }
-//    catch (Exception ex)
-//    {
-//        logger.LogError(ex, "SEED DATABASE FAILED");
-//        throw;
-//    }
-//}
 
 app.MapPost("/api/rice/check-pest", async (
     [FromForm] IFormFileCollection files,
@@ -310,20 +202,18 @@ app.MapPost("/api/rice/check-pest", async (
         return Results.BadRequest(new { error = "No files uploaded" });
     }
 
-    // Validate file type
     var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
-    
+    const long maxFileSizeBytes = 10 * 1024 * 1024;
+
     foreach (var file in files)
     {
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-
         if (!allowedExtensions.Contains(extension))
         {
             return Results.BadRequest(new { error = $"File '{file.FileName}' has invalid extension. Only JPG, JPEG, and PNG files are allowed" });
         }
 
-        // Validate file size (max 10MB)
-        if (file.Length > 10 * 1024 * 1024)
+        if (file.Length > maxFileSizeBytes)
         {
             return Results.BadRequest(new { error = $"File '{file.FileName}' size must not exceed 10MB" });
         }
@@ -337,6 +227,7 @@ app.MapPost("/api/rice/check-pest", async (
             var result = await detectionService.DetectPestAsync(file);
             results.Add(result);
         }
+
         return Results.Ok(results);
     }
     catch (Exception ex)
@@ -353,14 +244,13 @@ app.MapPost("/api/rice/check-pest", async (
 .WithOpenApi();
 
 app.UseSwagger();
-    app.UseSwaggerUI();
+app.UseSwaggerUI();
 
 app.UseCors("AllowFrontend");
 app.UseCors("AllowGemini");
 app.UseOpenTelemetryPrometheusScrapingEndpoint();
 app.UseHttpsRedirection();
 app.UseMiddleware<LoggingMiddleware>();
-// Add authentication and authorization middleware
 app.UseAuthentication();
 app.UseAuthorization();
 

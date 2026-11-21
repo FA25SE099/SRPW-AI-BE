@@ -1,6 +1,6 @@
 ﻿using MediatR;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.GroupRequests;
 using RiceProduction.Application.Common.Models.Request.GroupFormationRequests;
@@ -34,41 +34,24 @@ public class GroupController : Controller
     [HttpPost()]
     public async Task<ActionResult<PagedResult<List<GroupResponse>>>> GetGroupsByClusterIdPaging([FromBody] GroupListRequest request)
     {
-        
         var query = new GetGroupsByClusterManagerIdQuery
         {
             CurrentPage = request.CurrentPage,
             PageSize = request.PageSize
         };
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
+
     [HttpGet("{id}")]
     public async Task<IActionResult> GetGroupDetail(Guid id)
     {
-        var result = await _mediator.Send(new GetGroupDetailQuery { GroupId = id });
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(new GetGroupDetailQuery { GroupId = id }));
     }
+
     [HttpGet]
-    public async Task<IActionResult> GetAllGroups()    
+    public async Task<IActionResult> GetAllGroups()
     {
-        var query = new GetAllGroupQuery();
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(new GetAllGroupQuery()));
     }
 
     /// <summary>
@@ -100,12 +83,7 @@ public class GroupController : Controller
             MaxPlotsPerGroup = maxPlotsPerGroup
         };
 
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -130,12 +108,7 @@ public class GroupController : Controller
             CreateGroupsImmediately = request.CreateGroupsImmediately
         };
 
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     /// <summary>
@@ -163,12 +136,7 @@ public class GroupController : Controller
             }).ToList()
         };
 
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     /// <summary>
@@ -191,13 +159,9 @@ public class GroupController : Controller
             ExceptionReason = request.ExceptionReason
         };
 
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
+
     [HttpGet("my-groups")]
     public async Task<IActionResult> GetManagedGroups([FromQuery] GetGroupsByManagerQuery query)
     {
@@ -206,17 +170,9 @@ public class GroupController : Controller
         {
             return Unauthorized(PagedResult<List<ClusterManagerGroupResponse>>.Failure("Cluster Manager authentication required.", "Unauthorized"));
         }
-        
+
         query.ClusterManagerId = managerId.Value;
 
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
-
 }

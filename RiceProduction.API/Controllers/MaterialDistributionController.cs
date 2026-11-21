@@ -402,23 +402,16 @@ public class MaterialDistributionController : ControllerBase
     [HttpGet("overdue")]
     [Authorize(Roles = "Supervisor,Expert,Admin")]
     [ProducesResponseType(typeof(List<MaterialDistributionDetailDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetOverdue()
+    public Task<IActionResult> GetOverdue()
     {
-        try
+        // TODO: Create GetOverdueMaterialDistributionsQuery if needed
+        _logger.LogInformation("Requested overdue distributions");
+
+        IActionResult response = Ok(new
         {
-            // TODO: Create GetOverdueMaterialDistributionsQuery if needed
-            _logger.LogInformation("Requested overdue distributions");
-            
-            return Ok(new 
-            { 
-                message = "Overdue endpoint - use group endpoint and filter isOverdue on frontend"
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting overdue distributions");
-            return StatusCode(500, new { message = "An error occurred while retrieving overdue distributions" });
-        }
+            message = "Overdue endpoint - use group endpoint and filter isOverdue on frontend"
+        });
+        return Task.FromResult(response);
     }
 }
 

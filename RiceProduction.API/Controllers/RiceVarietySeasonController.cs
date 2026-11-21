@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.RiceVarietySeasonFeature.Commands.CreateRiceVarietySeason;
 using RiceProduction.Application.RiceVarietySeasonFeature.Commands.UpdateRiceVarietySeason;
 using RiceProduction.Application.RiceVarietySeasonFeature.Commands.DeleteRiceVarietySeason;
@@ -25,11 +26,7 @@ namespace RiceProduction.API.Controllers
         public async Task<IActionResult> GetAll([FromQuery] GetAllRiceVarietySeasonsQuery query)
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("{id:guid}")]
@@ -37,22 +34,14 @@ namespace RiceProduction.API.Controllers
         {
             var query = new GetRiceVarietySeasonDetailQuery { RiceVarietySeasonId = id };
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateRiceVarietySeasonCommand command)
         {
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpPut("{id:guid}")]
@@ -62,12 +51,9 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest(new { message = "Route ID does not match command ID" });
             }
+
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpDelete("{id:guid}")]
@@ -75,11 +61,7 @@ namespace RiceProduction.API.Controllers
         {
             var command = new DeleteRiceVarietySeasonCommand { RiceVarietySeasonId = id };
             var result = await _mediator.Send(command);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
     }
 }

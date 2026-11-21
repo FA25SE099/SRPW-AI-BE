@@ -17,6 +17,7 @@ namespace RiceProduction.API.Controllers
             _mediator = mediator;
             _logger = logger;
         }
+
         [HttpPost("send-push")]
         public async Task<IActionResult> SendPushNotification([FromBody] SendPushNotificationCommand command)
         {
@@ -28,14 +29,16 @@ namespace RiceProduction.API.Controllers
                     _logger.LogWarning("Push notification failed: {ErrorMessage}", result.ErrorMessage);
                     return BadRequest(result);
                 }
+
                 return Ok(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while sending push notification");
-                return StatusCode(500, new { message = "An error occurred while processing your request", error = ex.Message });
+                return InternalServerError(ex);
             }
         }
+
         [HttpPost("register-token")]
         public async Task<IActionResult> RegisterPushToken([FromBody] RegisterPushTokenCommand command)
         {
@@ -47,13 +50,17 @@ namespace RiceProduction.API.Controllers
                     _logger.LogWarning("Push token registration failed: {ErrorMessage}", result.Message);
                     return BadRequest(result);
                 }
+
                 return Ok(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while registering push token");
-                return StatusCode(500, new { message = "An error occurred while processing your request", error = ex.Message });
+                return InternalServerError(ex);
             }
         }
+
+        private ObjectResult InternalServerError(Exception ex) =>
+            StatusCode(500, new { message = "An error occurred while processing your request", error = ex.Message });
     }
 }

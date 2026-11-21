@@ -31,11 +31,9 @@ public class CultivationVersionController : ControllerBase
 
             if (!result.Succeeded)
             {
-                if (result.Message?.Contains("not found") == true)
-                {
-                    return NotFound(result);
-                }
-                return BadRequest(result);
+                return result.Message?.Contains("not found") == true
+                    ? NotFound(result)
+                    : BadRequest(result);
             }
 
             return Ok(result);

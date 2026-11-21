@@ -38,6 +38,13 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                     return Result<MaterialUpsertResult>.Failure("The uploaded Excel file is empty or invalid.");
                 }
 
+                var validationErrors = ValidateMaterials(materialListInput);
+                if (validationErrors.Any())
+                {
+                    return Result<MaterialUpsertResult>.Failure(
+                        $"Validation failed:{string.Join("\n", validationErrors)}");
+                }
+
                 var materialRepo = _unitOfWork.Repository<Material>();
                 var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
 
@@ -47,109 +54,31 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                 var priceUpdates = new List<MaterialPrice>();
                 var priceCreates = new List<MaterialPrice>();
 
-                var validationErrors = new List<string>();
-                for (int i = 0; i < materialListInput.Count; i++)
-                {
-                    var material = materialListInput[i];
-                    var rowNumber = i + 2;
-
-                    if (string.IsNullOrWhiteSpace(material.Name))
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Material name is required");
-                    }
-                    else if (material.Name.Length > 255)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Material name must not exceed 255 characters");
-                    }
-
-                    if (string.IsNullOrWhiteSpace(material.Unit))
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Unit is required");
-                    }
-                    else if (material.Unit.Length > 50)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Unit must not exceed 50 characters");
-                    }
-
-                    if (material.PricePerMaterial <= 0)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Price must be greater than 0");
-                    }
-
-                    if (material.AmmountPerMaterial.HasValue && material.AmmountPerMaterial.Value <= 0)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Amount per material must be greater than 0");
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(material.Manufacturer) && material.Manufacturer.Length > 255)
-                    {
-                        validationErrors.Add($"Row {rowNumber}: Manufacturer must not exceed 255 characters");
-                    }
-                }
-
-                if (validationErrors.Any())
-                {
-                    return Result<MaterialUpsertResult>.Failure(
-                        $"Validation failed:{string.Join("\n", validationErrors)}");
-                }
-
                 foreach (var materialInput in materialListInput)
                 {
-                    Material existingMaterial = null;
-
-                    if (materialInput.MaterialId.HasValue && materialInput.MaterialId.Value != Guid.Empty)
-                    {
-                        existingMaterial = await materialRepo.FindAsync(m => m.Id == materialInput.MaterialId.Value);
-                    }
-
-                    if (existingMaterial == null)
-                    {
-                        existingMaterial = await materialRepo.FindAsync(m => 
-                            m.Name == materialInput.Name && 
-                            m.Type == materialInput.Type);
-                    }
+                    var existingMaterial = await FindExistingMaterialAsync(materialInput);
 
                     if (existingMaterial != null)
                     {
-                        existingMaterial.Name = materialInput.Name;
-                        existingMaterial.Type = materialInput.Type;
-                        existingMaterial.AmmountPerMaterial = materialInput.AmmountPerMaterial;
-                        existingMaterial.Unit = materialInput.Unit;
-                        existingMaterial.Description = materialInput.Description;
-                        existingMaterial.Manufacturer = materialInput.Manufacturer;
-                        existingMaterial.IsActive = materialInput.IsActive;
-
+                        ApplyMaterialFields(existingMaterial, materialInput);
                         materialsToUpdate.Add(existingMaterial);
 
                         var currentPrice = (await materialPriceRepo.ListAsync(
                             p => p.MaterialId == existingMaterial.Id &&
-                                 (p.ValidFrom.CompareTo(request.ImportDate) <= 0) &&
-                                 (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(request.ImportDate) >= 0))))
+                                 p.ValidFrom.CompareTo(request.ImportDate) <= 0 &&
+                                 (!p.ValidTo.HasValue || p.ValidTo.Value.Date.CompareTo(request.ImportDate) >= 0)))
                             .OrderByDescending(p => p.ValidFrom)
                             .FirstOrDefault();
 
-                        if (currentPrice != null && currentPrice.PricePerMaterial != materialInput.PricePerMaterial)
+                        if (currentPrice == null || currentPrice.PricePerMaterial != materialInput.PricePerMaterial)
                         {
-                            currentPrice.ValidTo = request.ImportDate;
-                            priceUpdates.Add(currentPrice);
+                            if (currentPrice != null)
+                            {
+                                currentPrice.ValidTo = request.ImportDate;
+                                priceUpdates.Add(currentPrice);
+                            }
 
-                            priceCreates.Add(new MaterialPrice
-                            {
-                                MaterialId = existingMaterial.Id,
-                                PricePerMaterial = materialInput.PricePerMaterial,
-                                ValidFrom = request.ImportDate,
-                                ValidTo = null
-                            });
-                        }
-                        else if (currentPrice == null)
-                        {
-                            priceCreates.Add(new MaterialPrice
-                            {
-                                MaterialId = existingMaterial.Id,
-                                PricePerMaterial = materialInput.PricePerMaterial,
-                                ValidFrom = request.ImportDate,
-                                ValidTo = null
-                            });
+                            priceCreates.Add(CreateMaterialPrice(existingMaterial.Id, materialInput.PricePerMaterial, request.ImportDate));
                         }
 
                         result.UpdatedCount++;
@@ -160,24 +89,12 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                         var newMaterial = new Material
                         {
                             Id = newId,
-                            Name = materialInput.Name,
-                            Type = materialInput.Type,
-                            AmmountPerMaterial = materialInput.AmmountPerMaterial,
-                            Unit = materialInput.Unit,
-                            Description = materialInput.Description,
-                            Manufacturer = materialInput.Manufacturer,
-                            IsActive = materialInput.IsActive,
                             MaterialPrices = new List<MaterialPrice>
                             {
-                                new MaterialPrice
-                                {
-                                    MaterialId = newId,
-                                    PricePerMaterial = materialInput.PricePerMaterial,
-                                    ValidFrom = request.ImportDate,
-                                    ValidTo = null
-                                }
+                                CreateMaterialPrice(newId, materialInput.PricePerMaterial, request.ImportDate)
                             }
                         };
+                        ApplyMaterialFields(newMaterial, materialInput);
 
                         materialsToCreate.Add(newMaterial);
                         result.CreatedCount++;
@@ -207,7 +124,7 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                 await _unitOfWork.CompleteAsync();
 
                 var allMaterials = materialsToCreate.Concat(materialsToUpdate).ToList();
-                var materialPriceRepoList = await materialPriceRepo.ListAsync();
+                var allMaterialPrices = await materialPriceRepo.ListAsync();
                 var currentDate = DateTime.Now;
 
                 result.Materials = allMaterials.Select(m => new MaterialResponse
@@ -217,13 +134,7 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                     Type = m.Type,
                     AmmountPerMaterial = m.AmmountPerMaterial,
                     Showout = m.AmmountPerMaterial.ToString() + m.Unit,
-                    PricePerMaterial = materialPriceRepoList
-                        .Where(p => p.MaterialId == m.Id
-                            && m.IsActive
-                            && (p.ValidFrom.CompareTo(currentDate) <= 0)
-                            && (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0)))
-                        .OrderByDescending(p => p.ValidFrom)
-                        .FirstOrDefault()?.PricePerMaterial ?? 0,
+                    PricePerMaterial = GetActivePrice(m, allMaterialPrices, currentDate),
                     Unit = m.Unit,
                     Description = m.Description,
                     Manufacturer = m.Manufacturer,
@@ -233,8 +144,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                 await _mediator.Publish(new MaterialChangedEvent(null, ChangeType.BulkImport), cancellationToken);
 
                 _logger.LogInformation(
-                    "Material upsert completed: Created={Created}, Updated={Updated}", 
-                    result.CreatedCount, 
+                    "Material upsert completed: Created={Created}, Updated={Updated}",
+                    result.CreatedCount,
                     result.UpdatedCount);
 
                 return Result<MaterialUpsertResult>.Success(
@@ -246,6 +157,106 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                 _logger.LogError(ex, "Error during material upsert");
                 return Result<MaterialUpsertResult>.Failure($"An error occurred: {ex.Message}");
             }
+        }
+
+        private static List<string> ValidateMaterials(IList<MaterialUpsertRequest> materials)
+        {
+            var validationErrors = new List<string>();
+            for (int i = 0; i < materials.Count; i++)
+            {
+                var material = materials[i];
+                var rowNumber = i + 2;
+
+                if (string.IsNullOrWhiteSpace(material.Name))
+                {
+                    validationErrors.Add($"Row {rowNumber}: Material name is required");
+                }
+                else if (material.Name.Length > 255)
+                {
+                    validationErrors.Add($"Row {rowNumber}: Material name must not exceed 255 characters");
+                }
+
+                if (string.IsNullOrWhiteSpace(material.Unit))
+                {
+                    validationErrors.Add($"Row {rowNumber}: Unit is required");
+                }
+                else if (material.Unit.Length > 50)
+                {
+                    validationErrors.Add($"Row {rowNumber}: Unit must not exceed 50 characters");
+                }
+
+                if (material.PricePerMaterial <= 0)
+                {
+                    validationErrors.Add($"Row {rowNumber}: Price must be greater than 0");
+                }
+
+                if (material.AmmountPerMaterial.HasValue && material.AmmountPerMaterial.Value <= 0)
+                {
+                    validationErrors.Add($"Row {rowNumber}: Amount per material must be greater than 0");
+                }
+
+                if (!string.IsNullOrWhiteSpace(material.Manufacturer) && material.Manufacturer.Length > 255)
+                {
+                    validationErrors.Add($"Row {rowNumber}: Manufacturer must not exceed 255 characters");
+                }
+            }
+
+            return validationErrors;
+        }
+
+        private async Task<Material?> FindExistingMaterialAsync(MaterialUpsertRequest materialInput)
+        {
+            var materialRepo = _unitOfWork.Repository<Material>();
+
+            if (materialInput.MaterialId.HasValue && materialInput.MaterialId.Value != Guid.Empty)
+            {
+                var byId = await materialRepo.FindAsync(m => m.Id == materialInput.MaterialId.Value);
+                if (byId != null)
+                {
+                    return byId;
+                }
+            }
+
+            return await materialRepo.FindAsync(m =>
+                m.Name == materialInput.Name &&
+                m.Type == materialInput.Type);
+        }
+
+        private static void ApplyMaterialFields(Material target, MaterialUpsertRequest source)
+        {
+            target.Name = source.Name;
+            target.Type = source.Type;
+            target.AmmountPerMaterial = source.AmmountPerMaterial;
+            target.Unit = source.Unit;
+            target.Description = source.Description;
+            target.Manufacturer = source.Manufacturer;
+            target.IsActive = source.IsActive;
+        }
+
+        private static MaterialPrice CreateMaterialPrice(Guid materialId, decimal pricePerMaterial, DateTime validFrom)
+        {
+            return new MaterialPrice
+            {
+                MaterialId = materialId,
+                PricePerMaterial = pricePerMaterial,
+                ValidFrom = validFrom,
+                ValidTo = null
+            };
+        }
+
+        private static decimal GetActivePrice(Material material, IEnumerable<MaterialPrice> prices, DateTime currentDate)
+        {
+            if (!material.IsActive)
+            {
+                return 0;
+            }
+
+            return prices
+                .Where(p => p.MaterialId == material.Id
+                    && p.ValidFrom.CompareTo(currentDate) <= 0
+                    && (!p.ValidTo.HasValue || p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
+                .OrderByDescending(p => p.ValidFrom)
+                .FirstOrDefault()?.PricePerMaterial ?? 0;
         }
     }
 }

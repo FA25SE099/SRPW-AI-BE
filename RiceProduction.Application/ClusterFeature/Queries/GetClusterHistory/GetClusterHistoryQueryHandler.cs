@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ClusterHistoryResponses;
@@ -7,7 +8,7 @@ using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.ClusterFeature.Queries.GetClusterHistory;
 
-public class GetClusterHistoryQueryHandler 
+public class GetClusterHistoryQueryHandler
     : IRequestHandler<GetClusterHistoryQuery, Result<ClusterHistoryResponse>>
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -27,7 +28,6 @@ public class GetClusterHistoryQueryHandler
     {
         try
         {
-            // Get cluster (regular entity)
             var cluster = await _unitOfWork.Repository<Cluster>()
                 .FindAsync(c => c.Id == request.ClusterId);
 
@@ -37,11 +37,9 @@ public class GetClusterHistoryQueryHandler
                     $"Cluster with ID {request.ClusterId} not found");
             }
 
-            // Get all seasons (regular entity)
             var allSeasons = await _unitOfWork.Repository<Season>()
                 .ListAsync(_ => true);
 
-            // Filter seasons based on request
             var targetSeasons = allSeasons.AsEnumerable();
 
             if (request.SeasonId.HasValue)
@@ -51,160 +49,20 @@ public class GetClusterHistoryQueryHandler
 
             if (request.Year.HasValue)
             {
-                // Filter by year - need to determine which seasons belong to this year
-                targetSeasons = targetSeasons.Where(s => 
+                targetSeasons = targetSeasons.Where(s =>
                     GetSeasonYear(s, request.Year.Value) == request.Year.Value);
             }
 
-            // Order by most recent and apply limit
-            targetSeasons = targetSeasons
+            var selectedSeasons = targetSeasons
                 .OrderByDescending(s => s.CreatedAt)
                 .Take(request.Limit ?? 5)
                 .ToList();
 
-            var seasonSnapshots = new List<ClusterSeasonSnapshot>();
+            var seasonSnapshots = new List<ClusterSeasonSnapshot>(selectedSeasons.Count);
 
-            foreach (var season in targetSeasons)
+            foreach (var season in selectedSeasons)
             {
-                var year = GetSeasonYear(season, DateTime.Now.Year);
-
-                // Get all groups for this cluster and season (regular entity)
-                var groups = await _unitOfWork.Repository<Group>()
-                    .GetQueryable()
-                    .Include(g => g.YearSeason)
-                    .Where(g => g.ClusterId == cluster.Id && 
-                               g.YearSeason != null && g.YearSeason.SeasonId == season.Id &&
-                               g.Year == year)
-                    .ToListAsync(cancellationToken);
-
-                var groupsList = groups.ToList();
-
-                if (!groupsList.Any())
-                {
-                    // Include seasons with no groups
-                    seasonSnapshots.Add(new ClusterSeasonSnapshot
-                    {
-                        SeasonId = season.Id,
-                        SeasonName = season.SeasonName,
-                        SeasonType = season.SeasonType ?? "",
-                        Year = year,
-                        StartDate = season.StartDate,
-                        EndDate = season.EndDate,
-                        IsActive = season.IsActive,
-                        TotalGroups = 0,
-                        TotalPlots = 0,
-                        TotalFarmers = 0,
-                        TotalArea = 0
-                    });
-                    continue;
-                }
-
-                // Get plots for these groups using many-to-many relationship
-                var groupIds = groupsList.Select(g => g.Id).ToList();
-                var groupPlots = await _unitOfWork.Repository<GroupPlot>()
-                    .ListAsync(gp => groupIds.Contains(gp.GroupId),
-                        includeProperties: q => q.Include(gp => gp.Plot));
-                var plotsList = groupPlots.Select(gp => gp.Plot).ToList();
-
-                // Get farmers (user entity - use specialized repository)
-                var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
-                var farmers = await _unitOfWork.FarmerRepository
-                    .ListAsync(f => farmerIds.Contains(f.Id));
-
-                // Get plot cultivations for yield data
-                var plotIds = plotsList.Select(p => p.Id).ToList();
-                var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                    .ListAsync(pc => plotIds.Contains(pc.PlotId) && 
-                                    pc.SeasonId == season.Id);
-                var cultivationsList = plotCultivations.ToList();
-
-                // Get rice varieties
-                var varietyIds = groupsList
-                    .Where(g => g.YearSeason?.RiceVarietyId != null)
-                    .Select(g => g.YearSeason!.RiceVarietyId)
-                    .Distinct()
-                    .ToList();
-                
-                var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-                    .ListAsync(rv => varietyIds.Contains(rv.Id));
-                var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
-
-                // Get supervisors (user entity - use specialized repository)
-                var supervisorIds = groupsList
-                    .Where(g => g.SupervisorId.HasValue)
-                    .Select(g => g.SupervisorId!.Value)
-                    .Distinct()
-                    .ToList();
-                
-                var supervisors = await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => supervisorIds.Contains(s.Id));
-                var supervisorDict = supervisors.ToDictionary(s => s.Id);
-
-                // Get production plans
-                var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
-                    .ListAsync(pp => pp.GroupId.HasValue && groupIds.Contains(pp.GroupId.Value));
-
-                // Calculate rice variety breakdown
-                var varietyBreakdown = groupsList
-                    .Where(g => g.YearSeason?.RiceVarietyId != null)
-                    .GroupBy(g => g.YearSeason!.RiceVarietyId!.Value)
-                    .Select(g => new RiceVarietyGroupSummary
-                    {
-                        RiceVarietyId = g.Key,
-                        RiceVarietyName = varietyDict.GetValueOrDefault(g.Key)?.VarietyName ?? "Unknown",
-                        GroupCount = g.Count(),
-                        PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => g.Select(gr => gr.Id).Contains(gp.GroupId))),
-                        TotalArea = g.Sum(gr => gr.TotalArea ?? 0)
-                    })
-                    .OrderByDescending(v => v.PlotCount)
-                    .ToList();
-
-                // Calculate metrics
-                var averageYield = cultivationsList
-                    .Where(pc => pc.ActualYield.HasValue)
-                    .Average(pc => (decimal?)pc.ActualYield);
-
-                var totalProduction = cultivationsList
-                    .Where(pc => pc.ActualYield.HasValue && pc.Area.HasValue)
-                    .Sum(pc => pc.ActualYield!.Value * pc.Area!.Value);
-
-                // Build group summaries
-                var groupSummaries = groupsList.Select(g => new GroupSeasonSummary
-                {
-                    GroupId = g.Id,
-                    SupervisorId = g.SupervisorId,
-                    SupervisorName = g.SupervisorId.HasValue 
-                        ? supervisorDict.GetValueOrDefault(g.SupervisorId.Value)?.FullName 
-                        : null,
-                    RiceVarietyId = g.YearSeason?.RiceVarietyId,
-                    RiceVarietyName = g.YearSeason?.RiceVarietyId != null 
-                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName 
-                        : null,
-                    PlantingDate = g.PlantingDate,
-                    Status = g.Status.ToString(),
-                    PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => gp.GroupId == g.Id)),
-                    TotalArea = g.TotalArea
-                }).ToList();
-
-                seasonSnapshots.Add(new ClusterSeasonSnapshot
-                {
-                    SeasonId = season.Id,
-                    SeasonName = season.SeasonName,
-                    SeasonType = season.SeasonType ?? "",
-                    Year = year,
-                    StartDate = season.StartDate,
-                    EndDate = season.EndDate,
-                    IsActive = season.IsActive,
-                    TotalGroups = groupsList.Count,
-                    TotalPlots = plotsList.Count,
-                    TotalFarmers = farmers.Count(),
-                    TotalArea = groupsList.Sum(g => g.TotalArea ?? 0),
-                    RiceVarietyBreakdown = varietyBreakdown,
-                    AverageYield = averageYield,
-                    TotalProduction = totalProduction,
-                    CompletedProductionPlans = productionPlans.Count(pp => pp.Status == Domain.Enums.TaskStatus.Completed),
-                    Groups = groupSummaries
-                });
+                seasonSnapshots.Add(await BuildSeasonSnapshotAsync(cluster, season, cancellationToken));
             }
 
             _logger.LogInformation(
@@ -220,38 +78,159 @@ public class GetClusterHistoryQueryHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Error retrieving cluster history for cluster {ClusterId}", 
+            _logger.LogError(ex,
+                "Error retrieving cluster history for cluster {ClusterId}",
                 request.ClusterId);
             return Result<ClusterHistoryResponse>.Failure(
                 $"Error retrieving cluster history: {ex.Message}");
         }
     }
 
-    private int GetSeasonYear(Season season, int currentYear)
+    private async Task<ClusterSeasonSnapshot> BuildSeasonSnapshotAsync(
+        Cluster cluster,
+        Season season,
+        CancellationToken cancellationToken)
     {
-        try
+        var year = GetSeasonYear(season, DateTime.Now.Year);
+
+        var groups = await _unitOfWork.Repository<Group>()
+            .GetQueryable()
+            .Include(g => g.YearSeason)
+            .Where(g => g.ClusterId == cluster.Id &&
+                        g.YearSeason != null && g.YearSeason.SeasonId == season.Id &&
+                        g.Year == year)
+            .ToListAsync(cancellationToken);
+
+        if (!groups.Any())
         {
-            var startParts = season.StartDate.Split('/');
-            int startMonth = int.Parse(startParts[0]);
-            
-            // If season starts in later months (Oct-Dec), it likely continues into next year
-            // For current date in early months, the season year would be previous year
-            if (startMonth >= 10)
+            return new ClusterSeasonSnapshot
             {
-                var currentMonth = DateTime.Now.Month;
-                if (currentMonth < startMonth)
-                {
-                    return currentYear - 1;
-                }
-            }
-            
-            return currentYear;
+                SeasonId = season.Id,
+                SeasonName = season.SeasonName,
+                SeasonType = season.SeasonType ?? "",
+                Year = year,
+                StartDate = season.StartDate,
+                EndDate = season.EndDate,
+                IsActive = season.IsActive,
+                TotalGroups = 0,
+                TotalPlots = 0,
+                TotalFarmers = 0,
+                TotalArea = 0
+            };
         }
-        catch
+
+        var groupIds = groups.Select(g => g.Id).ToList();
+        var groupPlots = await _unitOfWork.Repository<GroupPlot>()
+            .ListAsync(gp => groupIds.Contains(gp.GroupId),
+                includeProperties: q => q.Include(gp => gp.Plot));
+        var plotsList = groupPlots.Select(gp => gp.Plot).ToList();
+
+        var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
+        var farmers = await _unitOfWork.FarmerRepository
+            .ListAsync(f => farmerIds.Contains(f.Id));
+
+        var plotIds = plotsList.Select(p => p.Id).ToList();
+        var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
+            .ListAsync(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == season.Id);
+
+        var varietyIds = groups
+            .Where(g => g.YearSeason?.RiceVarietyId != null)
+            .Select(g => g.YearSeason!.RiceVarietyId!.Value)
+            .Distinct()
+            .ToList();
+
+        var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
+            .ListAsync(rv => varietyIds.Contains(rv.Id));
+        var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
+
+        var supervisorIds = groups
+            .Where(g => g.SupervisorId.HasValue)
+            .Select(g => g.SupervisorId!.Value)
+            .Distinct()
+            .ToList();
+
+        var supervisors = await _unitOfWork.SupervisorRepository
+            .ListAsync(s => supervisorIds.Contains(s.Id));
+        var supervisorDict = supervisors.ToDictionary(s => s.Id);
+
+        var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
+            .ListAsync(pp => pp.GroupId.HasValue && groupIds.Contains(pp.GroupId.Value));
+
+        var varietyBreakdown = groups
+            .Where(g => g.YearSeason?.RiceVarietyId != null)
+            .GroupBy(g => g.YearSeason!.RiceVarietyId!.Value)
+            .Select(g =>
+            {
+                var varietyGroupIds = g.Select(gr => gr.Id).ToHashSet();
+                return new RiceVarietyGroupSummary
+                {
+                    RiceVarietyId = g.Key,
+                    RiceVarietyName = varietyDict.GetValueOrDefault(g.Key)?.VarietyName ?? "Unknown",
+                    GroupCount = g.Count(),
+                    PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => varietyGroupIds.Contains(gp.GroupId))),
+                    TotalArea = g.Sum(gr => gr.TotalArea ?? 0)
+                };
+            })
+            .OrderByDescending(v => v.PlotCount)
+            .ToList();
+
+        var averageYield = plotCultivations
+            .Where(pc => pc.ActualYield.HasValue)
+            .Average(pc => (decimal?)pc.ActualYield);
+
+        var totalProduction = plotCultivations
+            .Where(pc => pc.ActualYield.HasValue && pc.Area.HasValue)
+            .Sum(pc => pc.ActualYield!.Value * pc.Area!.Value);
+
+        var groupSummaries = groups.Select(g => new GroupSeasonSummary
+        {
+            GroupId = g.Id,
+            SupervisorId = g.SupervisorId,
+            SupervisorName = g.SupervisorId.HasValue
+                ? supervisorDict.GetValueOrDefault(g.SupervisorId.Value)?.FullName
+                : null,
+            RiceVarietyId = g.YearSeason?.RiceVarietyId,
+            RiceVarietyName = g.YearSeason?.RiceVarietyId != null
+                ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName
+                : null,
+            PlantingDate = g.PlantingDate,
+            Status = g.Status.ToString(),
+            PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => gp.GroupId == g.Id)),
+            TotalArea = g.TotalArea
+        }).ToList();
+
+        return new ClusterSeasonSnapshot
+        {
+            SeasonId = season.Id,
+            SeasonName = season.SeasonName,
+            SeasonType = season.SeasonType ?? "",
+            Year = year,
+            StartDate = season.StartDate,
+            EndDate = season.EndDate,
+            IsActive = season.IsActive,
+            TotalGroups = groups.Count,
+            TotalPlots = plotsList.Count,
+            TotalFarmers = farmers.Count(),
+            TotalArea = groups.Sum(g => g.TotalArea ?? 0),
+            RiceVarietyBreakdown = varietyBreakdown,
+            AverageYield = averageYield,
+            TotalProduction = totalProduction,
+            CompletedProductionPlans = productionPlans.Count(pp => pp.Status == Domain.Enums.TaskStatus.Completed),
+            Groups = groupSummaries
+        };
+    }
+
+    private static int GetSeasonYear(Season season, int currentYear)
+    {
+        if (!SeasonDateHelper.TryParseMonthDay(season.StartDate, out var startMonth, out _))
         {
             return currentYear;
         }
+
+        // Seasons starting Oct-Dec span into the following calendar year
+        return startMonth >= 10 && DateTime.Now.Month < startMonth
+            ? currentYear - 1
+            : currentYear;
     }
 }
 

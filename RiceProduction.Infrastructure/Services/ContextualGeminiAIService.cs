@@ -15,6 +15,13 @@ namespace RiceProduction.Infrastructure.Services;
 
 public class ContextualGeminiAIService : IContextualAIService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ContextualGeminiAIService> _logger;
@@ -40,41 +47,16 @@ public class ContextualGeminiAIService : IContextualAIService
             }
 
             var prompt = BuildContextualPrompt(request);
-            var geminiRequest = new GeminiRequest
-            {
-                Contents = new List<GeminiContent>
-                {
-                    new GeminiContent
-                    {
-                        Parts = new List<GeminiPart>
-                        {
-                            new GeminiPart { Text = prompt }
-                        }
-                    }
-                },
-                GenerationConfig = new GeminiGenerationConfig
-                {
-                    Temperature = 0.7,
-                    MaxOutputTokens = 10000, // Balanced for detailed responses while ensuring JSON completion
-                    ResponseMimeType = "application/json"
-                }
-            };
-
+            var geminiRequest = BuildGeminiRequest(prompt);
             var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
+
             var httpClient = _httpClientFactory.CreateClient();
             httpClient.Timeout = TimeSpan.FromSeconds(60);
 
-            var jsonOptions = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-            };
-
-            _logger.LogInformation("Sending contextual AI request for alert: {AlertType} with {TaskCount} existing tasks", 
+            _logger.LogInformation("Sending contextual AI request for alert: {AlertType} with {TaskCount} existing tasks",
                 request.AlertType, request.ExistingTasks.Count);
 
-            var response = await httpClient.PostAsJsonAsync(endpoint, geminiRequest, jsonOptions);
+            var response = await httpClient.PostAsJsonAsync(endpoint, geminiRequest, JsonOptions);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -83,8 +65,7 @@ public class ContextualGeminiAIService : IContextualAIService
                 throw new Exception($"Gemini API error: {response.StatusCode} - {errorContent}");
             }
 
-            var geminiResponse = await response.Content.ReadFromJsonAsync<GeminiResponse>(jsonOptions);
-            
+            var geminiResponse = await response.Content.ReadFromJsonAsync<GeminiResponse>(JsonOptions);
             if (geminiResponse?.Candidates == null || !geminiResponse.Candidates.Any())
             {
                 throw new Exception("Gemini API returned no candidates");
@@ -92,38 +73,17 @@ public class ContextualGeminiAIService : IContextualAIService
 
             var candidate = geminiResponse.Candidates[0];
             var generatedText = candidate.Content.Parts[0].Text;
-            
-            // Check if response was truncated
+
             if (candidate.FinishReason == "MAX_TOKENS" || candidate.FinishReason == "LENGTH")
             {
                 _logger.LogWarning("AI response was truncated due to token limit. FinishReason: {FinishReason}", candidate.FinishReason);
             }
-            
-            _logger.LogInformation("Contextual AI response received. Length: {Length} characters, FinishReason: {FinishReason}", 
-                generatedText?.Length ?? 0, candidate.FinishReason ?? "UNKNOWN");
 
-            // Log the raw response for debugging
+            _logger.LogInformation("Contextual AI response received. Length: {Length} characters, FinishReason: {FinishReason}",
+                generatedText?.Length ?? 0, candidate.FinishReason ?? "UNKNOWN");
             _logger.LogDebug("Raw AI response: {Response}", generatedText);
 
-            // Parse the JSON response from Gemini
-            ContextualPlanSuggestions? suggestions;
-            try
-            {
-                suggestions = JsonSerializer.Deserialize<ContextualPlanSuggestions>(generatedText, jsonOptions);
-            }
-            catch (JsonException jsonEx)
-            {
-                _logger.LogError(jsonEx, "Failed to parse AI response as JSON. Response preview: {Preview}", 
-                    generatedText?.Substring(0, Math.Min(500, generatedText?.Length ?? 0)));
-                throw new Exception($"AI returned invalid JSON: {jsonEx.Message}. This may be due to truncated response or malformed output.", jsonEx);
-            }
-
-            if (suggestions == null)
-            {
-                throw new Exception("Failed to parse Gemini AI response - result was null");
-            }
-
-            // Post-process: Map material names to IDs from available materials
+            var suggestions = ParseSuggestions(generatedText);
             MapMaterialIdsToSuggestions(suggestions, request.AvailableMaterials);
 
             _logger.LogInformation("Successfully generated {SuggestionCount} contextual suggestions", suggestions.Suggestions.Count);
@@ -136,9 +96,61 @@ public class ContextualGeminiAIService : IContextualAIService
         }
     }
 
-    private string BuildContextualPrompt(ContextualPlanRequest request)
+    private static GeminiRequest BuildGeminiRequest(string prompt) =>
+        new()
+        {
+            Contents = new List<GeminiContent>
+            {
+                new()
+                {
+                    Parts = new List<GeminiPart>
+                    {
+                        new() { Text = prompt }
+                    }
+                }
+            },
+            GenerationConfig = new GeminiGenerationConfig
+            {
+                Temperature = 0.7,
+                MaxOutputTokens = 10000, // Balanced for detailed responses while ensuring JSON completion
+                ResponseMimeType = "application/json"
+            }
+        };
+
+    private ContextualPlanSuggestions ParseSuggestions(string? generatedText)
+    {
+        ContextualPlanSuggestions? suggestions;
+        try
+        {
+            suggestions = JsonSerializer.Deserialize<ContextualPlanSuggestions>(generatedText!, JsonOptions);
+        }
+        catch (JsonException jsonEx)
+        {
+            _logger.LogError(jsonEx, "Failed to parse AI response as JSON. Response preview: {Preview}",
+                generatedText?.Substring(0, Math.Min(500, generatedText?.Length ?? 0)));
+            throw new Exception($"AI returned invalid JSON: {jsonEx.Message}. This may be due to truncated response or malformed output.", jsonEx);
+        }
+
+        if (suggestions == null)
+        {
+            throw new Exception("Failed to parse Gemini AI response - result was null");
+        }
+
+        return suggestions;
+    }
+
+    private static string BuildContextualPrompt(ContextualPlanRequest request)
     {
         var sb = new StringBuilder();
+        AppendEmergencySituation(sb, request);
+        AppendCurrentPlan(sb, request);
+        AppendAvailableMaterials(sb, request.AvailableMaterials);
+        AppendPromptInstructions(sb);
+        return sb.ToString();
+    }
+
+    private static void AppendEmergencySituation(StringBuilder sb, ContextualPlanRequest request)
+    {
         sb.AppendLine("You are an agricultural expert reviewing an emergency response plan for rice cultivation.");
         sb.AppendLine("The expert has already started creating a plan, and you need to provide SPECIFIC, INCREMENTAL suggestions to improve it.");
         sb.AppendLine();
@@ -148,10 +160,10 @@ public class ContextualGeminiAIService : IContextualAIService
         sb.AppendLine($"Description: {request.Description}");
         sb.AppendLine($"Severity: {request.Severity}");
         sb.AppendLine($"Plot Area: {request.PlotArea} hectares");
-        
+
         if (!string.IsNullOrEmpty(request.RiceVariety))
             sb.AppendLine($"Rice Variety: {request.RiceVariety}");
-        
+
         if (!string.IsNullOrEmpty(request.CurrentGrowthStage))
             sb.AppendLine($"Growth Stage: {request.CurrentGrowthStage}");
 
@@ -161,74 +173,80 @@ public class ContextualGeminiAIService : IContextualAIService
             if (request.AiConfidence.HasValue)
                 sb.AppendLine($"Detection Confidence: {request.AiConfidence.Value:F2}%");
         }
+    }
 
+    private static void AppendCurrentPlan(StringBuilder sb, ContextualPlanRequest request)
+    {
         sb.AppendLine();
         sb.AppendLine("=== CURRENT PLAN (What expert has so far) ===");
-        
+
         if (!string.IsNullOrEmpty(request.CurrentVersionName))
             sb.AppendLine($"Version Name: {request.CurrentVersionName}");
-        
-        if (request.ExistingTasks.Any())
-        {
-            sb.AppendLine($"Existing Tasks ({request.ExistingTasks.Count}):");
-            for (int i = 0; i < request.ExistingTasks.Count; i++)
-            {
-                var task = request.ExistingTasks[i];
-                sb.AppendLine($"  Task {i + 1}: {task.TaskName}");
-                sb.AppendLine($"    Type: {task.TaskType}");
-                sb.AppendLine($"    Order: {task.ExecutionOrder}");
-                if (task.ScheduledEndDate.HasValue)
-                    sb.AppendLine($"    Scheduled: {task.ScheduledEndDate:yyyy-MM-dd}");
-                
-                if (task.Materials.Any())
-                {
-                    sb.AppendLine($"    Materials:");
-                    foreach (var mat in task.Materials)
-                    {
-                        sb.AppendLine($"      - {mat.MaterialName}: {mat.QuantityPerHa} {mat.Unit}/ha");
-                    }
-                }
-                else
-                {
-                    sb.AppendLine($"    Materials: None");
-                }
-            }
-        }
-        else
+
+        if (!request.ExistingTasks.Any())
         {
             sb.AppendLine("NO EXISTING TASKS - Expert hasn't created any tasks yet.");
+            return;
         }
 
-        sb.AppendLine();
-        sb.AppendLine("=== AVAILABLE MATERIALS IN DATABASE ===");
-        
-        if (request.AvailableMaterials.Any())
+        sb.AppendLine($"Existing Tasks ({request.ExistingTasks.Count}):");
+        for (int i = 0; i < request.ExistingTasks.Count; i++)
         {
-            // Group by type for better organization
-            var materialsByType = request.AvailableMaterials
-                .GroupBy(m => m.MaterialType)
-                .OrderBy(g => g.Key);
-            
-            sb.AppendLine($"Total: {request.AvailableMaterials.Count} materials");
-            sb.AppendLine("IMPORTANT: You MUST ONLY suggest materials from this list!");
-            sb.AppendLine();
-            
-            foreach (var typeGroup in materialsByType)
+            var task = request.ExistingTasks[i];
+            sb.AppendLine($"  Task {i + 1}: {task.TaskName}");
+            sb.AppendLine($"    Type: {task.TaskType}");
+            sb.AppendLine($"    Order: {task.ExecutionOrder}");
+            if (task.ScheduledEndDate.HasValue)
+                sb.AppendLine($"    Scheduled: {task.ScheduledEndDate:yyyy-MM-dd}");
+
+            if (task.Materials.Any())
             {
-                sb.AppendLine($"{typeGroup.Key}:");
-                foreach (var mat in typeGroup.OrderBy(m => m.MaterialName))
+                sb.AppendLine($"    Materials:");
+                foreach (var mat in task.Materials)
                 {
-                    var mfg = string.IsNullOrEmpty(mat.Manufacturer) ? "" : $" ({mat.Manufacturer})";
-                    sb.AppendLine($"  - {mat.MaterialName} [{mat.Unit}]{mfg}");
+                    sb.AppendLine($"      - {mat.MaterialName}: {mat.QuantityPerHa} {mat.Unit}/ha");
                 }
-                sb.AppendLine();
+            }
+            else
+            {
+                sb.AppendLine($"    Materials: None");
             }
         }
-        else
+    }
+
+    private static void AppendAvailableMaterials(StringBuilder sb, List<AvailableMaterialContext> availableMaterials)
+    {
+        sb.AppendLine();
+        sb.AppendLine("=== AVAILABLE MATERIALS IN DATABASE ===");
+
+        if (!availableMaterials.Any())
         {
             sb.AppendLine("WARNING: No materials available in database!");
+            return;
         }
 
+        var materialsByType = availableMaterials
+            .GroupBy(m => m.MaterialType)
+            .OrderBy(g => g.Key);
+
+        sb.AppendLine($"Total: {availableMaterials.Count} materials");
+        sb.AppendLine("IMPORTANT: You MUST ONLY suggest materials from this list!");
+        sb.AppendLine();
+
+        foreach (var typeGroup in materialsByType)
+        {
+            sb.AppendLine($"{typeGroup.Key}:");
+            foreach (var mat in typeGroup.OrderBy(m => m.MaterialName))
+            {
+                var mfg = string.IsNullOrEmpty(mat.Manufacturer) ? "" : $" ({mat.Manufacturer})";
+                sb.AppendLine($"  - {mat.MaterialName} [{mat.Unit}]{mfg}");
+            }
+            sb.AppendLine();
+        }
+    }
+
+    private static void AppendPromptInstructions(StringBuilder sb)
+    {
         sb.AppendLine();
         sb.AppendLine("=== YOUR TASK ===");
         sb.AppendLine("Analyze the current plan and provide SPECIFIC, ACTIONABLE suggestions to improve it.");
@@ -334,62 +352,51 @@ public class ContextualGeminiAIService : IContextualAIService
         sb.AppendLine("- Escape special characters in Vietnamese text (use \\\" for quotes)");
         sb.AppendLine("- If suggesting addTask with materials, ensure newTaskMaterials array is complete");
         sb.AppendLine("- Keep response within token limit - reduce suggestions if needed to ensure complete JSON");
-
-        return sb.ToString();
     }
 
     private void MapMaterialIdsToSuggestions(
-        ContextualPlanSuggestions suggestions, 
+        ContextualPlanSuggestions suggestions,
         List<AvailableMaterialContext> availableMaterials)
     {
-        // Create lookup dictionary for fast material name -> ID mapping
         var materialLookup = availableMaterials
             .ToDictionary(m => m.MaterialName.Trim(), m => m, StringComparer.OrdinalIgnoreCase);
 
         foreach (var suggestion in suggestions.Suggestions)
         {
             var action = suggestion.Action;
-            
-            // Map material ID for AddMaterial and ReplaceMaterial suggestions
-            if ((suggestion.Type == SuggestionType.AddMaterial || 
-                 suggestion.Type == SuggestionType.ReplaceMaterial) &&
-                !string.IsNullOrEmpty(action.NewMaterialName))
+            var isMaterialSuggestion = suggestion.Type is SuggestionType.AddMaterial or SuggestionType.ReplaceMaterial;
+
+            if (isMaterialSuggestion && !string.IsNullOrEmpty(action.NewMaterialName))
             {
                 var materialName = action.NewMaterialName.Trim();
-                
+
                 if (materialLookup.TryGetValue(materialName, out var material))
                 {
                     action.NewMaterialId = material.MaterialId;
                     action.NewUnit = material.Unit; // Ensure correct unit from database
-                    
+
                     _logger.LogInformation(
                         "Mapped material '{MaterialName}' to ID {MaterialId}",
                         materialName, material.MaterialId);
                 }
                 else
                 {
-                    // Material not found in database - log warning
                     _logger.LogWarning(
                         "Material '{MaterialName}' suggested by AI not found in database. Available materials: {Count}",
                         materialName, availableMaterials.Count);
-                    
-                    // Add warning to suggestion
+
                     if (suggestion.Rationale != null)
                     {
                         suggestion.Rationale += $" [CẢNH BÁO: Vật tư '{materialName}' không có trong cơ sở dữ liệu]";
                     }
                 }
             }
-            
-            // Map alternative materials
-            if (action.AlternativeMaterials != null && action.AlternativeMaterials.Any())
+
+            if (action.AlternativeMaterials is { Count: > 0 })
             {
-                // Filter alternatives to only include materials that exist in database
-                var validAlternatives = action.AlternativeMaterials
+                action.AlternativeMaterials = action.AlternativeMaterials
                     .Where(altName => materialLookup.ContainsKey(altName.Trim()))
                     .ToList();
-                
-                action.AlternativeMaterials = validAlternatives;
             }
         }
     }

@@ -34,13 +34,11 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     return Result<SeasonYieldAnalysisResponse>.Failure("Season not found");
                 }
 
-                // First get plot IDs for the group if GroupId is specified
-                var plotIds = new List<Guid>();
-                if (request.GroupId.HasValue)
-                {
-                    var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken);
-                    plotIds = plots.Select(p => p.Id).ToList();
-                }
+                var plotIds = request.GroupId.HasValue
+                    ? (await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken))
+                        .Select(p => p.Id)
+                        .ToList()
+                    : new List<Guid>();
 
                 var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                     filter: pc => pc.SeasonId == request.SeasonId &&
@@ -56,128 +54,31 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                 var riceVarietySeasons = await _unitOfWork.Repository<RiceVarietySeason>().ListAsync(
                     filter: rvs => rvs.SeasonId == request.SeasonId);
 
+                var varietySeasonsByVarietyId = riceVarietySeasons
+                    .GroupBy(rvs => rvs.RiceVarietyId)
+                    .ToDictionary(g => g.Key, g => g.First());
+
                 var totalCultivations = plotCultivations.Count;
-                var harvestedCultivations = plotCultivations.Where(pc => pc.Status == CultivationStatus.Completed).ToList();
-                var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
-                var harvestedArea = harvestedCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
+                var harvestedCultivations = plotCultivations
+                    .Where(pc => pc.Status == CultivationStatus.Completed)
+                    .ToList();
 
-                var totalExpectedYield = plotCultivations.Sum(pc =>
-                {
-                    var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == pc.RiceVarietyId);
-                    var expectedYieldPerHa = varietySeason?.ExpectedYieldPerHectare ?? 0;
-                    var area = pc.Area ?? pc.Plot.Area;
-                    return expectedYieldPerHa * area;
-                });
-
+                var totalArea = plotCultivations.Sum(GetArea);
+                var harvestedArea = harvestedCultivations.Sum(GetArea);
+                var totalExpectedYield = plotCultivations.Sum(pc => GetExpectedYield(pc, varietySeasonsByVarietyId));
                 var totalActualYield = harvestedCultivations.Sum(pc => pc.ActualYield ?? 0);
                 var yieldVariance = totalActualYield - totalExpectedYield;
-                
+
                 var yieldPerHaValues = harvestedCultivations
-                    .Where(pc => pc.ActualYield.HasValue && (pc.Area ?? pc.Plot.Area) > 0)
-                    .Select(pc => pc.ActualYield!.Value / (pc.Area ?? pc.Plot.Area))
+                    .Where(pc => pc.ActualYield.HasValue && GetArea(pc) > 0)
+                    .Select(pc => pc.ActualYield!.Value / GetArea(pc))
                     .ToList();
 
-                var avgYieldPerHa = yieldPerHaValues.Any() ? yieldPerHaValues.Average() : 0;
-                var highestYieldPerHa = yieldPerHaValues.Any() ? yieldPerHaValues.Max() : 0;
-                var lowestYieldPerHa = yieldPerHaValues.Any() ? yieldPerHaValues.Min() : 0;
-                var expectedYieldPerHa = totalArea > 0 ? totalExpectedYield / totalArea : 0;
-
-                var yieldByVariety = plotCultivations
-                    .GroupBy(pc => new { pc.RiceVarietyId, pc.RiceVariety.VarietyName })
-                    .Select(g =>
-                    {
-                        var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == g.Key.RiceVarietyId);
-                        var expectedYieldPerHa = varietySeason?.ExpectedYieldPerHectare ?? 0;
-                        var totalArea = g.Sum(pc => pc.Area ?? pc.Plot.Area);
-                        var harvestedInGroup = g.Where(pc => pc.Status == CultivationStatus.Completed).ToList();
-                        var totalActualYield = harvestedInGroup.Sum(pc => pc.ActualYield ?? 0);
-                        var totalExpectedYield = expectedYieldPerHa * totalArea;
-                        var actualYieldPerHa = totalArea > 0 ? totalActualYield / totalArea : 0;
-                        var totalCost = g.SelectMany(pc => pc.CultivationTasks).Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost);
-
-                        return new RiceVarietyYieldDetail
-                        {
-                            RiceVarietyId = g.Key.RiceVarietyId,
-                            VarietyName = g.Key.VarietyName,
-                            CultivationCount = g.Count(),
-                            HarvestedCount = harvestedInGroup.Count,
-                            TotalArea = totalArea,
-                            ExpectedYieldPerHa = expectedYieldPerHa,
-                            TotalExpectedYield = totalExpectedYield,
-                            TotalActualYield = totalActualYield,
-                            ActualYieldPerHa = actualYieldPerHa,
-                            YieldVariance = totalActualYield - totalExpectedYield,
-                            VariancePercentage = totalExpectedYield > 0 ? ((totalActualYield - totalExpectedYield) / totalExpectedYield) * 100 : 0,
-                            TotalCost = totalCost,
-                            CostPerTon = totalActualYield > 0 ? totalCost / totalActualYield : 0
-                        };
-                    })
-                    .OrderByDescending(v => v.TotalActualYield)
-                    .ToList();
-
-                var yieldByGroup = plotCultivations
-                    .Where(pc => pc.Plot.GroupPlots.Any())
-                    .SelectMany(pc => pc.Plot.GroupPlots.Select(gp => new { PlotCultivation = pc, GroupPlot = gp }))
-                    .GroupBy(x => new { GroupId = x.GroupPlot.GroupId, GroupName = x.GroupPlot.Group.Id.ToString() })
-                    .Select(g =>
-                    {
-                        var totalArea = g.Sum(x => x.PlotCultivation.Area ?? x.PlotCultivation.Plot.Area);
-                        var harvestedInGroup = g.Where(x => x.PlotCultivation.Status == CultivationStatus.Completed).ToList();
-                        var totalActualYield = harvestedInGroup.Sum(x => x.PlotCultivation.ActualYield ?? 0);
-                        var totalExpectedYield = g.Sum(x =>
-                        {
-                            var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == x.PlotCultivation.RiceVarietyId);
-                            var expectedYieldPerHa = varietySeason?.ExpectedYieldPerHectare ?? 0;
-                            var area = x.PlotCultivation.Area ?? x.PlotCultivation.Plot.Area;
-                            return expectedYieldPerHa * area;
-                        });
-
-                        return new GroupYieldDetail
-                        {
-                            GroupId = g.Key.GroupId,
-                            GroupName = g.Key.GroupName,
-                            PlotCount = g.Select(x => x.PlotCultivation.PlotId).Distinct().Count(),
-                            TotalArea = totalArea,
-                            TotalExpectedYield = totalExpectedYield,
-                            TotalActualYield = totalActualYield,
-                            AverageYieldPerHa = totalArea > 0 ? totalActualYield / totalArea : 0,
-                            YieldVariance = totalActualYield - totalExpectedYield,
-                            HarvestedCount = harvestedInGroup.Count
-                        };
-                    })
-                    .OrderByDescending(g => g.TotalActualYield)
-                    .ToList();
-
-                var performanceCategories = new List<YieldPerformanceCategory>
-                {
-                    new YieldPerformanceCategory { Category = "Excellent (>7 tons/ha)", MinYieldPerHa = 7, MaxYieldPerHa = decimal.MaxValue },
-                    new YieldPerformanceCategory { Category = "Good (5-7 tons/ha)", MinYieldPerHa = 5, MaxYieldPerHa = 7 },
-                    new YieldPerformanceCategory { Category = "Average (3-5 tons/ha)", MinYieldPerHa = 3, MaxYieldPerHa = 5 },
-                    new YieldPerformanceCategory { Category = "Below Average (<3 tons/ha)", MinYieldPerHa = 0, MaxYieldPerHa = 3 }
-                };
-
-                foreach (var category in performanceCategories)
-                {
-                    var cultivationsInCategory = harvestedCultivations
-                        .Where(pc =>
-                        {
-                            var area = pc.Area ?? pc.Plot.Area;
-                            if (area <= 0 || !pc.ActualYield.HasValue) return false;
-                            var yieldPerHa = pc.ActualYield.Value / area;
-                            return yieldPerHa >= category.MinYieldPerHa && yieldPerHa < category.MaxYieldPerHa;
-                        })
-                        .ToList();
-
-                    category.CultivationCount = cultivationsInCategory.Count;
-                    category.TotalArea = cultivationsInCategory.Sum(pc => pc.Area ?? pc.Plot.Area);
-                    category.Percentage = harvestedCultivations.Count > 0 ? (cultivationsInCategory.Count / (decimal)harvestedCultivations.Count) * 100 : 0;
-                }
-
+                var hasYieldValues = yieldPerHaValues.Count > 0;
                 var response = new SeasonYieldAnalysisResponse
                 {
                     SeasonId = season.Id,
                     SeasonName = season.SeasonName,
-
                     Overview = new YieldOverview
                     {
                         TotalCultivations = totalCultivations,
@@ -189,15 +90,14 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                         TotalActualYield = totalActualYield,
                         YieldVariance = yieldVariance,
                         VariancePercentage = totalExpectedYield > 0 ? (yieldVariance / totalExpectedYield) * 100 : 0,
-                        AverageYieldPerHectare = avgYieldPerHa,
-                        ExpectedYieldPerHectare = expectedYieldPerHa,
-                        HighestYieldPerHectare = highestYieldPerHa,
-                        LowestYieldPerHectare = lowestYieldPerHa
+                        AverageYieldPerHectare = hasYieldValues ? yieldPerHaValues.Average() : 0,
+                        ExpectedYieldPerHectare = totalArea > 0 ? totalExpectedYield / totalArea : 0,
+                        HighestYieldPerHectare = hasYieldValues ? yieldPerHaValues.Max() : 0,
+                        LowestYieldPerHectare = hasYieldValues ? yieldPerHaValues.Min() : 0
                     },
-
-                    YieldByVariety = yieldByVariety,
-                    YieldByGroup = yieldByGroup,
-                    PerformanceCategories = performanceCategories
+                    YieldByVariety = BuildYieldByVariety(plotCultivations, varietySeasonsByVarietyId),
+                    YieldByGroup = BuildYieldByGroup(plotCultivations, varietySeasonsByVarietyId),
+                    PerformanceCategories = BuildPerformanceCategories(harvestedCultivations)
                 };
 
                 _logger.LogInformation(
@@ -214,6 +114,116 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                 return Result<SeasonYieldAnalysisResponse>.Failure(
                     "An error occurred while retrieving season yield analysis");
             }
+        }
+
+        private static decimal GetArea(PlotCultivation pc) => pc.Area ?? pc.Plot.Area;
+
+        private static decimal GetExpectedYieldPerHa(
+            Dictionary<Guid, RiceVarietySeason> varietySeasonsByVarietyId,
+            Guid riceVarietyId) =>
+            varietySeasonsByVarietyId.GetValueOrDefault(riceVarietyId)?.ExpectedYieldPerHectare ?? 0;
+
+        private static decimal GetExpectedYield(
+            PlotCultivation pc,
+            Dictionary<Guid, RiceVarietySeason> varietySeasonsByVarietyId) =>
+            GetExpectedYieldPerHa(varietySeasonsByVarietyId, pc.RiceVarietyId) * GetArea(pc);
+
+        private static List<RiceVarietyYieldDetail> BuildYieldByVariety(
+            IReadOnlyList<PlotCultivation> plotCultivations,
+            Dictionary<Guid, RiceVarietySeason> varietySeasonsByVarietyId) =>
+            plotCultivations
+                .GroupBy(pc => new { pc.RiceVarietyId, pc.RiceVariety.VarietyName })
+                .Select(g =>
+                {
+                    var expectedYieldPerHa = GetExpectedYieldPerHa(varietySeasonsByVarietyId, g.Key.RiceVarietyId);
+                    var totalArea = g.Sum(GetArea);
+                    var harvestedInGroup = g.Where(pc => pc.Status == CultivationStatus.Completed).ToList();
+                    var totalActualYield = harvestedInGroup.Sum(pc => pc.ActualYield ?? 0);
+                    var totalExpectedYield = expectedYieldPerHa * totalArea;
+                    var yieldVariance = totalActualYield - totalExpectedYield;
+                    var totalCost = g.SelectMany(pc => pc.CultivationTasks).Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost);
+
+                    return new RiceVarietyYieldDetail
+                    {
+                        RiceVarietyId = g.Key.RiceVarietyId,
+                        VarietyName = g.Key.VarietyName,
+                        CultivationCount = g.Count(),
+                        HarvestedCount = harvestedInGroup.Count,
+                        TotalArea = totalArea,
+                        ExpectedYieldPerHa = expectedYieldPerHa,
+                        TotalExpectedYield = totalExpectedYield,
+                        TotalActualYield = totalActualYield,
+                        ActualYieldPerHa = totalArea > 0 ? totalActualYield / totalArea : 0,
+                        YieldVariance = yieldVariance,
+                        VariancePercentage = totalExpectedYield > 0 ? (yieldVariance / totalExpectedYield) * 100 : 0,
+                        TotalCost = totalCost,
+                        CostPerTon = totalActualYield > 0 ? totalCost / totalActualYield : 0
+                    };
+                })
+                .OrderByDescending(v => v.TotalActualYield)
+                .ToList();
+
+        private static List<GroupYieldDetail> BuildYieldByGroup(
+            IReadOnlyList<PlotCultivation> plotCultivations,
+            Dictionary<Guid, RiceVarietySeason> varietySeasonsByVarietyId) =>
+            plotCultivations
+                .Where(pc => pc.Plot.GroupPlots.Any())
+                .SelectMany(pc => pc.Plot.GroupPlots.Select(gp => new { PlotCultivation = pc, GroupPlot = gp }))
+                .GroupBy(x => new { x.GroupPlot.GroupId, GroupName = x.GroupPlot.Group.Id.ToString() })
+                .Select(g =>
+                {
+                    var totalArea = g.Sum(x => GetArea(x.PlotCultivation));
+                    var harvestedInGroup = g.Where(x => x.PlotCultivation.Status == CultivationStatus.Completed).ToList();
+                    var totalActualYield = harvestedInGroup.Sum(x => x.PlotCultivation.ActualYield ?? 0);
+                    var totalExpectedYield = g.Sum(x => GetExpectedYield(x.PlotCultivation, varietySeasonsByVarietyId));
+
+                    return new GroupYieldDetail
+                    {
+                        GroupId = g.Key.GroupId,
+                        GroupName = g.Key.GroupName,
+                        PlotCount = g.Select(x => x.PlotCultivation.PlotId).Distinct().Count(),
+                        TotalArea = totalArea,
+                        TotalExpectedYield = totalExpectedYield,
+                        TotalActualYield = totalActualYield,
+                        AverageYieldPerHa = totalArea > 0 ? totalActualYield / totalArea : 0,
+                        YieldVariance = totalActualYield - totalExpectedYield,
+                        HarvestedCount = harvestedInGroup.Count
+                    };
+                })
+                .OrderByDescending(g => g.TotalActualYield)
+                .ToList();
+
+        private static List<YieldPerformanceCategory> BuildPerformanceCategories(
+            List<PlotCultivation> harvestedCultivations)
+        {
+            var performanceCategories = new List<YieldPerformanceCategory>
+            {
+                new() { Category = "Excellent (>7 tons/ha)", MinYieldPerHa = 7, MaxYieldPerHa = decimal.MaxValue },
+                new() { Category = "Good (5-7 tons/ha)", MinYieldPerHa = 5, MaxYieldPerHa = 7 },
+                new() { Category = "Average (3-5 tons/ha)", MinYieldPerHa = 3, MaxYieldPerHa = 5 },
+                new() { Category = "Below Average (<3 tons/ha)", MinYieldPerHa = 0, MaxYieldPerHa = 3 }
+            };
+
+            var harvestedWithYield = harvestedCultivations
+                .Select(pc => new { Area = GetArea(pc), pc.ActualYield })
+                .Where(x => x.Area > 0 && x.ActualYield.HasValue)
+                .Select(x => new { x.Area, YieldPerHa = x.ActualYield!.Value / x.Area })
+                .ToList();
+
+            foreach (var category in performanceCategories)
+            {
+                var inCategory = harvestedWithYield
+                    .Where(x => x.YieldPerHa >= category.MinYieldPerHa && x.YieldPerHa < category.MaxYieldPerHa)
+                    .ToList();
+
+                category.CultivationCount = inCategory.Count;
+                category.TotalArea = inCategory.Sum(x => x.Area);
+                category.Percentage = harvestedCultivations.Count > 0
+                    ? (inCategory.Count / (decimal)harvestedCultivations.Count) * 100
+                    : 0;
+            }
+
+            return performanceCategories;
         }
     }
 }

@@ -1,129 +1,125 @@
 ﻿using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Common;
 using RiceProduction.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text;
 using System.Threading.Tasks;
-using RiceProduction.Domain.Common;
-using Microsoft.Extensions.Logging;
 
 namespace RiceProduction.Infrastructure.Repository
 {
     public class GenericRepository<T> : IGenericRepository<T>
-   where T : BaseAuditableEntity
+        where T : BaseAuditableEntity
     {
         private readonly ApplicationDbContext _context;
-        private readonly ILogger<GenericRepository<T>> _logger;
         private readonly DbSet<T> _dbSet;
 
         public GenericRepository(ApplicationDbContext context, ILogger<GenericRepository<T>> logger)
         {
             _context = context;
-            _logger = logger;
             _dbSet = context.Set<T>();
         }
 
         public async Task<Guid> GenerateNewGuid(Guid guidInput)
         {
-            while ( await FindAsync(e => e.Id == guidInput) == null)
+            while (await FindAsync(e => e.Id == guidInput) != null)
             {
-                return guidInput;
+                guidInput = Guid.NewGuid();
             }
-            return await GenerateNewGuid(Guid.NewGuid());
+            return guidInput;
         }
+
         public async Task AddAsync(T entity)
         {
-            await _context.Set<T>().AddAsync(entity);
+            await _dbSet.AddAsync(entity);
         }
 
         public async Task AddRangeAsync(IEnumerable<T> entities)
         {
-            await _context.Set<T>().AddRangeAsync(entities);
+            await _dbSet.AddRangeAsync(entities);
         }
 
         public void UpdateRange(IEnumerable<T> entities)
         {
-            _context.Set<T>().UpdateRange(entities);
+            _dbSet.UpdateRange(entities);
         }
 
         public void DeleteRange(IEnumerable<T> entities)
         {
-            _context.Set<T>().RemoveRange(entities);
+            _dbSet.RemoveRange(entities);
         }
 
         public async Task<bool> DeleteRangeAsync(Expression<Func<T, bool>> predicate)
         {
-            var entities = await _context.Set<T>().Where(predicate).ToListAsync();
-            if (!entities.Any())
+            var entities = await _dbSet.Where(predicate).ToListAsync();
+            if (entities.Count == 0)
+            {
                 return false;
+            }
 
-            _context.Set<T>().RemoveRange(entities);
+            _dbSet.RemoveRange(entities);
             return true;
         }
 
         public async Task<int> CountAsync()
         {
-            return await _context.Set<T>().CountAsync();
+            return await _dbSet.CountAsync();
         }
 
         public T? Delete(T entityToDelete)
         {
-            if (_context.Set<T>().Entry(entityToDelete).State == EntityState.Detached)
+            if (_dbSet.Entry(entityToDelete).State == EntityState.Detached)
             {
-                _context.Set<T>().Attach(entityToDelete);
+                _dbSet.Attach(entityToDelete);
             }
-            var deletedEntity = _context.Set<T>().Remove(entityToDelete).Entity;
-            return deletedEntity;
+            return _dbSet.Remove(entityToDelete).Entity;
         }
 
         public T? Delete(object id)
         {
-            var entityToDelete = _context.Set<T>().Find(id);
+            var entityToDelete = _dbSet.Find(id);
             return entityToDelete == null ? null : Delete(entityToDelete);
         }
 
         public void Update(T entity)
         {
-            _context.Set<T>().Update(entity);
+            _dbSet.Update(entity);
         }
 
         public async Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate)
         {
-            return await _context.Set<T>().AnyAsync(predicate);
+            return await _dbSet.AnyAsync(predicate);
         }
 
         public async Task<T?> FindAsync(Expression<Func<T, bool>> match)
         {
-            return await _context.Set<T>().SingleOrDefaultAsync(match);
+            return await _dbSet.SingleOrDefaultAsync(match);
         }
 
         public async Task<T?> GetEntityByIdAsync(Guid id)
         {
-            return await _context.Set<T>().FindAsync(id);
+            return await _dbSet.FindAsync(id);
         }
 
         public async Task<IReadOnlyList<T>> ListAllAsync()
         {
-            return await _context.Set<T>().ToListAsync();
+            return await _dbSet.ToListAsync();
         }
 
         public async Task<int> SaveChangesAsync()
         {
             return await _context.SaveChangesAsync();
         }
+
         public async Task<IReadOnlyList<T>> ListAsync(
             Expression<Func<T, bool>>? filter = null,
             Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null,
-            Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null
-        )
+            Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null)
         {
-            IQueryable<T> query = _context.Set<T>();
+            IQueryable<T> query = _dbSet;
 
             if (filter != null)
             {
@@ -139,13 +135,15 @@ namespace RiceProduction.Infrastructure.Repository
             {
                 query = orderBy(query);
             }
+
             return await query.ToListAsync();
         }
+
         public async Task<T?> FindAsync(
             Expression<Func<T, bool>> match,
             Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null)
         {
-            IQueryable<T> query = _context.Set<T>();
+            IQueryable<T> query = _dbSet;
 
             if (includeProperties != null)
             {
@@ -154,11 +152,10 @@ namespace RiceProduction.Infrastructure.Repository
 
             return await query.SingleOrDefaultAsync(match);
         }
-        
+
         public IQueryable<T> GetQueryable()
         {
             return _dbSet.AsQueryable();
         }
-
     }
 }

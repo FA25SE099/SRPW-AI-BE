@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.WeatherProtocolRequests;
 using RiceProduction.Application.Common.Models.Response.WeatherProtocolResponses;
@@ -34,13 +35,7 @@ public class WeatherProtocolController : Controller
         };
 
         var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(result);
     }
 
     [HttpPost]
@@ -58,7 +53,7 @@ public class WeatherProtocolController : Controller
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to create weather protocol: {Errors}",
-                    string.Join(", ", result.Errors ?? new string[0]));
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
                 return BadRequest(result);
             }
 
@@ -71,12 +66,12 @@ public class WeatherProtocolController : Controller
             return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
         }
     }
+
     [HttpPut]
     public async Task<ActionResult<Result<Guid>>> Update([FromBody] UpdateWeatherProtocolCommand command)
     {
         try
         {
-
             _logger.LogInformation("Update WeatherProtocol request received for ID: {ProtocolId}", command.Id);
 
             var result = await _mediator.Send(command);
@@ -85,7 +80,7 @@ public class WeatherProtocolController : Controller
             {
                 _logger.LogWarning(
                     "Failed to update weather protocol ID {ProtocolId}: {Errors}",
-                    command.Id, string.Join(", ", result.Errors ?? new string[0]));
+                    command.Id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
 
                 return BadRequest(result);
             }

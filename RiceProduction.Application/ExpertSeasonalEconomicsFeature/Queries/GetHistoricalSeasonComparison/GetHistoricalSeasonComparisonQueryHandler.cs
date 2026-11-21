@@ -1,10 +1,10 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ExpertSeasonalEconomics;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetHistoricalSeasonComparison
@@ -29,111 +29,22 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
         {
             try
             {
-                IReadOnlyList<Season> seasons;
-
-                if (request.SeasonIds != null && request.SeasonIds.Any())
-                {
-                    seasons = await _unitOfWork.Repository<Season>().ListAsync(
-                        filter: s => request.SeasonIds.Contains(s.Id),
-                        orderBy: q => q.OrderByDescending(s => s.CreatedAt));
-                }
-                else
-                {
-                    seasons = await _unitOfWork.Repository<Season>().ListAsync(
-                        orderBy: q => q.OrderByDescending(s => s.CreatedAt));
-                    
-                    if (request.Limit.HasValue && request.Limit.Value > 0)
-                    {
-                        seasons = seasons.Take(request.Limit.Value).ToList();
-                    }
-                }
-
+                var seasons = await GetSeasonsAsync(request);
                 if (!seasons.Any())
                 {
                     return Result<HistoricalSeasonComparisonResponse>.Failure("No seasons found for comparison");
                 }
 
-                var seasonComparisonData = new List<SeasonComparisonData>();
-
+                var seasonComparisonData = new List<SeasonComparisonData>(seasons.Count);
                 foreach (var season in seasons)
                 {
-                    var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
-                        filter: pc => pc.SeasonId == season.Id &&
-                                      (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)),
-                        includeProperties: q => q
-                            .Include(pc => pc.Plot)
-                                .ThenInclude(p => p.GroupPlots)
-                                    .ThenInclude(gp => gp.Group)
-                            .Include(pc => pc.RiceVariety)
-                            .Include(pc => pc.CultivationTasks));
-
-                    var riceVarietySeasons = await _unitOfWork.Repository<RiceVarietySeason>().ListAsync(
-                        filter: rvs => rvs.SeasonId == season.Id);
-
-                    var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
-                    var uniqueFarmers = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().Count();
-
-                    var allTasks = plotCultivations.SelectMany(pc => pc.CultivationTasks).ToList();
-                    var totalMaterialCost = allTasks.Sum(ct => ct.ActualMaterialCost);
-                    var totalServiceCost = allTasks.Sum(ct => ct.ActualServiceCost);
-                    var totalCost = totalMaterialCost + totalServiceCost;
-
-                    var totalExpectedYield = plotCultivations.Sum(pc =>
-                    {
-                        var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == pc.RiceVarietyId);
-                        var expectedYieldPerHa = varietySeason?.ExpectedYieldPerHectare ?? 0;
-                        var area = pc.Area ?? pc.Plot.Area;
-                        return expectedYieldPerHa * area;
-                    });
-
-                    var totalActualYield = plotCultivations.Sum(pc => pc.ActualYield ?? 0);
-                    var yieldVariancePercentage = totalExpectedYield > 0
-                        ? ((totalActualYield - totalExpectedYield) / totalExpectedYield) * 100
-                        : 0;
-
-                    var completedTasks = allTasks.Count(ct => ct.Status == TaskStatus.Completed);
-                    var totalTasks = allTasks.Count;
-                    var taskCompletionRate = totalTasks > 0 ? (completedTasks / (decimal)totalTasks) * 100 : 0;
-
-                    var efficiencyScore = CalculateEfficiencyScore(
-                        yieldVariancePercentage,
-                        taskCompletionRate,
-                        totalCost,
-                        totalActualYield);
-
-                    var yearMatch = System.Text.RegularExpressions.Regex.Match(season.SeasonName, @"\d{4}");
-                    var year = yearMatch.Success ? int.Parse(yearMatch.Value) : DateTime.UtcNow.Year;
-
-                    seasonComparisonData.Add(new SeasonComparisonData
-                    {
-                        SeasonId = season.Id,
-                        SeasonName = season.SeasonName,
-                        Year = year,
-                        IsActive = season.IsActive,
-                        TotalCultivations = plotCultivations.Count,
-                        TotalArea = totalArea,
-                        TotalFarmers = uniqueFarmers,
-                        TotalCost = totalCost,
-                        CostPerHectare = totalArea > 0 ? totalCost / totalArea : 0,
-                        MaterialCost = totalMaterialCost,
-                        ServiceCost = totalServiceCost,
-                        TotalExpectedYield = totalExpectedYield,
-                        TotalActualYield = totalActualYield,
-                        YieldPerHectare = totalArea > 0 ? totalActualYield / totalArea : 0,
-                        YieldVariancePercentage = yieldVariancePercentage,
-                        CompletedTasks = completedTasks,
-                        TotalTasks = totalTasks,
-                        TaskCompletionRate = taskCompletionRate,
-                        EfficiencyScore = efficiencyScore
-                    });
+                    seasonComparisonData.Add(await BuildSeasonComparisonDataAsync(season, request.ClusterId));
                 }
-
-                var trends = CalculateTrends(seasonComparisonData);
 
                 var response = new HistoricalSeasonComparisonResponse
                 {
                     Seasons = seasonComparisonData.OrderByDescending(s => s.Year).ToList(),
-                    Trends = trends
+                    Trends = CalculateTrends(seasonComparisonData)
                 };
 
                 _logger.LogInformation(
@@ -152,53 +63,133 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
             }
         }
 
-        private decimal CalculateEfficiencyScore(
+        private async Task<IReadOnlyList<Season>> GetSeasonsAsync(GetHistoricalSeasonComparisonQuery request)
+        {
+            var seasonRepo = _unitOfWork.Repository<Season>();
+
+            if (request.SeasonIds != null && request.SeasonIds.Any())
+            {
+                return await seasonRepo.ListAsync(
+                    filter: s => request.SeasonIds.Contains(s.Id),
+                    orderBy: q => q.OrderByDescending(s => s.CreatedAt));
+            }
+
+            var seasons = await seasonRepo.ListAsync(
+                orderBy: q => q.OrderByDescending(s => s.CreatedAt));
+
+            return request.Limit is > 0
+                ? seasons.Take(request.Limit.Value).ToList()
+                : seasons;
+        }
+
+        private async Task<SeasonComparisonData> BuildSeasonComparisonDataAsync(Season season, Guid? clusterId)
+        {
+            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
+                filter: pc => pc.SeasonId == season.Id &&
+                              (clusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == clusterId)),
+                includeProperties: q => q
+                    .Include(pc => pc.Plot)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+                    .Include(pc => pc.RiceVariety)
+                    .Include(pc => pc.CultivationTasks));
+
+            var riceVarietySeasons = await _unitOfWork.Repository<RiceVarietySeason>().ListAsync(
+                filter: rvs => rvs.SeasonId == season.Id);
+
+            var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
+            var uniqueFarmers = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().Count();
+
+            var allTasks = plotCultivations.SelectMany(pc => pc.CultivationTasks).ToList();
+            var totalMaterialCost = allTasks.Sum(ct => ct.ActualMaterialCost);
+            var totalServiceCost = allTasks.Sum(ct => ct.ActualServiceCost);
+            var totalCost = totalMaterialCost + totalServiceCost;
+
+            var totalExpectedYield = plotCultivations.Sum(pc =>
+            {
+                var varietySeason = riceVarietySeasons.FirstOrDefault(rvs => rvs.RiceVarietyId == pc.RiceVarietyId);
+                var expectedYieldPerHa = varietySeason?.ExpectedYieldPerHectare ?? 0;
+                var area = pc.Area ?? pc.Plot.Area;
+                return expectedYieldPerHa * area;
+            });
+
+            var totalActualYield = plotCultivations.Sum(pc => pc.ActualYield ?? 0);
+            var yieldVariancePercentage = totalExpectedYield > 0
+                ? ((totalActualYield - totalExpectedYield) / totalExpectedYield) * 100
+                : 0;
+
+            var completedTasks = allTasks.Count(ct => ct.Status == TaskStatus.Completed);
+            var totalTasks = allTasks.Count;
+            var taskCompletionRate = totalTasks > 0 ? (completedTasks / (decimal)totalTasks) * 100 : 0;
+
+            var efficiencyScore = CalculateEfficiencyScore(
+                yieldVariancePercentage,
+                taskCompletionRate,
+                totalCost,
+                totalActualYield);
+
+            var yearMatch = Regex.Match(season.SeasonName, @"\d{4}");
+            var year = yearMatch.Success ? int.Parse(yearMatch.Value) : DateTime.UtcNow.Year;
+
+            return new SeasonComparisonData
+            {
+                SeasonId = season.Id,
+                SeasonName = season.SeasonName,
+                Year = year,
+                IsActive = season.IsActive,
+                TotalCultivations = plotCultivations.Count,
+                TotalArea = totalArea,
+                TotalFarmers = uniqueFarmers,
+                TotalCost = totalCost,
+                CostPerHectare = totalArea > 0 ? totalCost / totalArea : 0,
+                MaterialCost = totalMaterialCost,
+                ServiceCost = totalServiceCost,
+                TotalExpectedYield = totalExpectedYield,
+                TotalActualYield = totalActualYield,
+                YieldPerHectare = totalArea > 0 ? totalActualYield / totalArea : 0,
+                YieldVariancePercentage = yieldVariancePercentage,
+                CompletedTasks = completedTasks,
+                TotalTasks = totalTasks,
+                TaskCompletionRate = taskCompletionRate,
+                EfficiencyScore = efficiencyScore
+            };
+        }
+
+        private static decimal CalculateEfficiencyScore(
             decimal yieldVariance,
             decimal taskCompletion,
             decimal totalCost,
             decimal totalYield)
         {
-            var yieldScore = yieldVariance >= 0 ? Math.Min(yieldVariance + 100, 100) : Math.Max(100 + yieldVariance, 0);
-            var completionScore = taskCompletion;
+            var yieldScore = Math.Clamp(100 + yieldVariance, 0, 100);
             var costEfficiencyScore = totalYield > 0 && totalCost > 0
                 ? Math.Min((totalYield / (totalCost / 1000000)) * 10, 100)
                 : 0;
 
-            return (yieldScore * 0.4m + completionScore * 0.3m + costEfficiencyScore * 0.3m);
+            return yieldScore * 0.4m + taskCompletion * 0.3m + costEfficiencyScore * 0.3m;
         }
 
-        private ComparisonTrends CalculateTrends(List<SeasonComparisonData> seasons)
+        private static ComparisonTrends CalculateTrends(List<SeasonComparisonData> seasons)
         {
             var orderedSeasons = seasons.OrderBy(s => s.Year).ToList();
 
-            var areaTrend = CalculateTrendAnalysis("Total Area", orderedSeasons.Select(s => s.TotalArea).ToList());
-            var costTrend = CalculateTrendAnalysis("Cost per Hectare", orderedSeasons.Select(s => s.CostPerHectare).ToList());
-            var yieldTrend = CalculateTrendAnalysis("Yield per Hectare", orderedSeasons.Select(s => s.YieldPerHectare).ToList());
-            var efficiencyTrend = CalculateTrendAnalysis("Efficiency Score", orderedSeasons.Select(s => s.EfficiencyScore).ToList());
-
-            var bestSeason = seasons.OrderByDescending(s => s.EfficiencyScore).FirstOrDefault() ?? new SeasonComparisonData();
-
             return new ComparisonTrends
             {
-                AreaTrend = areaTrend,
-                CostTrend = costTrend,
-                YieldTrend = yieldTrend,
-                EfficiencyTrend = efficiencyTrend,
-                BestSeason = bestSeason,
+                AreaTrend = CalculateTrendAnalysis("Total Area", orderedSeasons.Select(s => s.TotalArea).ToList()),
+                CostTrend = CalculateTrendAnalysis("Cost per Hectare", orderedSeasons.Select(s => s.CostPerHectare).ToList()),
+                YieldTrend = CalculateTrendAnalysis("Yield per Hectare", orderedSeasons.Select(s => s.YieldPerHectare).ToList()),
+                EfficiencyTrend = CalculateTrendAnalysis("Efficiency Score", orderedSeasons.Select(s => s.EfficiencyScore).ToList()),
+                BestSeason = seasons.OrderByDescending(s => s.EfficiencyScore).FirstOrDefault() ?? new SeasonComparisonData(),
                 BestSeasonCriteria = "Highest Efficiency Score"
             };
         }
 
-        private TrendAnalysis CalculateTrendAnalysis(string metric, List<decimal> values)
+        private static TrendAnalysis CalculateTrendAnalysis(string metric, List<decimal> values)
         {
             if (!values.Any())
             {
                 return new TrendAnalysis { Metric = metric, Direction = "No Data" };
             }
-
-            var average = values.Average();
-            var highest = values.Max();
-            var lowest = values.Min();
 
             string direction = "Stable";
             decimal changePercentage = 0;
@@ -213,8 +204,12 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
                     changePercentage = ((last - first) / first) * 100;
                 }
 
-                direction = changePercentage > 5 ? "Increasing" :
-                           changePercentage < -5 ? "Decreasing" : "Stable";
+                direction = changePercentage switch
+                {
+                    > 5 => "Increasing",
+                    < -5 => "Decreasing",
+                    _ => "Stable"
+                };
             }
 
             return new TrendAnalysis
@@ -222,9 +217,9 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
                 Metric = metric,
                 Direction = direction,
                 ChangePercentage = changePercentage,
-                AverageValue = average,
-                HighestValue = highest,
-                LowestValue = lowest
+                AverageValue = values.Average(),
+                HighestValue = values.Max(),
+                LowestValue = values.Min()
             };
         }
     }

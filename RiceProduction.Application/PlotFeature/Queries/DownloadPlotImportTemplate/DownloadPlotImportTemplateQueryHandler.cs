@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequest;
@@ -13,7 +13,7 @@ using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 
-public class DownloadPlotImportTemplateQueryHandler 
+public class DownloadPlotImportTemplateQueryHandler
     : IRequestHandler<DownloadPlotImportTemplateQuery, Result<IActionResult>>
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -31,7 +31,7 @@ public class DownloadPlotImportTemplateQueryHandler
     }
 
     public async Task<Result<IActionResult>> Handle(
-        DownloadPlotImportTemplateQuery request, 
+        DownloadPlotImportTemplateQuery request,
         CancellationToken cancellationToken)
     {
         try
@@ -64,59 +64,11 @@ public class DownloadPlotImportTemplateQueryHandler
                 .ListAsync(rv => rv.IsActive);
             var riceVarietiesList = riceVarieties.OrderBy(rv => rv.VarietyName).ToList();
 
-            var (currentSeason, currentYear) = await GetCurrentSeasonAndYear(cancellationToken);
+            var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
+            var currentSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now)?.Season;
 
-            var templateRows = new List<PlotImportRow>();
-            
-            foreach (var farmer in farmersList)
-            {
-                int plotCount = farmer.NumberOfPlots ?? 1;
-                
-                for (int plotNum = 1; plotNum <= plotCount; plotNum++)
-                {
-                    var row = new PlotImportRow
-                    {
-                        FarmCode = farmer.FarmCode ?? "",
-                        FarmerName = farmer.FullName ?? "",
-                        PhoneNumber = farmer.PhoneNumber ?? "",
-                        PlotNumber = plotNum,
-                        SoThua = null,
-                        SoTo = null,
-                        Area = null,
-                        SoilType = null,
-                        RiceVarietyName = null,
-                        BoundaryWKT = null,  // Optional polygon field
-                        CoordinateWKT = null // Optional coordinate field
-                    };
-
-                    templateRows.Add(row);
-                }
-            }
-
-            var seasonInfo = currentSeason != null 
-                ? $"{currentSeason.SeasonName} ({currentSeason.StartDate} - {currentSeason.EndDate})"
-                : "All Seasons";
-
-            var varietyReferences = riceVarietiesList.Select(rv => new RiceVarietyReference
-            {
-                VarietyName = rv.VarietyName ?? "",
-                SeasonType = seasonInfo,
-                GrowthDuration = rv.BaseGrowthDurationDays.HasValue 
-                    ? $"{rv.BaseGrowthDurationDays} days" 
-                    : "Not specified",
-                Description = rv.Description ?? rv.Characteristics ?? ""
-            }).ToList();
-
-            if (!varietyReferences.Any())
-            {
-                varietyReferences.Add(new RiceVarietyReference
-                {
-                    VarietyName = "No rice varieties found",
-                    SeasonType = "Please add rice varieties first",
-                    GrowthDuration = "",
-                    Description = "Contact administrator to add rice variety data"
-                });
-            }
+            var templateRows = BuildTemplateRows(farmersList);
+            var varietyReferences = BuildVarietyReferences(riceVarietiesList, currentSeason);
 
             var sheets = new Dictionary<string, object>
             {
@@ -140,7 +92,7 @@ public class DownloadPlotImportTemplateQueryHandler
                 riceVarietiesList.Count);
 
             return Result<IActionResult>.Success(
-                result, 
+                result,
                 $"Template generated successfully: {farmersList.Count} farmers with {templateRows.Count} plot rows");
         }
         catch (Exception ex)
@@ -150,64 +102,66 @@ public class DownloadPlotImportTemplateQueryHandler
         }
     }
 
-    private async Task<(Season? season, int year)> GetCurrentSeasonAndYear(CancellationToken cancellationToken)
+    private static List<PlotImportRow> BuildTemplateRows(List<Farmer> farmers)
     {
-        var today = DateTime.Now;
-        var currentMonth = today.Month;
-        var currentDay = today.Day;
+        var templateRows = new List<PlotImportRow>();
 
-        var allSeasons = await _unitOfWork.Repository<Season>()
-            .ListAsync(_ => true);
-
-        foreach (var season in allSeasons)
+        foreach (var farmer in farmers)
         {
-            if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
+            var plotCount = farmer.NumberOfPlots ?? 1;
+
+            for (int plotNum = 1; plotNum <= plotCount; plotNum++)
             {
-                var startParts = season.StartDate.Split('/');
-                int startMonth = int.Parse(startParts[0]);
-
-                int year = today.Year;
-                if (currentMonth < startMonth && startMonth > 6)
+                templateRows.Add(new PlotImportRow
                 {
-                    year--;
-                }
-
-                return (season, year);
+                    FarmCode = farmer.FarmCode ?? "",
+                    FarmerName = farmer.FullName ?? "",
+                    PhoneNumber = farmer.PhoneNumber ?? "",
+                    PlotNumber = plotNum,
+                    SoThua = null,
+                    SoTo = null,
+                    Area = null,
+                    SoilType = null,
+                    RiceVarietyName = null,
+                    BoundaryWKT = null,
+                    CoordinateWKT = null
+                });
             }
         }
 
-        return (null, today.Year);
+        return templateRows;
     }
 
-    private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
+    private static List<RiceVarietyReference> BuildVarietyReferences(
+        List<RiceVariety> riceVarieties,
+        Season? currentSeason)
     {
-        try
+        var seasonInfo = currentSeason != null
+            ? $"{currentSeason.SeasonName} ({currentSeason.StartDate} - {currentSeason.EndDate})"
+            : "All Seasons";
+
+        var varietyReferences = riceVarieties.Select(rv => new RiceVarietyReference
         {
-            var startParts = startDateStr.Split('/');
-            var endParts = endDateStr.Split('/');
+            VarietyName = rv.VarietyName ?? "",
+            SeasonType = seasonInfo,
+            GrowthDuration = rv.BaseGrowthDurationDays.HasValue
+                ? $"{rv.BaseGrowthDurationDays} days"
+                : "Not specified",
+            Description = rv.Description ?? rv.Characteristics ?? ""
+        }).ToList();
 
-            int startMonth = int.Parse(startParts[0]);
-            int startDay = int.Parse(startParts[1]);
-            int endMonth = int.Parse(endParts[0]);
-            int endDay = int.Parse(endParts[1]);
-
-            int currentDate = month * 100 + day;
-            int seasonStart = startMonth * 100 + startDay;
-            int seasonEnd = endMonth * 100 + endDay;
-
-            if (seasonStart > seasonEnd)
-            {
-                return currentDate >= seasonStart || currentDate <= seasonEnd;
-            }
-            else
-            {
-                return currentDate >= seasonStart && currentDate <= seasonEnd;
-            }
-        }
-        catch
+        if (!varietyReferences.Any())
         {
-            return false;
+            varietyReferences.Add(new RiceVarietyReference
+            {
+                VarietyName = "No rice varieties found",
+                SeasonType = "Please add rice varieties first",
+                GrowthDuration = "",
+                Description = "Contact administrator to add rice variety data"
+            });
         }
+
+        return varietyReferences;
     }
 }
 

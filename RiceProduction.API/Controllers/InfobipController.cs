@@ -15,35 +15,6 @@ namespace RiceProduction.API.Controllers
             _logger = logger;
         }
 
-        //[HttpPost("delivery-reports")]
-        //[AllowAnonymous]
-        //[ProducesResponseType(StatusCodes.Status200OK)]
-        //public IActionResult ReceiveDeliveryReport([FromBody] SmsDeliveryResult deliveryResult)
-        //{
-        //    try
-        //    {
-        //        _logger.LogInformation("Received Infobip delivery report for {Count} messages",
-        //            deliveryResult.Results?.Count ?? 0);
-
-        //        foreach (var result in deliveryResult.Results ?? Enumerable.Empty<SmsReport>())
-        //        {
-        //            _logger.LogInformation("MessageId: {MessageId}, Status: {Status}, To: {To}, SentAt: {SentAt}, DoneAt: {DoneAt}",
-        //                result.MessageId,
-        //                result.Status?.Name,
-        //                result.To,
-        //                result.SentAt,
-        //                result.DoneAt);
-        //        }
-
-        //        return Ok();
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Error processing Infobip delivery report");
-        //        return Ok();
-        //    }
-        //}
-
         [HttpPost("incoming-sms")]
         [AllowAnonymous]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -57,7 +28,7 @@ namespace RiceProduction.API.Controllers
                 foreach (var result in smsInboundMessageResult.Results ?? Enumerable.Empty<SmsInboundMessage>())
                 {
                     _logger.LogInformation("From: {From}, To: {To}, Message: {Message}, ReceivedAt: {ReceivedAt}",
-                       result.From,
+                        result.From,
                         result.To,
                         result.CleanText,
                         result.ReceivedAt);

@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
+using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using AutoMapper;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
@@ -39,10 +40,8 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                     "Fetching plots - Page: {PageNumber}, PageSize: {PageSize}, SearchTerm: '{SearchTerm}', ClusterManagerId: {ClusterManagerId}",
                     request.PageNumber, request.PageSize, request.SearchTerm?.Trim(), request.ClusterManagerId);
 
-                // Start with base filter: only Active plots
                 Expression<Func<Plot, bool>> predicate = p => p.Status == PlotStatus.Active;
 
-                // === 1. Filter by Cluster Manager → Get ClusterId from ClusterManager → Filter Farmer.ClusterId
                 if (request.ClusterManagerId.HasValue)
                 {
                     var clusterManager = await _unitOfWork.ClusterManagerRepository
@@ -60,12 +59,9 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                     }
 
                     var targetClusterId = clusterManager.ClusterId;
-
-                    // Combine: Active + Farmer belongs to this Cluster
                     predicate = predicate.And(p => p.Farmer != null && p.Farmer.ClusterId == targetClusterId);
                 }
 
-                // === 2. Search term filter (SoThua, SoTo, Farmer FullName)
                 if (!string.IsNullOrWhiteSpace(request.SearchTerm))
                 {
                     var search = request.SearchTerm.Trim();
@@ -77,7 +73,6 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                     );
                 }
 
-                // === 3. Execute paged query (make sure your repository includes Farmer if needed)
                 var (items, totalCount) = await _unitOfWork.PlotRepository
                     .GetAllPlotPagedAsync(
                         pageNumber: request.PageNumber,
@@ -109,15 +104,9 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
         {
             try
             {
-                var plotsWithPolygon = plotDTOs.Where(p => !string.IsNullOrEmpty(p.BoundaryGeoJson)).ToList();
-
-                if (!plotsWithPolygon.Any())
+                if (!plotDTOs.Any(p => !string.IsNullOrEmpty(p.BoundaryGeoJson)))
                 {
-                    foreach (var plot in plotDTOs)
-                    {
-                        plot.IsEditableInCurrentSeason = true;
-                        plot.EditabilityNote = "No polygon assigned yet";
-                    }
+                    MarkAllEditable(plotDTOs, "No polygon assigned yet");
                     return;
                 }
 
@@ -125,33 +114,32 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                 var farmers = await _unitOfWork.FarmerRepository.FindAsync(f => farmerIds.Contains(f.Id), cancellationToken);
                 var farmerClusterMap = farmers.ToDictionary(f => f.Id, f => f.ClusterId);
 
-                var (currentSeason, currentYear) = await GetCurrentSeasonAndYearAsync();
+                var allSeasons = await _unitOfWork.Repository<Season>().ListAllAsync();
+                var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now);
 
-                if (currentSeason == null)
+                if (resolvedSeason == null)
                 {
-                    foreach (var plot in plotDTOs)
-                    {
-                        plot.IsEditableInCurrentSeason = true;
-                        plot.EditabilityNote = "No active season";
-                    }
+                    MarkAllEditable(plotDTOs, "No active season");
                     return;
                 }
 
-                var clusterIds = farmerClusterMap.Values.Where(c => c.HasValue).Select(c => c!.Value).Distinct().ToList();
-                
+                var (currentSeason, currentYear) = resolvedSeason.Value;
+
+                var clusterIds = farmerClusterMap.Values
+                    .Where(c => c.HasValue)
+                    .Select(c => c!.Value)
+                    .Distinct()
+                    .ToList();
+
                 if (!clusterIds.Any())
                 {
-                    foreach (var plot in plotDTOs)
-                    {
-                        plot.IsEditableInCurrentSeason = true;
-                        plot.EditabilityNote = "Farmer not assigned to cluster";
-                    }
+                    MarkAllEditable(plotDTOs, "Farmer not assigned to cluster");
                     return;
                 }
 
                 var yearSeasons = await _unitOfWork.Repository<YearSeason>()
-                    .ListAsync(ys => clusterIds.Contains(ys.ClusterId) 
-                              && ys.SeasonId == currentSeason.Id 
+                    .ListAsync(ys => clusterIds.Contains(ys.ClusterId)
+                              && ys.SeasonId == currentSeason.Id
                               && ys.Year == currentYear);
 
                 var clusterYearSeasonMap = yearSeasons.ToDictionary(ys => ys.ClusterId, ys => ys.Id);
@@ -185,7 +173,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                         .IsPlotAssignedToGroupForYearSeasonAsync(plot.PlotId, yearSeasonId, cancellationToken);
 
                     plot.IsEditableInCurrentSeason = !isInGroup;
-                    plot.EditabilityNote = isInGroup 
+                    plot.EditabilityNote = isInGroup
                         ? $"Assigned to group in current season ({currentSeason.SeasonName} {currentYear})"
                         : $"Editable in current season ({currentSeason.SeasonName} {currentYear})";
                 }
@@ -196,69 +184,16 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
             }
         }
 
-        private async Task<(Season? season, int year)> GetCurrentSeasonAndYearAsync()
+        private static void MarkAllEditable(List<PlotDTO> plots, string note)
         {
-            var today = DateTime.Now;
-            var currentMonth = today.Month;
-            var currentDay = today.Day;
-
-            var allSeasons = await _unitOfWork.Repository<Season>().ListAllAsync();
-
-            foreach (var season in allSeasons)
+            foreach (var plot in plots)
             {
-                if (IsDateInSeasonRange(currentMonth, currentDay, season.StartDate, season.EndDate))
-                {
-                    // Parse DD/MM format
-                    var startParts = season.StartDate.Split('/');
-                    int startMonth = int.Parse(startParts[1]);
-
-                    int year = today.Year;
-                    if (currentMonth < startMonth && startMonth > 6)
-                    {
-                        year--;
-                    }
-
-                    return (season, year);
-                }
-            }
-
-            return (null, today.Year);
-        }
-
-        private bool IsDateInSeasonRange(int month, int day, string startDateStr, string endDateStr)
-        {
-            try
-            {
-                var startParts = startDateStr.Split('/');
-                var endParts = endDateStr.Split('/');
-
-                // Parse DD/MM format
-                int startDay = int.Parse(startParts[0]);
-                int startMonth = int.Parse(startParts[1]);
-                int endDay = int.Parse(endParts[0]);
-                int endMonth = int.Parse(endParts[1]);
-
-                int currentDate = month * 100 + day;
-                int seasonStart = startMonth * 100 + startDay;
-                int seasonEnd = endMonth * 100 + endDay;
-
-                if (seasonStart > seasonEnd)
-                {
-                    return currentDate >= seasonStart || currentDate <= seasonEnd;
-                }
-                else
-                {
-                    return currentDate >= seasonStart && currentDate <= seasonEnd;
-                }
-            }
-            catch
-            {
-                return false;
+                plot.IsEditableInCurrentSeason = true;
+                plot.EditabilityNote = note;
             }
         }
     }
 
-    // Helper extension to combine predicates cleanly
     public static class ExpressionExtensions
     {
         public static Expression<Func<T, bool>> And<T>(this Expression<Func<T, bool>> left, Expression<Func<T, bool>> right)

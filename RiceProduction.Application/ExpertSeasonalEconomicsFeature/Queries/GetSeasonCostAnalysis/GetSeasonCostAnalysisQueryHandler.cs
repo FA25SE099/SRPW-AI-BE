@@ -35,13 +35,11 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                     return Result<SeasonCostAnalysisResponse>.Failure("Season not found");
                 }
 
-                // First get plot IDs for the group if GroupId is specified
-                var plotIds = new List<Guid>();
-                if (request.GroupId.HasValue)
-                {
-                    var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken);
-                    plotIds = plots.Select(p => p.Id).ToList();
-                }
+                var plotIds = request.GroupId.HasValue
+                    ? (await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken))
+                        .Select(p => p.Id)
+                        .ToList()
+                    : new List<Guid>();
 
                 var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
                     filter: pc => pc.SeasonId == request.SeasonId &&
@@ -73,7 +71,7 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                                 .ThenInclude(g => g.YearSeason));
 
                 var allTasks = plotCultivations.SelectMany(pc => pc.CultivationTasks).ToList();
-                var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
+                var totalArea = plotCultivations.Sum(GetArea);
 
                 var totalPlannedCost = allTasks
                     .SelectMany(ct => ct.ProductionPlanTask.ProductionPlanTaskMaterials)
@@ -83,115 +81,29 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                 var totalActualServiceCost = allTasks.Sum(ct => ct.ActualServiceCost);
                 var totalUavCost = uavInvoices.Sum(inv => inv.TotalAmount);
                 var totalActualCost = totalActualMaterialCost + totalActualServiceCost + totalUavCost;
-
-                var materialCosts = allTasks
-                    .SelectMany(ct => ct.ProductionPlanTask.ProductionPlanTaskMaterials.Select(pptm => new
-                    {
-                        Task = ct,
-                        PlannedMaterial = pptm,
-                        ActualMaterial = ct.CultivationTaskMaterials.FirstOrDefault(ctm => ctm.MaterialId == pptm.MaterialId)
-                    }))
-                    .GroupBy(x => new { x.PlannedMaterial.MaterialId, x.PlannedMaterial.Material.Name, x.PlannedMaterial.Material.Type, x.PlannedMaterial.Material.Unit })
-                    .Select(g => new MaterialCostDetail
-                    {
-                        MaterialId = g.Key.MaterialId,
-                        MaterialName = g.Key.Name,
-                        MaterialType = g.Key.Type,
-                        Unit = g.Key.Unit,
-                        PlannedQuantity = g.Sum(x => x.PlannedMaterial.QuantityPerHa),
-                        ActualQuantity = g.Sum(x => x.ActualMaterial?.ActualQuantity ?? 0),
-                        QuantityVariance = g.Sum(x => x.ActualMaterial?.ActualQuantity ?? 0) - g.Sum(x => x.PlannedMaterial.QuantityPerHa),
-                        PlannedCost = g.Sum(x => x.PlannedMaterial.EstimatedAmount ?? 0),
-                        ActualCost = g.Sum(x => x.ActualMaterial?.ActualCost ?? 0),
-                        CostVariance = g.Sum(x => x.ActualMaterial?.ActualCost ?? 0) - g.Sum(x => x.PlannedMaterial.EstimatedAmount ?? 0),
-                        UsageCount = g.Count(x => x.ActualMaterial != null)
-                    })
-                    .OrderByDescending(m => m.ActualCost)
-                    .ToList();
-
-                var costsByTaskType = allTasks
-                    .GroupBy(ct => ct.TaskType ?? ct.ProductionPlanTask.TaskType)
-                    .Select(g => new TaskTypeCostDetail
-                    {
-                        TaskType = g.Key,
-                        TaskCount = g.Count(),
-                        PlannedCost = g.SelectMany(ct => ct.ProductionPlanTask.ProductionPlanTaskMaterials).Sum(pptm => pptm.EstimatedAmount ?? 0),
-                        ActualCost = g.Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost),
-                        CostVariance = g.Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost) -
-                                       g.SelectMany(ct => ct.ProductionPlanTask.ProductionPlanTaskMaterials).Sum(pptm => pptm.EstimatedAmount ?? 0),
-                        MaterialCost = g.Sum(ct => ct.ActualMaterialCost),
-                        ServiceCost = g.Sum(ct => ct.ActualServiceCost)
-                    })
-                    .OrderByDescending(t => t.ActualCost)
-                    .ToList();
-
-                var costsByVariety = plotCultivations
-                    .GroupBy(pc => new { pc.RiceVarietyId, pc.RiceVariety.VarietyName })
-                    .Select(g => new RiceVarietyCostDetail
-                    {
-                        RiceVarietyId = g.Key.RiceVarietyId,
-                        VarietyName = g.Key.VarietyName,
-                        TotalArea = g.Sum(pc => pc.Area ?? pc.Plot.Area),
-                        TotalCost = g.SelectMany(pc => pc.CultivationTasks).Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost),
-                        CostPerHectare = g.Sum(pc => pc.Area ?? pc.Plot.Area) > 0
-                            ? g.SelectMany(pc => pc.CultivationTasks).Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost) / g.Sum(pc => pc.Area ?? pc.Plot.Area)
-                            : 0,
-                        CultivationCount = g.Count()
-                    })
-                    .OrderByDescending(v => v.TotalCost)
-                    .ToList();
-
-                var monthlyCosts = allTasks
-                    .Where(ct => ct.ActualStartDate.HasValue)
-                    .GroupBy(ct => new { ct.ActualStartDate!.Value.Year, ct.ActualStartDate.Value.Month })
-                    .Select(g => new MonthlyCostDistribution
-                    {
-                        Year = g.Key.Year,
-                        Month = g.Key.Month,
-                        MonthName = CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(g.Key.Month),
-                        MaterialCost = g.Sum(ct => ct.ActualMaterialCost),
-                        ServiceCost = g.Sum(ct => ct.ActualServiceCost),
-                        TotalCost = g.Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost),
-                        TaskCount = g.Count()
-                    })
-                    .OrderBy(m => m.Year).ThenBy(m => m.Month)
-                    .ToList();
-
-                var uavCostDetail = new UavServiceCostDetail
-                {
-                    TotalInvoiced = uavInvoices.Sum(inv => inv.TotalAmount),
-                    TotalPaid = uavInvoices.Where(inv => inv.Status == InvoiceStatus.Paid).Sum(inv => inv.TotalAmount),
-                    TotalPending = uavInvoices.Where(inv => inv.Status == InvoiceStatus.Pending || inv.Status == InvoiceStatus.Paid).Sum(inv => inv.TotalAmount),
-                    InvoiceCount = uavInvoices.Count,
-                    PaidInvoiceCount = uavInvoices.Count(inv => inv.Status == InvoiceStatus.Paid),
-                    AverageInvoiceAmount = uavInvoices.Any() ? uavInvoices.Average(inv => inv.TotalAmount) : 0,
-                    TotalAreaServiced = uavInvoices.Sum(inv => inv.TotalArea),
-                    AverageRatePerHa = uavInvoices.Any() ? uavInvoices.Average(inv => inv.RatePerHa) : 0
-                };
+                var totalVariance = totalActualCost - totalPlannedCost;
 
                 var response = new SeasonCostAnalysisResponse
                 {
                     SeasonId = season.Id,
                     SeasonName = season.SeasonName,
-
                     Overview = new CostOverview
                     {
                         TotalPlannedCost = totalPlannedCost,
                         TotalActualCost = totalActualCost,
-                        TotalVariance = totalActualCost - totalPlannedCost,
-                        VariancePercentage = totalPlannedCost > 0 ? ((totalActualCost - totalPlannedCost) / totalPlannedCost) * 100 : 0,
+                        TotalVariance = totalVariance,
+                        VariancePercentage = totalPlannedCost > 0 ? (totalVariance / totalPlannedCost) * 100 : 0,
                         MaterialCost = totalActualMaterialCost,
                         ServiceCost = totalActualServiceCost,
                         UavCost = totalUavCost,
                         TotalArea = totalArea,
                         CostPerHectare = totalArea > 0 ? totalActualCost / totalArea : 0
                     },
-
-                    MaterialCosts = materialCosts,
-                    CostsByTaskType = costsByTaskType,
-                    CostsByVariety = costsByVariety,
-                    MonthlyCosts = monthlyCosts,
-                    UavCosts = uavCostDetail
+                    MaterialCosts = BuildMaterialCosts(allTasks),
+                    CostsByTaskType = BuildCostsByTaskType(allTasks),
+                    CostsByVariety = BuildCostsByVariety(plotCultivations),
+                    MonthlyCosts = BuildMonthlyCosts(allTasks),
+                    UavCosts = BuildUavCostDetail(uavInvoices, totalUavCost)
                 };
 
                 _logger.LogInformation(
@@ -208,6 +120,139 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
                 return Result<SeasonCostAnalysisResponse>.Failure(
                     "An error occurred while retrieving season cost analysis");
             }
+        }
+
+        private static decimal GetArea(PlotCultivation pc) => pc.Area ?? pc.Plot.Area;
+
+        private static List<MaterialCostDetail> BuildMaterialCosts(List<CultivationTask> allTasks) =>
+            allTasks
+                .SelectMany(ct => ct.ProductionPlanTask.ProductionPlanTaskMaterials.Select(pptm => new
+                {
+                    PlannedMaterial = pptm,
+                    ActualMaterial = ct.CultivationTaskMaterials.FirstOrDefault(ctm => ctm.MaterialId == pptm.MaterialId)
+                }))
+                .GroupBy(x => new
+                {
+                    x.PlannedMaterial.MaterialId,
+                    x.PlannedMaterial.Material.Name,
+                    x.PlannedMaterial.Material.Type,
+                    x.PlannedMaterial.Material.Unit
+                })
+                .Select(g =>
+                {
+                    var plannedQuantity = g.Sum(x => x.PlannedMaterial.QuantityPerHa);
+                    var actualQuantity = g.Sum(x => x.ActualMaterial?.ActualQuantity ?? 0);
+                    var plannedCost = g.Sum(x => x.PlannedMaterial.EstimatedAmount ?? 0);
+                    var actualCost = g.Sum(x => x.ActualMaterial?.ActualCost ?? 0);
+
+                    return new MaterialCostDetail
+                    {
+                        MaterialId = g.Key.MaterialId,
+                        MaterialName = g.Key.Name,
+                        MaterialType = g.Key.Type,
+                        Unit = g.Key.Unit,
+                        PlannedQuantity = plannedQuantity,
+                        ActualQuantity = actualQuantity,
+                        QuantityVariance = actualQuantity - plannedQuantity,
+                        PlannedCost = plannedCost,
+                        ActualCost = actualCost,
+                        CostVariance = actualCost - plannedCost,
+                        UsageCount = g.Count(x => x.ActualMaterial != null)
+                    };
+                })
+                .OrderByDescending(m => m.ActualCost)
+                .ToList();
+
+        private static List<TaskTypeCostDetail> BuildCostsByTaskType(List<CultivationTask> allTasks) =>
+            allTasks
+                .GroupBy(ct => ct.TaskType ?? ct.ProductionPlanTask.TaskType)
+                .Select(g =>
+                {
+                    var plannedCost = g
+                        .SelectMany(ct => ct.ProductionPlanTask.ProductionPlanTaskMaterials)
+                        .Sum(pptm => pptm.EstimatedAmount ?? 0);
+                    var materialCost = g.Sum(ct => ct.ActualMaterialCost);
+                    var serviceCost = g.Sum(ct => ct.ActualServiceCost);
+                    var actualCost = materialCost + serviceCost;
+
+                    return new TaskTypeCostDetail
+                    {
+                        TaskType = g.Key,
+                        TaskCount = g.Count(),
+                        PlannedCost = plannedCost,
+                        ActualCost = actualCost,
+                        CostVariance = actualCost - plannedCost,
+                        MaterialCost = materialCost,
+                        ServiceCost = serviceCost
+                    };
+                })
+                .OrderByDescending(t => t.ActualCost)
+                .ToList();
+
+        private static List<RiceVarietyCostDetail> BuildCostsByVariety(IReadOnlyList<PlotCultivation> plotCultivations) =>
+            plotCultivations
+                .GroupBy(pc => new { pc.RiceVarietyId, pc.RiceVariety.VarietyName })
+                .Select(g =>
+                {
+                    var totalArea = g.Sum(GetArea);
+                    var totalCost = g.SelectMany(pc => pc.CultivationTasks).Sum(ct => ct.ActualMaterialCost + ct.ActualServiceCost);
+
+                    return new RiceVarietyCostDetail
+                    {
+                        RiceVarietyId = g.Key.RiceVarietyId,
+                        VarietyName = g.Key.VarietyName,
+                        TotalArea = totalArea,
+                        TotalCost = totalCost,
+                        CostPerHectare = totalArea > 0 ? totalCost / totalArea : 0,
+                        CultivationCount = g.Count()
+                    };
+                })
+                .OrderByDescending(v => v.TotalCost)
+                .ToList();
+
+        private static List<MonthlyCostDistribution> BuildMonthlyCosts(List<CultivationTask> allTasks) =>
+            allTasks
+                .Where(ct => ct.ActualStartDate.HasValue)
+                .GroupBy(ct => new { ct.ActualStartDate!.Value.Year, ct.ActualStartDate.Value.Month })
+                .Select(g =>
+                {
+                    var materialCost = g.Sum(ct => ct.ActualMaterialCost);
+                    var serviceCost = g.Sum(ct => ct.ActualServiceCost);
+
+                    return new MonthlyCostDistribution
+                    {
+                        Year = g.Key.Year,
+                        Month = g.Key.Month,
+                        MonthName = CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(g.Key.Month),
+                        MaterialCost = materialCost,
+                        ServiceCost = serviceCost,
+                        TotalCost = materialCost + serviceCost,
+                        TaskCount = g.Count()
+                    };
+                })
+                .OrderBy(m => m.Year)
+                .ThenBy(m => m.Month)
+                .ToList();
+
+        private static UavServiceCostDetail BuildUavCostDetail(
+            IReadOnlyList<UavInvoice> uavInvoices,
+            decimal totalUavCost)
+        {
+            var hasInvoices = uavInvoices.Count > 0;
+
+            return new UavServiceCostDetail
+            {
+                TotalInvoiced = totalUavCost,
+                TotalPaid = uavInvoices.Where(inv => inv.Status == InvoiceStatus.Paid).Sum(inv => inv.TotalAmount),
+                TotalPending = uavInvoices
+                    .Where(inv => inv.Status == InvoiceStatus.Pending || inv.Status == InvoiceStatus.Paid)
+                    .Sum(inv => inv.TotalAmount),
+                InvoiceCount = uavInvoices.Count,
+                PaidInvoiceCount = uavInvoices.Count(inv => inv.Status == InvoiceStatus.Paid),
+                AverageInvoiceAmount = hasInvoices ? uavInvoices.Average(inv => inv.TotalAmount) : 0,
+                TotalAreaServiced = uavInvoices.Sum(inv => inv.TotalArea),
+                AverageRatePerHa = hasInvoices ? uavInvoices.Average(inv => inv.RatePerHa) : 0
+            };
         }
     }
 }

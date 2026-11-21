@@ -21,7 +21,7 @@ using RiceProduction.Application.ProductionPlanFeature.Commands.ResolveEmergency
 namespace RiceProduction.API.Controllers;
 
 [ApiController]
-[Route("api/production-plans")] // Định nghĩa route cho Controller này
+[Route("api/production-plans")]
 public class ProductionPlanController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -43,20 +43,16 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateProductionPlanCommand command)
     {
-        // Gửi Command đến Mediator để xử lý
         var result = await _mediator.Send(command);
 
         if (!result.Succeeded)
         {
-            // Trả về BadRequest nếu logic nghiệp vụ hoặc validation thất bại
             return BadRequest(result);
         }
 
-        // Trả về OK cùng với ID của Plan vừa tạo
         return Ok(result);
     }
 
-    // Bạn có thể thêm các endpoint khác như GetById, GetAll, Update, Delete tại đây
     [HttpGet("draft")]
     [ProducesResponseType(typeof(Result<GeneratePlanDraftResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<GeneratePlanDraftResponse>), StatusCodes.Status400BadRequest)]
@@ -112,7 +108,6 @@ public class ProductionPlanController : ControllerBase
     {
         try
         {
-
             _logger.LogInformation("EditProductionPlan request received for ID: {PlanId}", command.PlanId);
 
             var result = await _mediator.Send(command);
@@ -121,7 +116,7 @@ public class ProductionPlanController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to edit production plan ID {PlanId}: {Errors}",
-                    command.PlanId, string.Join(", ", result.Errors ?? new string[0]));
+                    command.PlanId, FormatErrors(result.Errors));
 
                 return BadRequest(result);
             }
@@ -159,7 +154,7 @@ public class ProductionPlanController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to submit production plan ID {PlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    id, FormatErrors(result.Errors));
 
                 return BadRequest(result);
             }
@@ -189,7 +184,7 @@ public class ProductionPlanController : ControllerBase
                     "IdMismatch"));
             }
 
-            _logger.LogInformation("ApproveRejectProductionPlan request received for ID: {PlanId}, Approved: {Approved}", 
+            _logger.LogInformation("ApproveRejectProductionPlan request received for ID: {PlanId}, Approved: {Approved}",
                 id, command.Approved);
 
             var result = await _mediator.Send(command);
@@ -198,12 +193,12 @@ public class ProductionPlanController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to approve/reject production plan ID {PlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    id, FormatErrors(result.Errors));
 
                 return BadRequest(result);
             }
 
-            _logger.LogInformation("Successfully {Action} production plan with ID: {PlanId}", 
+            _logger.LogInformation("Successfully {Action} production plan with ID: {PlanId}",
                 command.Approved ? "approved" : "rejected", id);
             return Ok(result);
         }
@@ -228,8 +223,8 @@ public class ProductionPlanController : ControllerBase
 
             if (!result.Succeeded)
             {
-                _logger.LogWarning("Failed to retrieve pending approvals: {Errors}", 
-                    string.Join(", ", result.Errors ?? new string[0]));
+                _logger.LogWarning("Failed to retrieve pending approvals: {Errors}",
+                    FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -252,22 +247,13 @@ public class ProductionPlanController : ControllerBase
                 "GetEmergencyPlans request received - Page: {Page}, PageSize: {PageSize}",
                 query.CurrentPage, query.PageSize);
 
-            //var query = new GetEmergencyPlansQuery
-            //{
-            //    CurrentPage = currentPage,
-            //    PageSize = pageSize,
-            //    GroupId = groupId,
-            //    ClusterId = clusterId,
-            //    SearchTerm = searchTerm
-            //};
-
             var result = await _mediator.Send(query);
 
             if (!result.Succeeded)
             {
                 _logger.LogWarning(
                     "Failed to retrieve emergency plans: {Errors}",
-                    string.Join(", ", result.Errors ?? new string[0]));
+                    FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -280,41 +266,6 @@ public class ProductionPlanController : ControllerBase
             return StatusCode(500, new { message = "An unexpected error occurred" });
         }
     }
-
-    //[HttpPost("resolve-emergency")]
-    //public async Task<IActionResult> ResolveEmergency([FromBody] ResolveEmergencyPlanCommand1 command)
-    //{
-    //    try
-    //    {
-
-    //        _logger.LogInformation(
-    //            "ResolveEmergencyPlan request received for ID: {PlanId}, NewVersion: {VersionName}",
-    //            command.PlanId, command.NewVersionName);
-
-    //        var result = await _mediator.Send(command);
-
-    //        if (!result.Succeeded)
-    //        {
-    //            _logger.LogWarning(
-    //                "Failed to resolve emergency plan ID {PlanId}: {Errors}",
-    //                command.PlanId, string.Join(", ", result.Errors ?? new string[0]));
-
-    //            return BadRequest(result);
-    //        }
-
-    //        _logger.LogInformation(
-    //            "Successfully resolved emergency plan ID {PlanId} with new version '{VersionName}'",
-    //            command.PlanId, command.NewVersionName);
-    //        return Ok(result);
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        _logger.LogError(ex,
-    //            "Unexpected error occurred while resolving emergency plan ID: {PlanId}",
-    //            command.PlanId);
-    //        return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-    //    }
-    //}
 
     /// <summary>
     /// Creates an emergency plan for a single plot (not the entire group)
@@ -336,7 +287,7 @@ public class ProductionPlanController : ControllerBase
             {
                 _logger.LogWarning(
                     "Failed to create emergency plan for Plot {PlotId}: {Errors}",
-                    command.PlotId, string.Join(", ", result.Errors ?? new string[0]));
+                    command.PlotId, FormatErrors(result.Errors));
 
                 return BadRequest(result);
             }
@@ -370,7 +321,7 @@ public class ProductionPlanController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to retrieve plan detail for ID {PlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    id, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -399,7 +350,7 @@ public class ProductionPlanController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to retrieve execution summary for ID {PlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    id, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -436,7 +387,7 @@ public class ProductionPlanController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to retrieve cultivation tasks for Plan ID {PlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? new string[0]));
+                    id, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -472,7 +423,7 @@ public class ProductionPlanController : ControllerBase
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to retrieve plot implementation for Plot ID {PlotId}, Plan ID {PlanId}: {Errors}",
-                    plotId, productionPlanId, string.Join(", ", result.Errors ?? new string[0]));
+                    plotId, productionPlanId, FormatErrors(result.Errors));
                 return BadRequest(result);
             }
 
@@ -487,4 +438,7 @@ public class ProductionPlanController : ControllerBase
             return StatusCode(500, new { message = "An unexpected error occurred" });
         }
     }
+
+    private static string FormatErrors(IEnumerable<string>? errors) =>
+        string.Join(", ", errors ?? Array.Empty<string>());
 }

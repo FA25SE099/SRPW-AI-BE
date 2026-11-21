@@ -72,8 +72,8 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
 #pragma warning restore CS8602 // Dereference of a possibly null reference
             );
 
-            // Log warning if duplicates are detected
-            var duplicateCount = tasks.Count - tasks.DistinctBy(t => t.Id).Count();
+            var uniqueTasks = tasks.DistinctBy(t => t.Id).ToList();
+            var duplicateCount = tasks.Count - uniqueTasks.Count;
             if (duplicateCount > 0)
             {
                 _logger.LogWarning(
@@ -82,77 +82,7 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                     duplicateCount, currentCultivation.Id, versionId);
             }
 
-            // Deduplicate tasks by keeping only unique task IDs (taking the first occurrence)
-            var uniqueTasks = tasks
-                .GroupBy(t => t.Id)
-                .Select(g => g.First())
-                .ToList();
-
-            // Get production plan info from first task
-            var firstTask = uniqueTasks.FirstOrDefault();
-            var productionPlan = firstTask?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
-
-            // Group tasks by stage and create nested structure
-            var stagesGroup = uniqueTasks
-                .GroupBy(task => new
-                {
-                    StageId = task.ProductionPlanTask?.ProductionStage?.Id,
-                    StageName = task.ProductionPlanTask?.ProductionStage?.StageName ?? "N/A",
-                    SequenceOrder = task.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue,
-                    Description = task.ProductionPlanTask?.ProductionStage?.Description,
-                    TypicalDurationDays = task.ProductionPlanTask?.ProductionStage?.TypicalDurationDays
-                })
-                .OrderBy(g => g.Key.SequenceOrder)
-                .Select(stageGroup => new CultivationStageSummary
-                {
-                    StageId = stageGroup.Key.StageId,
-                    StageName = stageGroup.Key.StageName,
-                    SequenceOrder = stageGroup.Key.SequenceOrder,
-                    Description = stageGroup.Key.Description,
-                    TypicalDurationDays = stageGroup.Key.TypicalDurationDays,
-                    Tasks = stageGroup
-                        .OrderBy(task => task.ExecutionOrder ?? 0)
-                        .Select(task => new CultivationTaskSummary
-                        {
-                            TaskId = task.Id,
-                            TaskName = task.CultivationTaskName ?? string.Empty,
-                            TaskDescription = task.Description ?? string.Empty,
-                            TaskType = task.TaskType ?? Domain.Enums.TaskType.Sowing,
-                            Status = task.Status ?? Domain.Enums.TaskStatus.Draft,
-                            Priority = Domain.Enums.TaskPriority.Normal,
-                            PlannedStartDate = task.ProductionPlanTask?.ScheduledDate ?? null,
-                            PlannedEndDate = task.ScheduledEndDate,
-                            ActualStartDate = task.ActualStartDate,
-                            ActualEndDate = task.ActualEndDate,
-                            OrderIndex = task.ExecutionOrder ?? 0,
-                            Materials = task.CultivationTaskMaterials.Select(ctm => new TaskMaterialSummary
-                            {
-                                MaterialId = ctm.MaterialId,
-                                MaterialName = ctm.Material.Name,
-                                PlannedQuantity = 0,
-                                ActualQuantity = ctm.ActualQuantity,
-                                Unit = ctm.Material.Unit
-                            }).ToList()
-                        }).ToList()
-                })
-                .ToList();
-
-            // Calculate progress (using unique tasks)
-            var totalTasks = uniqueTasks.Count;
-            var completedTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Completed);
-            var inProgressTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
-            var pendingTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Draft || t.Status == Domain.Enums.TaskStatus.PendingApproval);
-            var completionPercentage = totalTasks > 0 ? (decimal)completedTasks / totalTasks * 100 : 0;
-            var daysElapsed = (DateTime.UtcNow - currentCultivation.PlantingDate).Days;
-            
-            // Estimate remaining days based on last task scheduled end date
-            int? estimatedDaysRemaining = null;
-            var lastTask = uniqueTasks.OrderByDescending(t => t.ScheduledEndDate).FirstOrDefault();
-            if (lastTask?.ScheduledEndDate != null)
-            {
-                estimatedDaysRemaining = (lastTask.ScheduledEndDate.Value - DateTime.UtcNow).Days;
-                if (estimatedDaysRemaining < 0) estimatedDaysRemaining = 0;
-            }
+            var productionPlan = uniqueTasks.FirstOrDefault()?.ProductionPlanTask?.ProductionStage?.ProductionPlan;
 
             var response = new CurrentPlotCultivationDetailResponse
             {
@@ -160,47 +90,38 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
                 PlotId = plot.Id,
                 PlotName = $"Thửa {plot.SoThua ?? 0}, Tờ {plot.SoTo ?? 0}",
                 PlotArea = plot.Area,
-                
+
                 SeasonId = currentCultivation.SeasonId,
                 SeasonName = currentCultivation.Season.SeasonName,
                 SeasonStartDate = DateTime.Parse(currentCultivation.Season.StartDate),
                 SeasonEndDate = DateTime.Parse(currentCultivation.Season.EndDate),
-                
+
                 RiceVarietyId = currentCultivation.RiceVarietyId,
                 RiceVarietyName = currentCultivation.RiceVariety.VarietyName,
                 RiceVarietyDescription = currentCultivation.RiceVariety.Description,
-                
+
                 PlantingDate = currentCultivation.PlantingDate,
                 ExpectedYield = currentCultivation.ExpectedYield,
                 ActualYield = currentCultivation.ActualYield,
                 CultivationArea = currentCultivation.Area,
                 Status = currentCultivation.Status,
-                
+
                 ProductionPlanId = productionPlan?.Id,
                 ProductionPlanName = productionPlan?.PlanName,
                 ProductionPlanDescription = null, // ProductionPlan doesn't have Description field
-                
+
                 ActiveVersionId = latestVersion?.Id,
                 ActiveVersionName = latestVersion?.VersionName,
-                
-                Stages = stagesGroup,
-                Progress = new CultivationProgress
-                {
-                    TotalTasks = totalTasks,
-                    CompletedTasks = completedTasks,
-                    InProgressTasks = inProgressTasks,
-                    PendingTasks = pendingTasks,
-                    CompletionPercentage = Math.Round(completionPercentage, 2),
-                    DaysElapsed = daysElapsed,
-                    EstimatedDaysRemaining = estimatedDaysRemaining
-                }
+
+                Stages = BuildStageSummaries(uniqueTasks),
+                Progress = BuildProgress(uniqueTasks, currentCultivation.PlantingDate)
             };
 
             _logger.LogInformation(
                 "Successfully retrieved current cultivation plan for plot {PlotId} using latest version {VersionOrder}. " +
-                "Total unique tasks: {UniqueCount} (from {TotalCount} records)", 
+                "Total unique tasks: {UniqueCount} (from {TotalCount} records)",
                 request.PlotId, latestVersion?.VersionOrder, uniqueTasks.Count, tasks.Count);
-            
+
             return Result<CurrentPlotCultivationDetailResponse>.Success(response, "Successfully retrieved current cultivation plan.");
         }
         catch (Exception ex)
@@ -208,5 +129,77 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
             _logger.LogError(ex, "Error retrieving current cultivation plan for plot {PlotId}", request.PlotId);
             return Result<CurrentPlotCultivationDetailResponse>.Failure("An error occurred while retrieving cultivation plan.", "RetrievalFailed");
         }
+    }
+
+    private static List<CultivationStageSummary> BuildStageSummaries(List<CultivationTask> uniqueTasks) =>
+        uniqueTasks
+            .GroupBy(task => new
+            {
+                StageId = task.ProductionPlanTask?.ProductionStage?.Id,
+                StageName = task.ProductionPlanTask?.ProductionStage?.StageName ?? "N/A",
+                SequenceOrder = task.ProductionPlanTask?.ProductionStage?.SequenceOrder ?? int.MaxValue,
+                Description = task.ProductionPlanTask?.ProductionStage?.Description,
+                TypicalDurationDays = task.ProductionPlanTask?.ProductionStage?.TypicalDurationDays
+            })
+            .OrderBy(g => g.Key.SequenceOrder)
+            .Select(stageGroup => new CultivationStageSummary
+            {
+                StageId = stageGroup.Key.StageId,
+                StageName = stageGroup.Key.StageName,
+                SequenceOrder = stageGroup.Key.SequenceOrder,
+                Description = stageGroup.Key.Description,
+                TypicalDurationDays = stageGroup.Key.TypicalDurationDays,
+                Tasks = stageGroup
+                    .OrderBy(task => task.ExecutionOrder ?? 0)
+                    .Select(task => new CultivationTaskSummary
+                    {
+                        TaskId = task.Id,
+                        TaskName = task.CultivationTaskName ?? string.Empty,
+                        TaskDescription = task.Description ?? string.Empty,
+                        TaskType = task.TaskType ?? TaskType.Sowing,
+                        Status = task.Status ?? Domain.Enums.TaskStatus.Draft,
+                        Priority = TaskPriority.Normal,
+                        PlannedStartDate = task.ProductionPlanTask?.ScheduledDate,
+                        PlannedEndDate = task.ScheduledEndDate,
+                        ActualStartDate = task.ActualStartDate,
+                        ActualEndDate = task.ActualEndDate,
+                        OrderIndex = task.ExecutionOrder ?? 0,
+                        Materials = task.CultivationTaskMaterials.Select(ctm => new TaskMaterialSummary
+                        {
+                            MaterialId = ctm.MaterialId,
+                            MaterialName = ctm.Material.Name,
+                            PlannedQuantity = 0,
+                            ActualQuantity = ctm.ActualQuantity,
+                            Unit = ctm.Material.Unit
+                        }).ToList()
+                    }).ToList()
+            })
+            .ToList();
+
+    private static CultivationProgress BuildProgress(List<CultivationTask> uniqueTasks, DateTime plantingDate)
+    {
+        var totalTasks = uniqueTasks.Count;
+        var completedTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Completed);
+        var inProgressTasks = uniqueTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+        var pendingTasks = uniqueTasks.Count(t =>
+            t.Status == Domain.Enums.TaskStatus.Draft || t.Status == Domain.Enums.TaskStatus.PendingApproval);
+        var completionPercentage = totalTasks > 0 ? (decimal)completedTasks / totalTasks * 100 : 0;
+
+        var now = DateTime.UtcNow;
+        var lastTask = uniqueTasks.OrderByDescending(t => t.ScheduledEndDate).FirstOrDefault();
+        int? estimatedDaysRemaining = lastTask?.ScheduledEndDate is { } lastEndDate
+            ? Math.Max(0, (lastEndDate - now).Days)
+            : null;
+
+        return new CultivationProgress
+        {
+            TotalTasks = totalTasks,
+            CompletedTasks = completedTasks,
+            InProgressTasks = inProgressTasks,
+            PendingTasks = pendingTasks,
+            CompletionPercentage = Math.Round(completionPercentage, 2),
+            DaysElapsed = (now - plantingDate).Days,
+            EstimatedDaysRemaining = estimatedDaysRemaining
+        };
     }
 }

@@ -1,7 +1,6 @@
-﻿using Azure.Core;
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using MiniExcelLibs;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
@@ -21,9 +20,6 @@ using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExce
 using RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel;
 using RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
 using RiceProduction.Application.MaterialFeature.Queries.GetMaterialById;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace RiceProduction.API.Controllers;
 
@@ -48,43 +44,23 @@ public class MaterialController : ControllerBase
             MaterialType = request.Type,
             PriceDateTime = request.PriceDateTime
         };
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpGet("by-id")]
     public async Task<IActionResult> GetMaterialById([FromQuery] Guid id)
     {
         var query = new GetMaterialByIdQuery { MaterialId = id };
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpPost("download-excel")]
     public async Task<IActionResult> DownloadMaterialExcel([FromBody] DateTime request)
     {
-        var query = new DownloadAllMaterialExcelQuery
-        {
-            InputDate = request
-        };
-        var result =await _mediator.Send(query);
-        if (!result.Succeeded || result.Data == null)
-        {
-            return BadRequest(new { message = result.Message });
-        }
-        return result.Data;
+        var query = new DownloadAllMaterialExcelQuery { InputDate = request };
+        return ToFileActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpPost("import-update-excel")]
     public async Task<Result<List<MaterialResponse>>> ImportUpdateMaterialExcel([FromForm] ImportMaterialExcel input)
     {
@@ -93,26 +69,17 @@ public class MaterialController : ControllerBase
             ExcelFile = input.ExcelFile,
             ImportDate = input.ImportDate
         };
-        var result =await _mediator.Send(command);
-        if (!result.Succeeded || result.Data == null)
-        {
-            return null;
-        }
-        return result;
+        var result = await _mediator.Send(command);
+        return result.Succeeded && result.Data != null ? result : null!;
     }
-    
+
     [HttpGet("download-create-sample-excel")]
     public async Task<IActionResult> DownloadCreateSampleMaterialExcelFile()
     {
         var query = new DownloadCreateSampleMaterialExcelQuery();
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded || result.Data == null)
-        {
-            return BadRequest(new { message = result.Message });
-        }
-        return result.Data;
+        return ToFileActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpPost("import-create-excel")]
     public async Task<Result<List<MaterialResponse>>> ImportCreateMaterialExcel([FromForm] ImportMaterialExcel input)
     {
@@ -121,12 +88,8 @@ public class MaterialController : ControllerBase
             ExcelFile = input.ExcelFile,
             ImportDate = input.ImportDate
         };
-        var result =await _mediator.Send(command);
-        if (!result.Succeeded || result.Data == null)
-        {
-            return null;
-        }
-        return result;
+        var result = await _mediator.Send(command);
+        return result.Succeeded && result.Data != null ? result : null!;
     }
 
     [HttpPost("import-upsert-excel")]
@@ -137,23 +100,13 @@ public class MaterialController : ControllerBase
             ExcelFile = input.ExcelFile,
             ImportDate = input.ImportDate
         };
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     [HttpPost]
     public async Task<IActionResult> CreateMaterial([FromBody] CreateMaterialCommand command)
     {
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     [HttpPut("{id}")]
@@ -163,76 +116,38 @@ public class MaterialController : ControllerBase
         {
             return BadRequest(new { message = "Route ID does not match command ID" });
         }
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteMaterial(Guid id)
     {
         var command = new DeleteMaterialCommand { MaterialId = id };
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
-    
+
     [HttpGet("calculate-price")]
     public async Task<IActionResult> CalculatePrice([FromQuery] CalculateMaterialPriceQuery query)
     {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpPost("calculate-group-material-cost")]
     public async Task<IActionResult> CalculateGroupMaterialCost([FromBody] CalculateGroupMaterialCostQuery query)
     {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpPost("calculate-materials-cost-by-area")]
     public async Task<IActionResult> CalculateMaterialsCostByArea([FromBody] CalculateMaterialsCostByAreaQuery query)
     {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
-    
+
     [HttpPost("calculate-materials-cost-by-plot-id")]
     public async Task<IActionResult> CalculateMaterialsCostByPlotId([FromBody] CalculateMaterialsCostByPlotIdQuery query)
     {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -248,14 +163,7 @@ public class MaterialController : ControllerBase
     [HttpPost("calculate-standard-plan-material-cost")]
     public async Task<IActionResult> CalculateStandardPlanMaterialCost([FromBody] CalculateStandardPlanMaterialCostQuery query)
     {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -276,13 +184,11 @@ public class MaterialController : ControllerBase
     [HttpPost("calculate-standard-plan-profit-analysis")]
     public async Task<IActionResult> CalculateStandardPlanProfitAnalysis([FromBody] CalculateStandardPlanProfitAnalysisQuery query)
     {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
+
+    private IActionResult ToFileActionResult<T>(Result<T> result) where T : IActionResult =>
+        result.Succeeded && result.Data != null
+            ? result.Data
+            : BadRequest(new { message = result.Message });
 }

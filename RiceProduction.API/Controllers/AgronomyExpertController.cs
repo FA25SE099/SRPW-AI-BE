@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.AgronomyExpertFeature.Commands.CreateAgronomyExpert;
 using RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyExpertById;
 using RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyExpertList;
@@ -29,7 +30,7 @@ public class AgronomyExpertController : Controller
     {
         try
         {
-            var query = new GetAgronomyExpertsQuery()
+            var query = new GetAgronomyExpertsQuery
             {
                 PageSize = request.PageSize,
                 CurrentPage = request.CurrentPage,
@@ -38,11 +39,7 @@ public class AgronomyExpertController : Controller
                 FreeOrAssigned = request.FreeOrAssigned
             };
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
@@ -55,27 +52,16 @@ public class AgronomyExpertController : Controller
     public async Task<IActionResult> CreateAgronomyExpert([FromBody] CreateAgronomyExpertCommand command)
     {
         var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(result);
     }
+
     [HttpGet("Get-by-id")]
     public async Task<IActionResult> GetAgronomyExpertById([FromQuery] Guid agronomyExpertId)
     {
         try
         {
-            var query = new GetAgronomyExpertByIdQuery()
-            {
-                AgronomyExpertId = agronomyExpertId
-            };
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            var result = await _mediator.Send(new GetAgronomyExpertByIdQuery { AgronomyExpertId = agronomyExpertId });
+            return this.ToIActionResult(result);
         }
         catch (Exception ex)
         {
@@ -90,13 +76,8 @@ public class AgronomyExpertController : Controller
     {
         try
         {
-            var query = new GetCurrentAgronomyExpertQuery();
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            var result = await _mediator.Send(new GetCurrentAgronomyExpertQuery());
+            return this.ToIActionResult(result);
         }
         catch (Exception ex)
         {

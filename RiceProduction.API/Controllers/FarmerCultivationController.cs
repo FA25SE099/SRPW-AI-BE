@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.FarmerFeature.Commands.SelectCultivationPreferences;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmerCultivationSelections;
@@ -56,19 +57,12 @@ public class FarmerCultivationController : ControllerBase
                 OnlyRecommended = onlyRecommended
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving available varieties for season {SeasonId}", seasonId);
-            return StatusCode(StatusCodes.Status500InternalServerError, 
+            return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An error occurred while retrieving available varieties" });
         }
     }
@@ -89,7 +83,6 @@ public class FarmerCultivationController : ControllerBase
     {
         try
         {
-            // Get the YearSeason to extract the SeasonId
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .FindAsync(ys => ys.Id == yearSeasonId);
 
@@ -104,19 +97,12 @@ public class FarmerCultivationController : ControllerBase
                 OnlyRecommended = onlyRecommended
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving available varieties for year season {YearSeasonId}", yearSeasonId);
-            return StatusCode(StatusCodes.Status500InternalServerError, 
+            return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An error occurred while retrieving available varieties" });
         }
     }
@@ -134,19 +120,12 @@ public class FarmerCultivationController : ControllerBase
     {
         try
         {
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error validating cultivation preferences");
-            return StatusCode(StatusCodes.Status500InternalServerError, 
+            return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An error occurred while validating your preferences" });
         }
     }
@@ -186,19 +165,12 @@ public class FarmerCultivationController : ControllerBase
                 }
             }
 
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(command));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error selecting cultivation preferences");
-            return StatusCode(StatusCodes.Status500InternalServerError, 
+            return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An error occurred while saving your selection" });
         }
     }
@@ -228,19 +200,12 @@ public class FarmerCultivationController : ControllerBase
                 YearSeasonId = yearSeasonId
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving farmer selections");
-            return StatusCode(StatusCodes.Status500InternalServerError, 
+            return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An error occurred while retrieving your selections" });
         }
     }
@@ -265,19 +230,12 @@ public class FarmerCultivationController : ControllerBase
                 YearSeasonId = yearSeasonId
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving farmer {FarmerId} selections", farmerId);
-            return StatusCode(StatusCodes.Status500InternalServerError, 
+            return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An error occurred while retrieving farmer selections" });
         }
     }

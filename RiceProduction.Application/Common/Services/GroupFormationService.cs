@@ -2,12 +2,15 @@
 using NetTopologySuite.Operation.Union;
 using NetTopologySuite.Index.Strtree;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.Common.Services;
 
 public class GroupFormationService
 {
+    private const double MetersPerDegree = 111000.0;
+    private const double EarthRadiusMeters = 6371000.0;
+    private const int Wgs84Srid = 4326;
+
     private readonly GeometryFactory _geometryFactory;
 
     public GroupFormationService()
@@ -89,16 +92,12 @@ public class GroupFormationService
         var plotsWithCoordinates = eligiblePlots.Where(p => p.Coordinate != null).ToList();
         var plotsWithoutCoordinates = eligiblePlots.Where(p => p.Coordinate == null).ToList();
 
-        foreach (var plot in plotsWithoutCoordinates)
-        {
-            ungroupedPlots.Add(new UngroupedPlotInfo
-            {
-                Plot = plot,
-                Reason = UngroupReason.MissingCoordinate,
-                ReasonDescription = "Plot boundary/coordinate not assigned",
-                Suggestions = new List<string> { "Assign polygon boundary to plot before grouping" }
-            });
-        }
+        AddUngroupedPlots(
+            ungroupedPlots,
+            plotsWithoutCoordinates,
+            UngroupReason.MissingCoordinate,
+            "Chưa gán tọa độ/ranh giới thửa đất",
+            "Gán ranh giới đa giác cho thửa đất trước khi tạo nhóm");
 
         // Group by Rice Variety first (hard constraint)
         var varietyGroups = plotsWithCoordinates.GroupBy(p => p.RiceVarietyId);
@@ -107,32 +106,22 @@ public class GroupFormationService
         {
             var plotsToCluster = varietyGroup.ToList();
 
-            // Use DBSCAN clustering
             var spatialClusters = SpatialClusteringDBSCAN(
                 plotsToCluster,
                 parameters.ProximityThreshold,
-                parameters.MinPlotsPerGroup
-            );
+                parameters.MinPlotsPerGroup);
 
             foreach (var spatialCluster in spatialClusters)
             {
-                // Filter out clusters that don't meet minimum
                 if (spatialCluster.Count < parameters.MinPlotsPerGroup)
                 {
-                    foreach (var plot in spatialCluster)
-                    {
-                        ungroupedPlots.Add(new UngroupedPlotInfo
-                        {
-                            Plot = plot,
-                            Reason = UngroupReason.TooFewPlots,
-                            ReasonDescription = $"Only {spatialCluster.Count} plots in spatial cluster (minimum {parameters.MinPlotsPerGroup} required)",
-                            Suggestions = new List<string>
-                            {
-                                "Assign to nearby group manually",
-                                "Reduce minimum plots per group parameter"
-                            }
-                        });
-                    }
+                    AddUngroupedPlots(
+                        ungroupedPlots,
+                        spatialCluster,
+                        UngroupReason.TooFewPlots,
+                        $"Chỉ có {spatialCluster.Count} thửa trong cụm không gian (tối thiểu yêu cầu {parameters.MinPlotsPerGroup} thửa)",
+                        "Gán thủ công vào nhóm gần đó",
+                        "Giảm thông số số thửa tối thiểu mỗi nhóm");
                     continue;
                 }
 
@@ -144,60 +133,37 @@ public class GroupFormationService
                     var totalArea = dateCluster.Sum(p => p.Plot.Area);
                     var plotCount = dateCluster.Count;
 
-                    // Check constraints
                     if (plotCount < parameters.MinPlotsPerGroup)
                     {
-                        foreach (var plot in dateCluster)
-                        {
-                            ungroupedPlots.Add(new UngroupedPlotInfo
-                            {
-                                Plot = plot,
-                                Reason = UngroupReason.PlantingDateMismatch,
-                                ReasonDescription = $"Planting date differs too much from cluster median (only {plotCount} plots remain)",
-                                Suggestions = new List<string>
-                                {
-                                    "Increase planting date tolerance",
-                                    "Assign to nearby group manually"
-                                }
-                            });
-                        }
+                        AddUngroupedPlots(
+                            ungroupedPlots,
+                            dateCluster,
+                            UngroupReason.PlantingDateMismatch,
+                            $"Ngày gieo sạ khác biệt quá nhiều so với trung vị cụm (chỉ còn {plotCount} thửa)",
+                            "Tăng dung sai ngày gieo sạ",
+                            "Gán thủ công vào nhóm gần đó");
                         continue;
                     }
 
                     if (totalArea < parameters.MinGroupArea)
                     {
-                        foreach (var plot in dateCluster)
-                        {
-                            ungroupedPlots.Add(new UngroupedPlotInfo
-                            {
-                                Plot = plot,
-                                Reason = UngroupReason.InsufficientArea,
-                                ReasonDescription = $"Total area {totalArea:F2} ha below minimum {parameters.MinGroupArea} ha",
-                                Suggestions = new List<string>
-                                {
-                                    "Merge with nearby group manually",
-                                    "Reduce minimum area parameter"
-                                }
-                            });
-                        }
+                        AddUngroupedPlots(
+                            ungroupedPlots,
+                            dateCluster,
+                            UngroupReason.InsufficientArea,
+                            $"Tổng diện tích {totalArea:F2} ha thấp hơn tối thiểu {parameters.MinGroupArea} ha",
+                            "Gộp thủ công với nhóm gần đó",
+                            "Giảm thông số diện tích tối thiểu");
                         continue;
                     }
 
-                    if (totalArea > parameters.MaxGroupArea || plotCount > parameters.MaxPlotsPerGroup)
+                    var groupsToCreate = totalArea > parameters.MaxGroupArea || plotCount > parameters.MaxPlotsPerGroup
+                        ? SplitLargeCluster(dateCluster, parameters)
+                        : new List<List<PlotClusterInfo>> { dateCluster };
+
+                    foreach (var groupPlots in groupsToCreate)
                     {
-                        // Split large cluster into multiple groups
-                        var splitGroups = SplitLargeCluster(dateCluster, parameters);
-                        foreach (var splitGroup in splitGroups)
-                        {
-                            var group = CreateProposedGroup(groupNumber++, splitGroup, varietyGroup.Key, parameters.BorderBuffer);
-                            proposedGroups.Add(group);
-                        }
-                    }
-                    else
-                    {
-                        // Perfect size - create group
-                        var group = CreateProposedGroup(groupNumber++, dateCluster, varietyGroup.Key, parameters.BorderBuffer);
-                        proposedGroups.Add(group);
+                        proposedGroups.Add(CreateProposedGroup(groupNumber++, groupPlots, varietyGroup.Key, parameters.BorderBuffer));
                     }
                 }
             }
@@ -207,6 +173,25 @@ public class GroupFormationService
         AnalyzeUngroupedPlots(ungroupedPlots, proposedGroups);
 
         return (proposedGroups, ungroupedPlots);
+    }
+
+    private static void AddUngroupedPlots(
+        List<UngroupedPlotInfo> target,
+        IEnumerable<PlotClusterInfo> plots,
+        UngroupReason reason,
+        string reasonDescription,
+        params string[] suggestions)
+    {
+        foreach (var plot in plots)
+        {
+            target.Add(new UngroupedPlotInfo
+            {
+                Plot = plot,
+                Reason = reason,
+                ReasonDescription = reasonDescription,
+                Suggestions = new List<string>(suggestions)
+            });
+        }
     }
 
     /// <summary>
@@ -220,56 +205,38 @@ public class GroupFormationService
         if (plots.Count == 0)
             return new List<List<PlotClusterInfo>>();
 
-        // Convert eps to degrees for spatial index envelope
-        var epsInDegrees = eps / 111000.0;
+        // Approximate meters-to-degrees conversion for spatial index envelope (~111 km/degree at Vietnam's latitude)
+        var epsInDegrees = eps / MetersPerDegree;
 
-        // Build spatial index for efficient neighbor queries
         var spatialIndex = new STRtree<PlotClusterInfo>();
         foreach (var plot in plots)
         {
-            var envelope = new Envelope(
-                plot.Coordinate.X - epsInDegrees,
-                plot.Coordinate.X + epsInDegrees,
-                plot.Coordinate.Y - epsInDegrees,
-                plot.Coordinate.Y + epsInDegrees
-            );
-            spatialIndex.Insert(envelope, plot);
+            spatialIndex.Insert(CreateSearchEnvelope(plot.Coordinate, epsInDegrees), plot);
         }
         spatialIndex.Build();
 
-        // DBSCAN state
         var visited = new HashSet<PlotClusterInfo>();
         var clustered = new HashSet<PlotClusterInfo>();
         var clusters = new List<List<PlotClusterInfo>>();
 
         foreach (var plot in plots)
         {
-            if (visited.Contains(plot))
+            if (!visited.Add(plot))
                 continue;
 
-            visited.Add(plot);
-
-            // Find neighbors within eps distance
-            var neighbors = GetNeighbors(plot, plots, spatialIndex, eps);
-
+            var neighbors = GetNeighbors(plot, spatialIndex, eps, epsInDegrees);
             if (neighbors.Count < minPoints)
-            {
-                // Mark as noise (will be ungrouped later)
-                continue;
-            }
+                continue; // Noise (will be ungrouped later)
 
-            // Start a new cluster
             var cluster = new List<PlotClusterInfo>();
-            ExpandCluster(plot, neighbors, cluster, visited, clustered, spatialIndex, plots, eps, minPoints);
+            ExpandCluster(plot, neighbors, cluster, visited, clustered, spatialIndex, eps, epsInDegrees, minPoints);
 
-            // Validate cluster coherence (diameter check)
             if (IsClusterSpatiallyCoherent(cluster, eps))
             {
                 clusters.Add(cluster);
             }
             else
             {
-                // Split incoherent cluster
                 Console.WriteLine($"🔧 Splitting incoherent cluster of {cluster.Count} plots");
                 var subClusters = SplitByDiameter(cluster, eps);
                 Console.WriteLine($"   → Created {subClusters.Count} sub-clusters");
@@ -280,27 +247,23 @@ public class GroupFormationService
         return clusters;
     }
 
+    private static Envelope CreateSearchEnvelope(Point coordinate, double epsInDegrees) =>
+        new(
+            coordinate.X - epsInDegrees,
+            coordinate.X + epsInDegrees,
+            coordinate.Y - epsInDegrees,
+            coordinate.Y + epsInDegrees);
+
     /// <summary>
     /// Get neighbors within eps distance using spatial index
     /// </summary>
     private List<PlotClusterInfo> GetNeighbors(
         PlotClusterInfo plot,
-        List<PlotClusterInfo> allPlots,
         STRtree<PlotClusterInfo> spatialIndex,
-        double eps)
+        double eps,
+        double epsInDegrees)
     {
-        // Convert eps from meters to degrees (approximate for envelope)
-        // At Vietnam's latitude (~10-20°), 1 degree ≈ 111 km
-        var epsInDegrees = eps / 111000.0;
-
-        var envelope = new Envelope(
-            plot.Coordinate.X - epsInDegrees,
-            plot.Coordinate.X + epsInDegrees,
-            plot.Coordinate.Y - epsInDegrees,
-            plot.Coordinate.Y + epsInDegrees
-        );
-
-        var candidates = spatialIndex.Query(envelope).Cast<PlotClusterInfo>();
+        var candidates = spatialIndex.Query(CreateSearchEnvelope(plot.Coordinate, epsInDegrees));
         var neighbors = new List<PlotClusterInfo>();
 
         foreach (var candidate in candidates)
@@ -308,9 +271,7 @@ public class GroupFormationService
             if (candidate == plot)
                 continue;
 
-            // Use geodesic distance (accurate for lat/lon)
-            var distance = CalculateDistanceInMeters(plot.Coordinate, candidate.Coordinate);
-            if (distance <= eps)
+            if (CalculateDistanceInMeters(plot.Coordinate, candidate.Coordinate) <= eps)
             {
                 neighbors.Add(candidate);
             }
@@ -320,13 +281,10 @@ public class GroupFormationService
     }
 
     /// <summary>
-    /// Calculate geodesic distance between two points in meters
-    /// Uses Haversine formula for lat/lon coordinates
+    /// Calculate geodesic distance between two points in meters using the Haversine formula
     /// </summary>
-    private double CalculateDistanceInMeters(Point point1, Point point2)
+    private static double CalculateDistanceInMeters(Point point1, Point point2)
     {
-        const double EarthRadiusMeters = 6371000.0;
-
         var lat1 = point1.Y * Math.PI / 180.0;
         var lat2 = point2.Y * Math.PI / 180.0;
         var deltaLat = (point2.Y - point1.Y) * Math.PI / 180.0;
@@ -351,8 +309,8 @@ public class GroupFormationService
         HashSet<PlotClusterInfo> visited,
         HashSet<PlotClusterInfo> clustered,
         STRtree<PlotClusterInfo> spatialIndex,
-        List<PlotClusterInfo> allPlots,
         double eps,
+        double epsInDegrees,
         int minPoints)
     {
         cluster.Add(plot);
@@ -364,11 +322,9 @@ public class GroupFormationService
         {
             var current = queue.Dequeue();
 
-            if (!visited.Contains(current))
+            if (visited.Add(current))
             {
-                visited.Add(current);
-                var currentNeighbors = GetNeighbors(current, allPlots, spatialIndex, eps);
-
+                var currentNeighbors = GetNeighbors(current, spatialIndex, eps, epsInDegrees);
                 if (currentNeighbors.Count >= minPoints)
                 {
                     foreach (var neighbor in currentNeighbors)
@@ -381,10 +337,9 @@ public class GroupFormationService
                 }
             }
 
-            if (!clustered.Contains(current))
+            if (clustered.Add(current))
             {
                 cluster.Add(current);
-                clustered.Add(current);
             }
         }
     }
@@ -426,51 +381,32 @@ public class GroupFormationService
     {
         var subClusters = new List<List<PlotClusterInfo>>();
         var remaining = new HashSet<PlotClusterInfo>(cluster);
+        var maxDiameter = eps * 2;
 
-        while (remaining.Any())
+        while (remaining.Count > 0)
         {
             var seed = remaining
-                .Select(p => new
-                {
-                    Plot = p,
-                    NeighborCount = remaining.Count(other =>
-                        CalculateDistanceInMeters(p.Coordinate, other.Coordinate) <= eps)
-                })
-                .OrderByDescending(x => x.NeighborCount)
-                .First()
-                .Plot;
+                .OrderByDescending(p => remaining.Count(other =>
+                    CalculateDistanceInMeters(p.Coordinate, other.Coordinate) <= eps))
+                .First();
 
             var subCluster = new List<PlotClusterInfo> { seed };
             remaining.Remove(seed);
 
-            bool added = true;
-            while (added)
+            while (true)
             {
-                added = false;
-                var candidates = remaining
-                    .Where(p => {
-                        // Check if adding this plot keeps ALL pairwise distances <= 2*eps
-                        foreach (var existing in subCluster)
-                        {
-                            var dist = CalculateDistanceInMeters(existing.Coordinate, p.Coordinate);
-                            if (dist > eps * 2)
-                                return false;
-                        }
-                        return true;
-                    })
-                    .OrderBy(p => {
-                        var centroid = CalculateCentroid(subCluster);
-                        return CalculateDistanceInMeters(p.Coordinate, centroid);
-                    })
-                    .ToList();
+                var centroid = CalculateCentroid(subCluster);
+                var toAdd = remaining
+                    .Where(p => subCluster.All(existing =>
+                        CalculateDistanceInMeters(existing.Coordinate, p.Coordinate) <= maxDiameter))
+                    .OrderBy(p => CalculateDistanceInMeters(p.Coordinate, centroid))
+                    .FirstOrDefault();
 
-                if (candidates.Any())
-                {
-                    var toAdd = candidates.First();
-                    subCluster.Add(toAdd);
-                    remaining.Remove(toAdd);
-                    added = true;
-                }
+                if (toAdd == null)
+                    break;
+
+                subCluster.Add(toAdd);
+                remaining.Remove(toAdd);
             }
 
             if (IsClusterSpatiallyCoherent(subCluster, eps))
@@ -485,7 +421,7 @@ public class GroupFormationService
     /// <summary>
     /// Calculate centroid of cluster
     /// </summary>
-    private Point CalculateCentroid(List<PlotClusterInfo> cluster)
+    private static Point CalculateCentroid(List<PlotClusterInfo> cluster)
     {
         if (cluster.Count == 0)
             return null!;
@@ -495,13 +431,13 @@ public class GroupFormationService
 
         var avgX = cluster.Average(p => p.Coordinate.X);
         var avgY = cluster.Average(p => p.Coordinate.Y);
-        return new Point(avgX, avgY) { SRID = 4326 };
+        return new Point(avgX, avgY) { SRID = Wgs84Srid };
     }
 
     /// <summary>
     /// Temporal clustering by planting date
     /// </summary>
-    private List<List<PlotClusterInfo>> TemporalClustering(
+    private static List<List<PlotClusterInfo>> TemporalClustering(
         List<PlotClusterInfo> plots,
         int toleranceDays)
     {
@@ -517,28 +453,26 @@ public class GroupFormationService
             {
                 clusterStartDate = plot.PlantingDate;
                 currentCluster.Add(plot);
+                continue;
             }
-            else
-            {
-                var daysDiff = (plot.PlantingDate - clusterStartDate.Value).Days;
 
-                if (Math.Abs(daysDiff) <= toleranceDays)
-                {
-                    currentCluster.Add(plot);
-                }
-                else
-                {
-                    if (currentCluster.Any())
-                    {
-                        clusters.Add(currentCluster);
-                    }
-                    currentCluster = new List<PlotClusterInfo> { plot };
-                    clusterStartDate = plot.PlantingDate;
-                }
+            var daysDiff = (plot.PlantingDate - clusterStartDate.Value).Days;
+            if (Math.Abs(daysDiff) <= toleranceDays)
+            {
+                currentCluster.Add(plot);
+                continue;
             }
+
+            if (currentCluster.Count > 0)
+            {
+                clusters.Add(currentCluster);
+            }
+
+            currentCluster = new List<PlotClusterInfo> { plot };
+            clusterStartDate = plot.PlantingDate;
         }
 
-        if (currentCluster.Any())
+        if (currentCluster.Count > 0)
         {
             clusters.Add(currentCluster);
         }
@@ -547,9 +481,6 @@ public class GroupFormationService
     }
 
     /// <summary>
-    /// Split large cluster into multiple groups
-    /// </summary>
-    /// <summary>
     /// Split large cluster while maintaining spatial coherence
     /// </summary>
     private List<List<PlotClusterInfo>> SplitLargeCluster(
@@ -557,57 +488,30 @@ public class GroupFormationService
         GroupingParameters parameters)
     {
         var result = new List<List<PlotClusterInfo>>();
-
-        // Create a working list we can remove from
         var remainingPlots = new List<PlotClusterInfo>(cluster);
 
-        while (remainingPlots.Any())
+        while (remainingPlots.Count > 0)
         {
-            var currentGroup = new List<PlotClusterInfo>();
-            var currentArea = 0m;
-
-            // 1. Pick a "Seed" plot to start the new group.
-            // We pick the plot that is furthest West (Min X) or North (Max Y) 
-            // to start 'eating' the cluster from one edge, rather than the middle.
+            // Pick the westernmost plot as seed to grow from an edge rather than the middle
             var seed = remainingPlots.OrderBy(p => p.Coordinate.X).First();
-
-            currentGroup.Add(seed);
-            currentArea += seed.Plot.Area;
+            var currentGroup = new List<PlotClusterInfo> { seed };
+            var currentArea = seed.Plot.Area;
             remainingPlots.Remove(seed);
 
-            // 2. Grow the group by adding the nearest available neighbors
-            bool groupIsFull = false;
-
-            while (!groupIsFull && remainingPlots.Any())
+            // Grow the group by adding the nearest available neighbors within constraints
+            while (remainingPlots.Count > 0 && currentGroup.Count < parameters.MaxPlotsPerGroup)
             {
-                // Find the centroid of the current growing group
                 var groupCentroid = CalculateCentroid(currentGroup);
-
-                // Find the nearest ungrouped plot to this centroid
                 var nearestNeighbor = remainingPlots
-                    .Select(p => new {
-                        Plot = p,
-                        Distance = CalculateDistanceInMeters(p.Coordinate, groupCentroid)
-                    })
-                    .OrderBy(x => x.Distance)
-                    .First()
-                    .Plot;
+                    .OrderBy(p => CalculateDistanceInMeters(p.Coordinate, groupCentroid))
+                    .First();
 
-                // Check constraints
-                bool fitsArea = (currentArea + nearestNeighbor.Plot.Area) <= parameters.MaxGroupArea;
-                bool fitsCount = currentGroup.Count < parameters.MaxPlotsPerGroup;
+                if (currentArea + nearestNeighbor.Plot.Area > parameters.MaxGroupArea)
+                    break;
 
-                if (fitsArea && fitsCount)
-                {
-                    currentGroup.Add(nearestNeighbor);
-                    currentArea += nearestNeighbor.Plot.Area;
-                    remainingPlots.Remove(nearestNeighbor);
-                }
-                else
-                {
-                    // Group is full (either by area or count)
-                    groupIsFull = true;
-                }
+                currentGroup.Add(nearestNeighbor);
+                currentArea += nearestNeighbor.Plot.Area;
+                remainingPlots.Remove(nearestNeighbor);
             }
 
             result.Add(currentGroup);
@@ -636,7 +540,7 @@ public class GroupFormationService
             }
         }
 
-        if (!geometries.Any())
+        if (geometries.Count == 0)
             return null;
 
         try
@@ -645,27 +549,19 @@ public class GroupFormationService
             var buffered = union.Buffer(bufferDistance);
             var smoothed = buffered.Buffer(-bufferDistance * 0.3);
 
-            if (smoothed is Polygon polygon)
+            return smoothed switch
             {
-                return polygon;
-            }
-            else if (smoothed is MultiPolygon multiPolygon)
-            {
-                return (Polygon)multiPolygon.ConvexHull();
-            }
-            else
-            {
-                return (Polygon)union.ConvexHull();
-            }
+                Polygon polygon => polygon,
+                MultiPolygon multiPolygon => (Polygon)multiPolygon.ConvexHull(),
+                _ => (Polygon)union.ConvexHull()
+            };
         }
         catch
         {
             try
             {
                 var union = UnaryUnionOp.Union(geometries);
-                if (union is Polygon polygon)
-                    return polygon;
-                return (Polygon)union.ConvexHull();
+                return union is Polygon polygon ? polygon : (Polygon)union.ConvexHull();
             }
             catch
             {
@@ -684,45 +580,37 @@ public class GroupFormationService
         double borderBuffer = 10)
     {
         var plantingDates = plots.Select(p => p.PlantingDate).OrderBy(d => d).ToList();
-        var minDate = plantingDates.First();
-        var maxDate = plantingDates.Last();
-        var medianDate = plantingDates[plantingDates.Count / 2];
-
         var groupBoundary = CalculateGroupBoundary(plots, borderBuffer);
-
-        Point centroid;
-        if (groupBoundary != null)
-        {
-            var boundaryCentroid = groupBoundary.Centroid;
-            centroid = new Point(boundaryCentroid.X, boundaryCentroid.Y) { SRID = 4326 };
-        }
-        else
-        {
-            var coordinates = plots.Select(p => p.Coordinate).Where(c => c != null).ToArray();
-            if (coordinates.Any())
-            {
-                var avgX = coordinates.Average(c => c.X);
-                var avgY = coordinates.Average(c => c.Y);
-                centroid = new Point(avgX, avgY) { SRID = 4326 };
-            }
-            else
-            {
-                centroid = new Point(0, 0) { SRID = 4326 };
-            }
-        }
 
         return new ProposedGroup
         {
             GroupNumber = groupNumber,
             RiceVarietyId = riceVarietyId,
-            PlantingWindowStart = minDate,
-            PlantingWindowEnd = maxDate,
-            MedianPlantingDate = medianDate,
+            PlantingWindowStart = plantingDates[0],
+            PlantingWindowEnd = plantingDates[^1],
+            MedianPlantingDate = plantingDates[plantingDates.Count / 2],
             Plots = plots,
-            Centroid = centroid,
+            Centroid = CalculateGroupCentroid(groupBoundary, plots),
             GroupBoundary = groupBoundary,
             TotalArea = plots.Sum(p => p.Plot.Area)
         };
+    }
+
+    private static Point CalculateGroupCentroid(Polygon? groupBoundary, List<PlotClusterInfo> plots)
+    {
+        if (groupBoundary != null)
+        {
+            var boundaryCentroid = groupBoundary.Centroid;
+            return new Point(boundaryCentroid.X, boundaryCentroid.Y) { SRID = Wgs84Srid };
+        }
+
+        var coordinates = plots.Select(p => p.Coordinate).Where(c => c != null).ToArray();
+        if (coordinates.Length == 0)
+            return new Point(0, 0) { SRID = Wgs84Srid };
+
+        var avgX = coordinates.Average(c => c.X);
+        var avgY = coordinates.Average(c => c.Y);
+        return new Point(avgX, avgY) { SRID = Wgs84Srid };
     }
 
     /// <summary>
@@ -741,7 +629,7 @@ public class GroupFormationService
                 .Where(g => g.RiceVarietyId == ungrouped.Plot.RiceVarietyId)
                 .ToList();
 
-            if (sameVarietyGroups.Any())
+            if (sameVarietyGroups.Count > 0)
             {
                 var nearestGroup = sameVarietyGroups
                     .Select(g => new
@@ -758,15 +646,14 @@ public class GroupFormationService
                 if (nearestGroup.Distance < 5000)
                 {
                     ungrouped.Suggestions.Add(
-                        $"Assign to Group {nearestGroup.Group.GroupNumber} manually ({nearestGroup.Distance:F0}m away)"
-                    );
+                        $"Gán thủ công vào Nhóm {nearestGroup.Group.GroupNumber} (cách {nearestGroup.Distance:F0}m)");
                 }
             }
 
-            if (ungrouped.Reason == UngroupReason.IsolatedLocation || ungrouped.Reason == UngroupReason.TooFewPlots)
+            if (ungrouped.Reason is UngroupReason.IsolatedLocation or UngroupReason.TooFewPlots)
             {
-                ungrouped.Suggestions.Add("Create exception group if multiple isolated plots exist nearby");
-                ungrouped.Suggestions.Add("Consider adjusting proximity threshold parameter");
+                ungrouped.Suggestions.Add("Tạo nhóm ngoại lệ nếu có nhiều thửa cô lập gần đó");
+                ungrouped.Suggestions.Add("Xem xét điều chỉnh thông số ngưỡng khoảng cách");
             }
         }
     }

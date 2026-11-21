@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using NetTopologySuite.IO;
+using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
@@ -85,43 +85,31 @@ public class GetPlotsByYearSeasonQueryHandler
                      p.Farmer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)));
             }
 
-            // Get plots with includes
-            var plotsQuery = _unitOfWork.Repository<Plot>()
+            IQueryable<Plot> plotsQuery = _unitOfWork.Repository<Plot>()
                 .GetQueryable()
                 .Where(predicate)
                 .Include(p => p.Farmer)
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
                 .Include(p => p.PlotCultivations.Where(pc => pc.SeasonId == yearSeason.SeasonId))
-                    .ThenInclude(pc => pc.RiceVariety)
-                .AsQueryable();
+                    .ThenInclude(pc => pc.RiceVariety);
 
-            // Filter by group if specified
             if (request.GroupId.HasValue)
             {
-                plotsQuery = plotsQuery.Where(p => 
-                    p.GroupPlots.Any(gp => 
-                        gp.GroupId == request.GroupId.Value && 
+                plotsQuery = plotsQuery.Where(p =>
+                    p.GroupPlots.Any(gp =>
+                        gp.GroupId == request.GroupId.Value &&
                         gp.Group.YearSeasonId == request.YearSeasonId));
             }
             else if (request.IsInGroup.HasValue)
             {
-                if (request.IsInGroup.Value)
-                {
-                    plotsQuery = plotsQuery.Where(p => 
-                        p.GroupPlots.Any(gp => gp.Group.YearSeasonId == request.YearSeasonId));
-                }
-                else
-                {
-                    plotsQuery = plotsQuery.Where(p => 
-                        !p.GroupPlots.Any(gp => gp.Group.YearSeasonId == request.YearSeasonId));
-                }
+                plotsQuery = request.IsInGroup.Value
+                    ? plotsQuery.Where(p => p.GroupPlots.Any(gp => gp.Group.YearSeasonId == request.YearSeasonId))
+                    : plotsQuery.Where(p => !p.GroupPlots.Any(gp => gp.Group.YearSeasonId == request.YearSeasonId));
             }
 
-            // Get total count before pagination
             var totalCount = await plotsQuery.CountAsync(cancellationToken);
 
-            // Apply pagination
             var plots = await plotsQuery
                 .OrderBy(p => p.SoThua ?? 0)
                 .ThenBy(p => p.SoTo ?? 0)
@@ -129,60 +117,10 @@ public class GetPlotsByYearSeasonQueryHandler
                 .Take(request.PageSize)
                 .ToListAsync(cancellationToken);
 
-            // Map to DTOs
-            var geoJsonWriter = new GeoJsonWriter();
-            var dtos = new List<PlotWithSeasonInfoDto>();
+            var dtos = plots
+                .Select(plot => MapToDto(plot, yearSeason, request.YearSeasonId))
+                .ToList();
 
-            foreach (var plot in plots)
-            {
-                var plotCultivation = plot.PlotCultivations.FirstOrDefault();
-                var groupPlot = plot.GroupPlots.FirstOrDefault(gp => 
-                    gp.Group.YearSeasonId == request.YearSeasonId);
-
-                var dto = new PlotWithSeasonInfoDto
-                {
-                    // Plot info
-                    PlotId = plot.Id,
-                    FarmerId = plot.FarmerId,
-                    FarmerName = plot.Farmer?.FullName ?? "Unknown",
-                    FarmerPhoneNumber = plot.Farmer?.PhoneNumber,
-                    SoThua = plot.SoThua,
-                    SoTo = plot.SoTo,
-                    Area = plot.Area,
-                    SoilType = plot.SoilType,
-                    PlotStatus = plot.Status,
-                    BoundaryGeoJson = plot.Boundary != null ? geoJsonWriter.Write(plot.Boundary) : null,
-                    CoordinateGeoJson = plot.Coordinate != null ? geoJsonWriter.Write(plot.Coordinate) : null,
-                    GroupId = groupPlot?.GroupId,
-                    GroupName = groupPlot?.Group?.GroupName,
-
-                    // YearSeason info
-                    YearSeasonId = yearSeason.Id,
-                    SeasonName = yearSeason.Season?.SeasonName ?? "Unknown",
-                    Year = yearSeason.Year,
-                    AllowFarmerSelection = yearSeason.RiceVarietyId == null,
-                    YearSeasonRiceVarietyId = yearSeason.RiceVarietyId,
-                    YearSeasonRiceVarietyName = yearSeason.RiceVariety?.VarietyName,
-
-                    // PlotCultivation info
-                    PlotCultivationId = plotCultivation?.Id,
-                    SelectedRiceVarietyId = plotCultivation?.RiceVarietyId,
-                    SelectedRiceVarietyName = plotCultivation?.RiceVariety?.VarietyName,
-                    SelectedPlantingDate = plotCultivation?.PlantingDate,
-                    CultivationStatus = plotCultivation?.Status,
-                    IsFarmerConfirmed = plotCultivation?.IsFarmerConfirmed,
-                    FarmerSelectionDate = plotCultivation?.FarmerSelectionDate,
-                    FarmerSelectionNotes = plotCultivation?.FarmerSelectionNotes,
-
-                    // Computed fields
-                    HasMadeSelection = plotCultivation != null,
-                    SelectionStatusMessage = BuildSelectionStatusMessage(yearSeason, plotCultivation)
-                };
-
-                dtos.Add(dto);
-            }
-
-            // Filter by selection status if specified
             if (request.HasMadeSelection.HasValue)
             {
                 dtos = dtos.Where(d => d.HasMadeSelection == request.HasMadeSelection.Value).ToList();
@@ -202,8 +140,8 @@ public class GetPlotsByYearSeasonQueryHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Error fetching plots for YearSeason {YearSeasonId}", 
+            _logger.LogError(ex,
+                "Error fetching plots for YearSeason {YearSeasonId}",
                 request.YearSeasonId);
             return PagedResult<IEnumerable<PlotWithSeasonInfoDto>>.Failure(
                 error: "An error occurred while fetching plots",
@@ -211,26 +149,62 @@ public class GetPlotsByYearSeasonQueryHandler
         }
     }
 
+    private static PlotWithSeasonInfoDto MapToDto(Plot plot, YearSeason yearSeason, Guid yearSeasonId)
+    {
+        var plotCultivation = plot.PlotCultivations.FirstOrDefault();
+        var groupPlot = plot.GroupPlots.FirstOrDefault(gp => gp.Group.YearSeasonId == yearSeasonId);
+
+        return new PlotWithSeasonInfoDto
+        {
+            PlotId = plot.Id,
+            FarmerId = plot.FarmerId,
+            FarmerName = plot.Farmer?.FullName ?? "Unknown",
+            FarmerPhoneNumber = plot.Farmer?.PhoneNumber,
+            SoThua = plot.SoThua,
+            SoTo = plot.SoTo,
+            Area = plot.Area,
+            SoilType = plot.SoilType,
+            PlotStatus = plot.Status,
+            BoundaryGeoJson = PlotGeometryHelper.SerializeGeometry(plot.Boundary),
+            CoordinateGeoJson = PlotGeometryHelper.SerializeGeometry(plot.Coordinate),
+            GroupId = groupPlot?.GroupId,
+            GroupName = groupPlot?.Group?.GroupName,
+
+            YearSeasonId = yearSeason.Id,
+            SeasonName = yearSeason.Season?.SeasonName ?? "Unknown",
+            Year = yearSeason.Year,
+            AllowFarmerSelection = yearSeason.RiceVarietyId == null,
+            YearSeasonRiceVarietyId = yearSeason.RiceVarietyId,
+            YearSeasonRiceVarietyName = yearSeason.RiceVariety?.VarietyName,
+
+            PlotCultivationId = plotCultivation?.Id,
+            SelectedRiceVarietyId = plotCultivation?.RiceVarietyId,
+            SelectedRiceVarietyName = plotCultivation?.RiceVariety?.VarietyName,
+            SelectedPlantingDate = plotCultivation?.PlantingDate,
+            CultivationStatus = plotCultivation?.Status,
+            IsFarmerConfirmed = plotCultivation?.IsFarmerConfirmed,
+            FarmerSelectionDate = plotCultivation?.FarmerSelectionDate,
+            FarmerSelectionNotes = plotCultivation?.FarmerSelectionNotes,
+
+            HasMadeSelection = plotCultivation != null,
+            SelectionStatusMessage = BuildSelectionStatusMessage(yearSeason, plotCultivation)
+        };
+    }
+
     private static string BuildSelectionStatusMessage(YearSeason yearSeason, PlotCultivation? plotCultivation)
     {
         if (plotCultivation == null)
         {
-            if (yearSeason.RiceVarietyId == null)
-            {
-                return "Farmer can select rice variety and planting date";
-            }
-            else
-            {
-                return $"Expert has selected {yearSeason.RiceVariety?.VarietyName ?? "a rice variety"} for this season. Farmer needs to confirm planting date.";
-            }
+            return yearSeason.RiceVarietyId == null
+                ? "Farmer can select rice variety and planting date"
+                : $"Expert has selected {yearSeason.RiceVariety?.VarietyName ?? "a rice variety"} for this season. Farmer needs to confirm planting date.";
         }
 
-        if (plotCultivation.IsFarmerConfirmed)
-        {
-            return $"Selection confirmed: {plotCultivation.RiceVariety?.VarietyName} on {plotCultivation.PlantingDate:yyyy-MM-dd}";
-        }
+        var statusPrefix = plotCultivation.IsFarmerConfirmed
+            ? "Selection confirmed"
+            : "Selection pending confirmation";
 
-        return $"Selection pending confirmation: {plotCultivation.RiceVariety?.VarietyName} on {plotCultivation.PlantingDate:yyyy-MM-dd}";
+        return $"{statusPrefix}: {plotCultivation.RiceVariety?.VarietyName} on {plotCultivation.PlantingDate:yyyy-MM-dd}";
     }
 }
 

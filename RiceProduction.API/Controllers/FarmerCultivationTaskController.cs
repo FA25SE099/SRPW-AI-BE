@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationTaskDetail;
@@ -15,7 +16,7 @@ namespace RiceProduction.API.Controllers
     public class FarmerCultivationTaskController : ControllerBase
     {
         private readonly IMediator _mediator;
-        private readonly IUser  _currentUser;
+        private readonly IUser _currentUser;
 
         public FarmerCultivationTaskController(IMediator mediator, IUser currentUser)
         {
@@ -43,13 +44,9 @@ namespace RiceProduction.API.Controllers
             };
 
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
+
         [HttpGet("outstanding-tasks")]
         public async Task<IActionResult> GetOutstandingTasks([FromQuery] GetTodayTasksQuery query)
         {
@@ -62,44 +59,21 @@ namespace RiceProduction.API.Controllers
             query.FarmerId = farmerId.Value;
 
             var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
+
         [HttpGet("{cultivationTaskId}")]
         public async Task<IActionResult> GetCultivationTaskDetail([FromRoute] Guid cultivationTaskId)
         {
-            var query = new GetCultivationTaskDetailQuery
-            {
-                CultivationTaskId = cultivationTaskId
-            };
-
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            var result = await _mediator.Send(new GetCultivationTaskDetailQuery { CultivationTaskId = cultivationTaskId });
+            return this.ToIActionResult(result);
         }
 
-        
         [HttpPost("start")]
-        public async Task<IActionResult> StartCultivationTask(
-            [FromBody] StartCultivationTaskCommand command)
+        public async Task<IActionResult> StartCultivationTask([FromBody] StartCultivationTaskCommand command)
         {
             var result = await _mediator.Send(command);
-            
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
     }
 }

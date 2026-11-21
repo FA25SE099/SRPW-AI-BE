@@ -1,6 +1,6 @@
 using MediatR;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.SystemSettingRequests;
 using RiceProduction.Application.SystemSettingFeature.Commands.UpdateSystemSetting;
@@ -41,14 +41,7 @@ public class SystemSettingController : ControllerBase
                 Category = request.Category
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(query));
         }
         catch (Exception ex)
         {
@@ -70,12 +63,7 @@ public class SystemSettingController : ControllerBase
             var query = new GetSystemSettingByIdQuery { SettingId = id };
             var result = await _mediator.Send(query);
 
-            if (!result.Succeeded)
-            {
-                return NotFound(result);
-            }
-
-            return Ok(result);
+            return result.Succeeded ? Ok(result) : NotFound(result);
         }
         catch (Exception ex)
         {
@@ -92,7 +80,7 @@ public class SystemSettingController : ControllerBase
     /// <returns>Updated setting ID</returns>
     [HttpPut("{id}")]
     public async Task<ActionResult<Result<Guid>>> UpdateSystemSetting(
-        Guid id, 
+        Guid id,
         [FromBody] UpdateSystemSettingRequest request)
     {
         try
@@ -104,14 +92,7 @@ public class SystemSettingController : ControllerBase
                 SettingDescription = request.SettingDescription
             };
 
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(command));
         }
         catch (Exception ex)
         {

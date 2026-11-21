@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
 using RiceProduction.Application.ProductionPlanFeature.Commands.EditPlan;
@@ -7,6 +8,7 @@ using RiceProduction.Application.ProductionPlanFeature.Queries.GetApprovedPlan;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPendingApprovals;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanDetail;
 using RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanPlotMaterials;
+
 namespace RiceProduction.API.Controllers
 {
     [ApiController]
@@ -26,51 +28,28 @@ namespace RiceProduction.API.Controllers
         public async Task<IActionResult> GetPendingApprovals([FromQuery] GetPendingApprovalsQuery query)
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
+
         [HttpGet("approved")]
         public async Task<IActionResult> GetApprovedPlans([FromQuery] GetApprovedPlansQuery query)
         {
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("plans/{planId}")]
         public async Task<IActionResult> GetPlanDetails(Guid planId)
         {
-            var query = new GetPlanDetailsForExpertQuery { PlanId = planId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            var result = await _mediator.Send(new GetPlanDetailsForExpertQuery { PlanId = planId });
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("plans/{planId}/plot-materials")]
         public async Task<IActionResult> GetPlanPlotMaterials(Guid planId)
         {
-            var query = new GetPlanPlotMaterialsQuery { PlanId = planId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            var result = await _mediator.Send(new GetPlanPlotMaterialsQuery { PlanId = planId });
+            return this.ToIActionResult(result);
         }
 
         [HttpPut("{planId}")]
@@ -80,16 +59,16 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest("Plan ID in URL does not match Plan ID in body.");
             }
+
             command.ExpertId = _currentUser.Id;
 
             var result = await _mediator.Send(command);
-
             if (!result.Succeeded)
             {
                 return BadRequest(result);
             }
-            
-            return NoContent(); 
+
+            return NoContent();
         }
 
         [HttpPost("{planId}/approve")]
@@ -99,16 +78,11 @@ namespace RiceProduction.API.Controllers
             {
                 return BadRequest("Plan ID in URL does not match Plan ID in body.");
             }
+
             command.ExpertId = _currentUser.Id;
 
             var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
     }
 }

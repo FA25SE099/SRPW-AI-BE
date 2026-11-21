@@ -63,27 +63,10 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 return Result<Guid>.Failure("Plot not found for this cultivation plan.", "PlotNotFound");
             }
 
-            var requestedMaterialIds = request.BaseCultivationTasks
-                .SelectMany(t => t.MaterialsPerHectare)
-                .Select(m => m.MaterialId)
-                .Distinct()
-                .ToList();
-
-            if (requestedMaterialIds.Any())
+            var materialValidationResult = await ValidateMaterialsAsync(request.BaseCultivationTasks, cancellationToken);
+            if (materialValidationResult != null)
             {
-                var existingMaterialIds = await _unitOfWork.Repository<Material>()
-                    .GetQueryable()
-                    .Where(m => requestedMaterialIds.Contains(m.Id))
-                    .Select(m => m.Id)
-                    .ToListAsync(cancellationToken);
-
-                var missing = requestedMaterialIds.Except(existingMaterialIds).ToList();
-                if (missing.Any())
-                {
-                    return Result<Guid>.Failure(
-                        $"Materials not found: {string.Join(", ", missing)}",
-                        "MaterialsNotFound");
-                }
+                return materialValidationResult;
             }
 
             var existingVersions = await _unitOfWork.Repository<CultivationVersion>()
@@ -113,177 +96,23 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            var cultivationTasks = new List<CultivationTask>();
             var plotArea = plot.Area;
-            
-            // Track which tasks are newly created (to skip copying farm logs/late records)
-            var newlyCreatedTaskIndices = new HashSet<int>();
-
-            // Get all existing cultivation tasks for the current active version to copy farm logs from
-            // (except for Emergency tasks which are brand new problem-solving tasks)
             var currentActiveVersion = existingVersions.FirstOrDefault(v => v.IsActive);
-            IReadOnlyList<CultivationTask> oldCultivationTasks = new List<CultivationTask>();
-            
-            if (currentActiveVersion != null)
-            {
-                oldCultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                    filter: ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == currentActiveVersion.Id,
-                    includeProperties: q => q
-                        .Include(ct => ct.FarmLogs)
-                            .ThenInclude(fl => fl.FarmLogMaterials)
-                        .Include(ct => ct.LateFarmerRecords) // Include late records for copying
-                );
-            }
+            var oldCultivationTasks = await LoadActiveVersionTasksAsync(plotCultivation.Id, currentActiveVersion);
 
-            for (int i = 0; i < request.BaseCultivationTasks.Count; i++)
-            {
-                var taskRequest = request.BaseCultivationTasks[i];
-                
-                // Check if this is a newly created emergency task
-                bool isNewlyCreated = taskRequest.Status == TaskStatus.NewEmergency;
-                if (isNewlyCreated)
-                {
-                    newlyCreatedTaskIndices.Add(i);
-                    _logger.LogInformation(
-                        "Task at index {Index} is newly created (NewEmergency status). Will skip copying farm logs and late records.",
-                        i);
-                }
-
-                Guid? productionPlanTaskId = null;
-                ProductionPlanTask? productionPlanTask = null;
-                Guid? oldCultivationTaskId = taskRequest.CultivationPlanTaskId;
-                
-                // Frontend sends CultivationPlanTaskId which is actually an existing CultivationTask ID
-                // Look it up to get the ProductionPlanTaskId for stage/template information
-                if (taskRequest.CultivationPlanTaskId.HasValue)
-                {
-                    var existingCultivationTask = await _unitOfWork.Repository<CultivationTask>()
-                        .FindAsync(
-                            match: ct => ct.Id == taskRequest.CultivationPlanTaskId.Value,
-                            includeProperties: q => q.Include(ct => ct.ProductionPlanTask)
-                        );
-
-                    if (existingCultivationTask != null)
-                    {
-                        productionPlanTaskId = existingCultivationTask.ProductionPlanTaskId;
-                        productionPlanTask = existingCultivationTask.ProductionPlanTask;
-                        
-                        _logger.LogInformation(
-                            "Resolved ProductionPlanTaskId {ProductionPlanTaskId} from CultivationTask {CultivationTaskId} (TaskName: {TaskName})",
-                            productionPlanTaskId, taskRequest.CultivationPlanTaskId.Value, existingCultivationTask.CultivationTaskName);
-                    }
-                    else
-                    {
-                        _logger.LogWarning(
-                            "CultivationTask {CultivationTaskId} not found. Emergency task will be created without ProductionPlanTask reference.",
-                            taskRequest.CultivationPlanTaskId.Value);
-                    }
-                }
-                
-                // Convert NewEmergency status to Emergency for saving
-                var taskStatus = taskRequest.Status == TaskStatus.NewEmergency 
-                    ? TaskStatus.Emergency 
-                    : (taskRequest.Status ?? TaskStatus.Emergency);
-
-                var newTask = new CultivationTask
-                {
-                    ProductionPlanTaskId = productionPlanTaskId,
-                    PlotCultivationId = plotCultivation.Id,
-                    VersionId = newVersion.Id,
-
-                    CultivationTaskName = string.IsNullOrWhiteSpace(taskRequest.TaskName)
-                        ? (productionPlanTask?.TaskName ?? $"Emergency: {emergencyReport.AlertType}")
-                        : taskRequest.TaskName.Trim(),
-
-                    Description = string.IsNullOrWhiteSpace(taskRequest.Description)
-                        ? (productionPlanTask?.Description ?? $"Emergency intervention for {emergencyReport.Title}")
-                        : taskRequest.Description.Trim(),
-
-                    TaskType = taskRequest.TaskType ?? productionPlanTask?.TaskType ?? TaskType.PestControl,
-                    Status = taskStatus,
-                    ExecutionOrder = taskRequest.ExecutionOrder ?? (i + 1),
-                    ScheduledEndDate = taskRequest.ScheduledEndDate.HasValue
-                        ? DateTime.SpecifyKind(taskRequest.ScheduledEndDate.Value, DateTimeKind.Utc)
-                        : DateTime.UtcNow.AddDays(7),
-                    ActualStartDate = taskRequest.ActualStartDate.HasValue 
-                        ? DateTime.SpecifyKind(taskRequest.ActualStartDate.Value, DateTimeKind.Utc)
-                        : null,
-                    ActualEndDate = taskRequest.ActualEndDate.HasValue 
-                        ? DateTime.SpecifyKind(taskRequest.ActualEndDate.Value, DateTimeKind.Utc)
-                        : null,
-                    AssignedToUserId = taskRequest.DefaultAssignedToUserId,
-                    AssignedToVendorId = taskRequest.DefaultAssignedToVendorId,
-
-                    IsContingency = true,
-                    ContingencyReason = taskRequest.ContingencyReason
-                        ?? request.ResolutionReason
-                        ?? $"Emergency alert: {emergencyReport.AlertType}",
-
-                    CreatedAt = DateTime.UtcNow,
-                };
-
-                foreach (var mat in taskRequest.MaterialsPerHectare)
-                {
-                    var absoluteQuantity = mat.QuantityPerHa * plotArea;
-
-                    newTask.CultivationTaskMaterials.Add(new CultivationTaskMaterial
-                    {
-                        MaterialId = mat.MaterialId,
-                        ActualQuantity = absoluteQuantity,
-                        Notes = mat.Notes ?? $"Scaled from {mat.QuantityPerHa}/ha for {plotArea} ha - {emergencyReport.Title}"
-                    });
-                }
-
-                cultivationTasks.Add(newTask);
-                
-                // Store mapping for UAV assignment updates later
-                if (oldCultivationTaskId.HasValue)
-                {
-                    // Will use this mapping after tasks are saved and have IDs
-                    _logger.LogInformation(
-                        "Will update UAV assignments: Old CultivationTask {OldId} ? New CultivationTask (will be assigned after save)",
-                        oldCultivationTaskId.Value);
-                }
-                
-                // Log what we're about to save
-                _logger.LogInformation(
-                    "Creating task {Index}/{Total}: Name='{TaskName}', ProductionPlanTaskId={PPTId}, ExecutionOrder={Order}, Status={Status}, IsNewlyCreated={IsNewlyCreated}",
-                    i + 1, request.BaseCultivationTasks.Count, newTask.CultivationTaskName, 
-                    productionPlanTaskId, newTask.ExecutionOrder, newTask.Status, isNewlyCreated);
-            }
+            var (cultivationTasks, newlyCreatedTaskIndices) = await BuildCultivationTasksAsync(
+                request, emergencyReport, plotCultivation.Id, newVersion.Id, plotArea);
 
             await _unitOfWork.Repository<CultivationTask>().AddRangeAsync(cultivationTasks);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            
-            // VERIFY: Check if ProductionPlanTaskId was actually saved
-            var savedTaskIds = cultivationTasks.Select(t => t.Id).ToList();
-            var verifyTasks = await _unitOfWork.Repository<CultivationTask>()
-                .GetQueryable()
-                .Where(t => savedTaskIds.Contains(t.Id))
-                .Select(t => new { t.Id, t.CultivationTaskName, t.ProductionPlanTaskId, t.ExecutionOrder })
-                .ToListAsync(cancellationToken);
-            
-            var tasksWithPPTId = verifyTasks.Count(t => t.ProductionPlanTaskId.HasValue);
-            var tasksWithoutPPTId = verifyTasks.Count(t => !t.ProductionPlanTaskId.HasValue);
-            
-            _logger.LogInformation(
-                "Verification after save: {TotalTasks} tasks saved. " +
-                "With ProductionPlanTaskId: {WithPPTId}, Without: {WithoutPPTId}. " +
-                "Sample tasks: {SampleTasks}",
-                verifyTasks.Count,
-                tasksWithPPTId,
-                tasksWithoutPPTId,
-                System.Text.Json.JsonSerializer.Serialize(verifyTasks.Take(3))
-            );
 
-            // Update UAV assignments to point to new cultivation tasks
+            await VerifySavedTasksAsync(cultivationTasks, cancellationToken);
+
             await UpdateUavAssignmentsForNewVersion(
                 request.BaseCultivationTasks,
                 cultivationTasks,
                 cancellationToken);
 
-            // Copy farm logs from old cultivation tasks to new tasks
-            // Skip copying for newly created emergency tasks (NewEmergency status)
             if (oldCultivationTasks.Any())
             {
                 await CopyFarmLogsToNewTasks(
@@ -292,9 +121,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     newlyCreatedTaskIndices,
                     plotCultivation.Id,
                     cancellationToken);
-                
-                // Also copy late farmer records to new tasks
-                // Skip copying for newly created emergency tasks (NewEmergency status)
+
                 await CopyLateFarmerRecordsToNewTasks(
                     oldCultivationTasks,
                     cultivationTasks,
@@ -302,21 +129,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     cancellationToken);
             }
 
-            foreach (var oldVersion in existingVersions)
-            {
-                oldVersion.IsActive = false;
-            }
-
-            if (existingVersions.Any())
-            {
-                _unitOfWork.Repository<CultivationVersion>().UpdateRange(existingVersions);
-            }
-
-            newVersion.IsActive = true;
-            newVersion.ActivatedAt = DateTime.UtcNow;
-            _unitOfWork.Repository<CultivationVersion>().Update(newVersion);
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ActivateNewVersionAsync(existingVersions, newVersion, cancellationToken);
 
             emergencyReport.Status = AlertStatus.Resolved;
             emergencyReport.ResolvedBy = expertId;
@@ -349,6 +162,251 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         }
     }
 
+    private async Task<Result<Guid>?> ValidateMaterialsAsync(
+        List<BaseCultivationTaskRequest> taskRequests,
+        CancellationToken cancellationToken)
+    {
+        var requestedMaterialIds = taskRequests
+            .SelectMany(t => t.MaterialsPerHectare)
+            .Select(m => m.MaterialId)
+            .Distinct()
+            .ToList();
+
+        if (!requestedMaterialIds.Any())
+        {
+            return null;
+        }
+
+        var existingMaterialIds = await _unitOfWork.Repository<Material>()
+            .GetQueryable()
+            .Where(m => requestedMaterialIds.Contains(m.Id))
+            .Select(m => m.Id)
+            .ToListAsync(cancellationToken);
+
+        var missing = requestedMaterialIds.Except(existingMaterialIds).ToList();
+        return missing.Any()
+            ? Result<Guid>.Failure($"Materials not found: {string.Join(", ", missing)}", "MaterialsNotFound")
+            : null;
+    }
+
+    private async Task<IReadOnlyList<CultivationTask>> LoadActiveVersionTasksAsync(
+        Guid plotCultivationId,
+        CultivationVersion? currentActiveVersion)
+    {
+        if (currentActiveVersion == null)
+        {
+            return Array.Empty<CultivationTask>();
+        }
+
+        return await _unitOfWork.Repository<CultivationTask>().ListAsync(
+            filter: ct => ct.PlotCultivationId == plotCultivationId && ct.VersionId == currentActiveVersion.Id,
+            includeProperties: q => q
+                .Include(ct => ct.FarmLogs)
+                    .ThenInclude(fl => fl.FarmLogMaterials)
+                .Include(ct => ct.LateFarmerRecords));
+    }
+
+    private async Task<(List<CultivationTask> Tasks, HashSet<int> NewlyCreatedIndices)> BuildCultivationTasksAsync(
+        ResolveReportCommand request,
+        EmergencyReport emergencyReport,
+        Guid plotCultivationId,
+        Guid newVersionId,
+        decimal plotArea)
+    {
+        var cultivationTasks = new List<CultivationTask>();
+        var newlyCreatedTaskIndices = new HashSet<int>();
+
+        for (int i = 0; i < request.BaseCultivationTasks.Count; i++)
+        {
+            var taskRequest = request.BaseCultivationTasks[i];
+            var isNewlyCreated = taskRequest.Status == TaskStatus.NewEmergency;
+
+            if (isNewlyCreated)
+            {
+                newlyCreatedTaskIndices.Add(i);
+                _logger.LogInformation(
+                    "Task at index {Index} is newly created (NewEmergency status). Will skip copying farm logs and late records.",
+                    i);
+            }
+
+            var (productionPlanTaskId, productionPlanTask) = await ResolveProductionPlanTaskAsync(
+                taskRequest.CultivationPlanTaskId);
+
+            // Convert NewEmergency status to Emergency for saving
+            var taskStatus = isNewlyCreated
+                ? TaskStatus.Emergency
+                : taskRequest.Status ?? TaskStatus.Emergency;
+
+            var newTask = new CultivationTask
+            {
+                ProductionPlanTaskId = productionPlanTaskId,
+                PlotCultivationId = plotCultivationId,
+                VersionId = newVersionId,
+                CultivationTaskName = string.IsNullOrWhiteSpace(taskRequest.TaskName)
+                    ? productionPlanTask?.TaskName ?? $"Emergency: {emergencyReport.AlertType}"
+                    : taskRequest.TaskName.Trim(),
+                Description = string.IsNullOrWhiteSpace(taskRequest.Description)
+                    ? productionPlanTask?.Description ?? $"Emergency intervention for {emergencyReport.Title}"
+                    : taskRequest.Description.Trim(),
+                TaskType = taskRequest.TaskType ?? productionPlanTask?.TaskType ?? TaskType.PestControl,
+                Status = taskStatus,
+                ExecutionOrder = taskRequest.ExecutionOrder ?? (i + 1),
+                ScheduledEndDate = SpecifyUtc(taskRequest.ScheduledEndDate) ?? DateTime.UtcNow.AddDays(7),
+                ActualStartDate = SpecifyUtc(taskRequest.ActualStartDate),
+                ActualEndDate = SpecifyUtc(taskRequest.ActualEndDate),
+                AssignedToUserId = taskRequest.DefaultAssignedToUserId,
+                AssignedToVendorId = taskRequest.DefaultAssignedToVendorId,
+                IsContingency = true,
+                ContingencyReason = taskRequest.ContingencyReason
+                    ?? request.ResolutionReason
+                    ?? $"Emergency alert: {emergencyReport.AlertType}",
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            foreach (var mat in taskRequest.MaterialsPerHectare)
+            {
+                newTask.CultivationTaskMaterials.Add(new CultivationTaskMaterial
+                {
+                    MaterialId = mat.MaterialId,
+                    ActualQuantity = mat.QuantityPerHa * plotArea,
+                    Notes = mat.Notes ?? $"Scaled from {mat.QuantityPerHa}/ha for {plotArea} ha - {emergencyReport.Title}"
+                });
+            }
+
+            cultivationTasks.Add(newTask);
+
+            if (taskRequest.CultivationPlanTaskId.HasValue)
+            {
+                _logger.LogInformation(
+                    "Will update UAV assignments: Old CultivationTask {OldId} ? New CultivationTask (will be assigned after save)",
+                    taskRequest.CultivationPlanTaskId.Value);
+            }
+
+            _logger.LogInformation(
+                "Creating task {Index}/{Total}: Name='{TaskName}', ProductionPlanTaskId={PPTId}, ExecutionOrder={Order}, Status={Status}, IsNewlyCreated={IsNewlyCreated}",
+                i + 1, request.BaseCultivationTasks.Count, newTask.CultivationTaskName,
+                productionPlanTaskId, newTask.ExecutionOrder, newTask.Status, isNewlyCreated);
+        }
+
+        return (cultivationTasks, newlyCreatedTaskIndices);
+    }
+
+    private async Task<(Guid? ProductionPlanTaskId, ProductionPlanTask? ProductionPlanTask)> ResolveProductionPlanTaskAsync(
+        Guid? cultivationPlanTaskId)
+    {
+        if (!cultivationPlanTaskId.HasValue)
+        {
+            return (null, null);
+        }
+
+        // Frontend sends CultivationPlanTaskId which is actually an existing CultivationTask ID
+        var existingCultivationTask = await _unitOfWork.Repository<CultivationTask>()
+            .FindAsync(
+                match: ct => ct.Id == cultivationPlanTaskId.Value,
+                includeProperties: q => q.Include(ct => ct.ProductionPlanTask));
+
+        if (existingCultivationTask != null)
+        {
+            _logger.LogInformation(
+                "Resolved ProductionPlanTaskId {ProductionPlanTaskId} from CultivationTask {CultivationTaskId} (TaskName: {TaskName})",
+                existingCultivationTask.ProductionPlanTaskId,
+                cultivationPlanTaskId.Value,
+                existingCultivationTask.CultivationTaskName);
+
+            return (existingCultivationTask.ProductionPlanTaskId, existingCultivationTask.ProductionPlanTask);
+        }
+
+        _logger.LogWarning(
+            "CultivationTask {CultivationTaskId} not found. Emergency task will be created without ProductionPlanTask reference.",
+            cultivationPlanTaskId.Value);
+
+        return (null, null);
+    }
+
+    private async Task VerifySavedTasksAsync(List<CultivationTask> cultivationTasks, CancellationToken cancellationToken)
+    {
+        var savedTaskIds = cultivationTasks.Select(t => t.Id).ToList();
+        var verifyTasks = await _unitOfWork.Repository<CultivationTask>()
+            .GetQueryable()
+            .Where(t => savedTaskIds.Contains(t.Id))
+            .Select(t => new { t.Id, t.CultivationTaskName, t.ProductionPlanTaskId, t.ExecutionOrder })
+            .ToListAsync(cancellationToken);
+
+        var tasksWithPPTId = verifyTasks.Count(t => t.ProductionPlanTaskId.HasValue);
+        var tasksWithoutPPTId = verifyTasks.Count - tasksWithPPTId;
+
+        _logger.LogInformation(
+            "Verification after save: {TotalTasks} tasks saved. " +
+            "With ProductionPlanTaskId: {WithPPTId}, Without: {WithoutPPTId}. " +
+            "Sample tasks: {SampleTasks}",
+            verifyTasks.Count,
+            tasksWithPPTId,
+            tasksWithoutPPTId,
+            System.Text.Json.JsonSerializer.Serialize(verifyTasks.Take(3)));
+    }
+
+    private async Task ActivateNewVersionAsync(
+        IReadOnlyList<CultivationVersion> existingVersions,
+        CultivationVersion newVersion,
+        CancellationToken cancellationToken)
+    {
+        foreach (var oldVersion in existingVersions)
+        {
+            oldVersion.IsActive = false;
+        }
+
+        if (existingVersions.Any())
+        {
+            _unitOfWork.Repository<CultivationVersion>().UpdateRange(existingVersions);
+        }
+
+        newVersion.IsActive = true;
+        newVersion.ActivatedAt = DateTime.UtcNow;
+        _unitOfWork.Repository<CultivationVersion>().Update(newVersion);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private static DateTime? SpecifyUtc(DateTime? value) =>
+        value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : null;
+
+    private (CultivationTask? OldTask, bool SkippedAsNew) MatchOldTaskForCopy(
+        IReadOnlyList<CultivationTask> oldCultivationTasks,
+        CultivationTask newTask,
+        int index,
+        HashSet<int> newlyCreatedTaskIndices,
+        string recordLabel)
+    {
+        if (newlyCreatedTaskIndices.Contains(index))
+        {
+            _logger.LogInformation(
+                "Skipping {RecordLabel} copy for newly created task {TaskId} at index {Index} (Name: '{TaskName}')",
+                recordLabel, newTask.Id, index, newTask.CultivationTaskName);
+            return (null, true);
+        }
+
+        if (!newTask.ProductionPlanTaskId.HasValue)
+        {
+            _logger.LogWarning(
+                "New task {TaskId} has no ProductionPlanTaskId. Skipping {RecordLabel} copy.",
+                newTask.Id, recordLabel);
+            return (null, false);
+        }
+
+        var oldTask = oldCultivationTasks.FirstOrDefault(
+            ot => ot.ProductionPlanTaskId.HasValue &&
+                  ot.ProductionPlanTaskId.Value == newTask.ProductionPlanTaskId.Value);
+
+        if (oldTask == null)
+        {
+            _logger.LogInformation(
+                "No old task found with ProductionPlanTaskId {ProductionPlanTaskId} for new task {NewTaskId} (Status: {Status}). Nothing to copy.",
+                newTask.ProductionPlanTaskId.Value, newTask.Id, newTask.Status);
+        }
+
+        return (oldTask, false);
+    }
+
     /// <summary>
     /// Copies farm logs from old cultivation tasks to new cultivation tasks based on ProductionPlanTaskId matching.
     /// Skips copying for newly created emergency tasks (those sent with NewEmergency status).
@@ -369,36 +427,17 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             for (int i = 0; i < newCultivationTasks.Count; i++)
             {
                 var newTask = newCultivationTasks[i];
-                
-                // Skip newly created emergency tasks - they shouldn't have farm logs copied
-                if (newlyCreatedTaskIndices.Contains(i))
+                var (oldTask, skippedAsNew) = MatchOldTaskForCopy(
+                    oldCultivationTasks, newTask, i, newlyCreatedTaskIndices, "farm log");
+
+                if (skippedAsNew)
                 {
                     skippedNewTasksCount++;
-                    _logger.LogInformation(
-                        "Skipping farm log copy for newly created task {TaskId} at index {Index} (Name: '{TaskName}')",
-                        newTask.Id, i, newTask.CultivationTaskName);
                     continue;
                 }
-
-                // Skip tasks without ProductionPlanTaskId
-                if (!newTask.ProductionPlanTaskId.HasValue)
-                {
-                    _logger.LogWarning(
-                        "New task {TaskId} has no ProductionPlanTaskId. Skipping farm log copy.",
-                        newTask.Id);
-                    continue;
-                }
-
-                // Find the old cultivation task with the same ProductionPlanTaskId
-                var oldTask = oldCultivationTasks.FirstOrDefault(
-                    ot => ot.ProductionPlanTaskId.HasValue && 
-                          ot.ProductionPlanTaskId.Value == newTask.ProductionPlanTaskId.Value);
 
                 if (oldTask == null)
                 {
-                    _logger.LogInformation(
-                        "No old task found with ProductionPlanTaskId {ProductionPlanTaskId} for new task {NewTaskId} (Status: {Status}). Nothing to copy.",
-                        newTask.ProductionPlanTaskId.Value, newTask.Id, newTask.Status);
                     continue;
                 }
 
@@ -410,7 +449,6 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     continue;
                 }
 
-                // Copy all farm logs from old task to new task
                 foreach (var oldLog in oldTask.FarmLogs)
                 {
                     var newLog = new FarmLog
@@ -433,7 +471,6 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                         CreatedAt = DateTime.UtcNow
                     };
 
-                    // Copy farm log materials
                     foreach (var oldMaterial in oldLog.FarmLogMaterials)
                     {
                         newLog.FarmLogMaterials.Add(new FarmLogMaterial
@@ -472,9 +509,9 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
+            _logger.LogError(ex,
                 "Error copying farm logs to new tasks. Continuing with resolution.");
-            // Don't throw - this is a nice-to-have feature, shouldn't block the resolution
+            // Don't throw - copying logs shouldn't block emergency resolution
         }
     }
 
@@ -498,36 +535,17 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             for (int i = 0; i < newCultivationTasks.Count; i++)
             {
                 var newTask = newCultivationTasks[i];
-                
-                // Skip newly created emergency tasks - they shouldn't have late records copied
-                if (newlyCreatedTaskIndices.Contains(i))
+                var (oldTask, skippedAsNew) = MatchOldTaskForCopy(
+                    oldCultivationTasks, newTask, i, newlyCreatedTaskIndices, "late record");
+
+                if (skippedAsNew)
                 {
                     skippedNewTasksCount++;
-                    _logger.LogInformation(
-                        "Skipping late record copy for newly created task {TaskId} at index {Index} (Name: '{TaskName}')",
-                        newTask.Id, i, newTask.CultivationTaskName);
                     continue;
                 }
-
-                // Skip tasks without ProductionPlanTaskId
-                if (!newTask.ProductionPlanTaskId.HasValue)
-                {
-                    _logger.LogWarning(
-                        "New task {TaskId} has no ProductionPlanTaskId. Skipping late record copy.",
-                        newTask.Id);
-                    continue;
-                }
-
-                // Find the old cultivation task with the same ProductionPlanTaskId
-                var oldTask = oldCultivationTasks.FirstOrDefault(
-                    ot => ot.ProductionPlanTaskId.HasValue && 
-                          ot.ProductionPlanTaskId.Value == newTask.ProductionPlanTaskId.Value);
 
                 if (oldTask == null)
                 {
-                    _logger.LogInformation(
-                        "No old task found with ProductionPlanTaskId {ProductionPlanTaskId} for new task {NewTaskId}. Nothing to copy.",
-                        newTask.ProductionPlanTaskId.Value, newTask.Id);
                     continue;
                 }
 
@@ -539,19 +557,16 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     continue;
                 }
 
-                // Copy all late farmer records from old task to new task
                 foreach (var oldRecord in oldTask.LateFarmerRecords)
                 {
-                    var newRecord = new LateFarmerRecord
+                    newLateRecords.Add(new LateFarmerRecord
                     {
                         FarmerId = oldRecord.FarmerId,
                         CultivationTaskId = newTask.Id,
                         RecordedAt = oldRecord.RecordedAt,
                         Notes = oldRecord.Notes + " [Copied from previous version]",
                         CreatedAt = DateTime.UtcNow
-                    };
-
-                    newLateRecords.Add(newRecord);
+                    });
                     copiedRecordsCount++;
                 }
 
@@ -578,9 +593,9 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
+            _logger.LogError(ex,
                 "Error copying late farmer records to new tasks. Continuing with resolution.");
-            // Don't throw - this is a nice-to-have feature, shouldn't block the resolution
+            // Don't throw - copying late records shouldn't block emergency resolution
         }
     }
 

@@ -45,96 +45,40 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
                 (!yearSeason.FarmerSelectionWindowStart.HasValue || now >= yearSeason.FarmerSelectionWindowStart.Value) &&
                 (!yearSeason.FarmerSelectionWindowEnd.HasValue || now <= yearSeason.FarmerSelectionWindowEnd.Value);
 
-            // Get all farmers in the cluster
-            var farmers = await _unitOfWork.FarmerRepository
-                .ListAsync(f => f.ClusterId == yearSeason.ClusterId);
-            var farmersList = farmers.ToList();
+            var farmersList = (await _unitOfWork.FarmerRepository
+                .ListAsync(f => f.ClusterId == yearSeason.ClusterId)).ToList();
             var farmerIds = farmersList.Select(f => f.Id).ToList();
             var totalFarmers = farmersList.Count;
 
-            // Get all plots for these farmers
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => farmerIds.Contains(p.FarmerId));
-            var plotsList = plots.ToList();
-            var plotIds = plotsList.Select(p => p.Id).ToList();
+            var plotsList = (await _unitOfWork.Repository<Plot>()
+                .ListAsync(p => farmerIds.Contains(p.FarmerId))).ToList();
+            var plotById = plotsList.ToDictionary(p => p.Id);
+            var plotIds = plotById.Keys.ToList();
 
-            // Get plot cultivations for this season
             var cultivations = await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
                 .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
                 .ToListAsync(cancellationToken);
 
-            // Get farmers with selections
             var farmersWithSelection = cultivations
-                .Select(pc => plotsList.First(p => p.Id == pc.PlotId).FarmerId)
+                .Select(pc => plotById[pc.PlotId].FarmerId)
                 .Distinct()
                 .ToList();
 
-            var farmersPending = totalFarmers - farmersWithSelection.Count;
-            var completionRate = totalFarmers > 0 
-                ? (decimal)farmersWithSelection.Count / totalFarmers * 100 
-                : 0;
-
-            // Get variety selections
             var varietyIds = cultivations.Select(pc => pc.RiceVarietyId).Distinct().ToList();
-            var varieties = await _unitOfWork.Repository<RiceVariety>()
-                .ListAsync(rv => varietyIds.Contains(rv.Id));
-            var varietyDict = varieties.ToDictionary(rv => rv.Id);
+            var varietyDict = (await _unitOfWork.Repository<RiceVariety>()
+                .ListAsync(rv => varietyIds.Contains(rv.Id)))
+                .ToDictionary(rv => rv.Id);
 
-            // Get previous season data for comparison
             var previousCultivations = await GetPreviousSeasonCultivationsAsync(
                 yearSeason, plotIds, cancellationToken);
 
-            var varietySelections = cultivations
-                .GroupBy(pc => pc.RiceVarietyId)
-                .Select(g =>
-                {
-                    var varietyId = g.Key;
-                    var currentCount = g.Count();
-                    var previousCount = previousCultivations.Count(pc => pc.RiceVarietyId == varietyId);
+            var varietySelections = BuildVarietySelections(
+                cultivations, previousCultivations, varietyDict, yearSeason.RiceVarietyId, totalFarmers);
 
-                    return new VarietySelectionSummary
-                    {
-                        VarietyId = varietyId,
-                        VarietyName = varietyDict.GetValueOrDefault(varietyId)?.VarietyName ?? "Unknown",
-                        SelectedByCount = currentCount,
-                        PreviousSeasonCount = previousCount,
-                        IsRecommended = varietyId == yearSeason.RiceVarietyId, // Cluster-selected variety
-                        NewSelections = 0, // Can be enhanced with farmer tracking
-                        SwitchedIn = Math.Max(0, currentCount - previousCount),
-                        SwitchedOut = Math.Max(0, previousCount - currentCount),
-                        PercentageOfTotal = totalFarmers > 0 
-                            ? (decimal)currentCount / totalFarmers * 100 
-                            : 0
-                    };
-                })
-                .OrderByDescending(v => v.SelectedByCount)
-                .ToList();
-
-            // Build pending farmers list
-            var farmerDict = farmersList.ToDictionary(f => f.Id);
             var pendingFarmerIds = farmerIds.Except(farmersWithSelection).ToList();
-            var pendingFarmers = pendingFarmerIds.Select(fid =>
-            {
-                var farmer = farmerDict.GetValueOrDefault(fid);
-                var farmerPlots = plotsList.Where(p => p.FarmerId == fid).ToList();
-                var previousVariety = previousCultivations
-                    .Where(pc => farmerPlots.Any(p => p.Id == pc.PlotId))
-                    .Select(pc => varietyDict.GetValueOrDefault(pc.RiceVarietyId)?.VarietyName)
-                    .FirstOrDefault();
-
-                return new PendingFarmerInfo
-                {
-                    FarmerId = fid,
-                    FarmerName = farmer?.FullName ?? "Unknown",
-                    PhoneNumber = farmer?.PhoneNumber,
-                    PreviousVariety = previousVariety,
-                    PlotCount = farmerPlots.Count,
-                    TotalArea = farmerPlots.Sum(p => p.Area)
-                };
-            })
-            .OrderBy(pf => pf.FarmerName)
-            .ToList();
+            var pendingFarmers = BuildPendingFarmers(
+                pendingFarmerIds, farmersList, plotsList, previousCultivations, varietyDict);
 
             var result = new YearSeasonFarmerSelectionsDto
             {
@@ -152,8 +96,8 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
                 {
                     TotalFarmers = totalFarmers,
                     FarmersWithSelection = farmersWithSelection.Count,
-                    FarmersPending = farmersPending,
-                    SelectionCompletionRate = completionRate,
+                    FarmersPending = totalFarmers - farmersWithSelection.Count,
+                    SelectionCompletionRate = CalculatePercentage(farmersWithSelection.Count, totalFarmers),
                     VarietySelections = varietySelections,
                     PendingFarmers = pendingFarmers
                 }
@@ -163,13 +107,87 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Error getting farmer selections for YearSeason {YearSeasonId}", 
+            _logger.LogError(ex,
+                "Error getting farmer selections for YearSeason {YearSeasonId}",
                 request.YearSeasonId);
             return Result<YearSeasonFarmerSelectionsDto>.Failure(
                 $"Error getting farmer selections: {ex.Message}");
         }
     }
+
+    private static List<VarietySelectionSummary> BuildVarietySelections(
+        List<PlotCultivation> cultivations,
+        List<PlotCultivation> previousCultivations,
+        Dictionary<Guid, RiceVariety> varietyDict,
+        Guid? recommendedVarietyId,
+        int totalFarmers)
+    {
+        var previousCountByVariety = previousCultivations
+            .GroupBy(pc => pc.RiceVarietyId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        return cultivations
+            .GroupBy(pc => pc.RiceVarietyId)
+            .Select(g =>
+            {
+                var varietyId = g.Key;
+                var currentCount = g.Count();
+                var previousCount = previousCountByVariety.GetValueOrDefault(varietyId);
+
+                return new VarietySelectionSummary
+                {
+                    VarietyId = varietyId,
+                    VarietyName = varietyDict.GetValueOrDefault(varietyId)?.VarietyName ?? "Unknown",
+                    SelectedByCount = currentCount,
+                    PreviousSeasonCount = previousCount,
+                    IsRecommended = varietyId == recommendedVarietyId,
+                    NewSelections = 0,
+                    SwitchedIn = Math.Max(0, currentCount - previousCount),
+                    SwitchedOut = Math.Max(0, previousCount - currentCount),
+                    PercentageOfTotal = CalculatePercentage(currentCount, totalFarmers)
+                };
+            })
+            .OrderByDescending(v => v.SelectedByCount)
+            .ToList();
+    }
+
+    private static List<PendingFarmerInfo> BuildPendingFarmers(
+        List<Guid> pendingFarmerIds,
+        List<Farmer> farmersList,
+        List<Plot> plotsList,
+        List<PlotCultivation> previousCultivations,
+        Dictionary<Guid, RiceVariety> varietyDict)
+    {
+        var farmerDict = farmersList.ToDictionary(f => f.Id);
+        var plotsByFarmerId = plotsList.ToLookup(p => p.FarmerId);
+
+        return pendingFarmerIds
+            .Select(fid =>
+            {
+                var farmer = farmerDict.GetValueOrDefault(fid);
+                var farmerPlots = plotsByFarmerId[fid].ToList();
+                var farmerPlotIds = farmerPlots.Select(p => p.Id).ToHashSet();
+                var previousVariety = previousCultivations
+                    .Where(pc => farmerPlotIds.Contains(pc.PlotId))
+                    .Select(pc => varietyDict.GetValueOrDefault(pc.RiceVarietyId)?.VarietyName)
+                    .FirstOrDefault();
+
+                return new PendingFarmerInfo
+                {
+                    FarmerId = fid,
+                    FarmerName = farmer?.FullName ?? "Unknown",
+                    PhoneNumber = farmer?.PhoneNumber,
+                    PreviousVariety = previousVariety,
+                    PlotCount = farmerPlots.Count,
+                    TotalArea = farmerPlots.Sum(p => p.Area)
+                };
+            })
+            .OrderBy(pf => pf.FarmerName)
+            .ToList();
+    }
+
+    private static decimal CalculatePercentage(int count, int total) =>
+        total > 0 ? (decimal)count / total * 100 : 0;
 
     private async Task<List<PlotCultivation>> GetPreviousSeasonCultivationsAsync(
         YearSeason currentYearSeason,
@@ -178,12 +196,11 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
     {
         try
         {
-            // Get the same season type from previous year
             var previousYear = currentYearSeason.Year - 1;
 
             var previousYearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
-                .FirstOrDefaultAsync(ys => 
+                .FirstOrDefaultAsync(ys =>
                     ys.ClusterId == currentYearSeason.ClusterId &&
                     ys.SeasonId == currentYearSeason.SeasonId &&
                     ys.Year == previousYear,
@@ -194,22 +211,17 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
                 return new List<PlotCultivation>();
             }
 
-            var previousCultivations = await _unitOfWork.Repository<PlotCultivation>()
+            return await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
-                .Where(pc => plotIds.Contains(pc.PlotId) && 
-                            pc.SeasonId == previousYearSeason.SeasonId)
+                .Where(pc => plotIds.Contains(pc.PlotId) &&
+                             pc.SeasonId == previousYearSeason.SeasonId)
                 .ToListAsync(cancellationToken);
-
-            return previousCultivations;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, 
+            _logger.LogWarning(ex,
                 "Could not retrieve previous season cultivations for comparison");
             return new List<PlotCultivation>();
         }
     }
 }
-
-
-

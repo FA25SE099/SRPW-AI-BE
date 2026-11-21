@@ -1,12 +1,12 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
 using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerById;
 using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterIdByManagerId;
 using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerList;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.ClusterManagerRequests;
-using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 
 namespace RiceProduction.API.Controllers;
@@ -23,12 +23,13 @@ public class ClusterManagerController : Controller
         _mediator = mediator;
         _logger = logger;
     }
+
     [HttpPost("get-all")]
     public async Task<ActionResult<PagedResult<List<ClusterManagerResponse>>>> GetClusterManagersPagingAndSearch([FromBody] ClusterManagerListRequest request)
     {
         try
         {
-            var query = new GetClusterManagersQuery()
+            var query = new GetClusterManagersQuery
             {
                 PageSize = request.PageSize,
                 CurrentPage = request.CurrentPage,
@@ -37,11 +38,7 @@ public class ClusterManagerController : Controller
                 FreeOrAssigned = request.FreeOrAssigned
             };
             var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(result);
         }
         catch (Exception ex)
         {
@@ -54,27 +51,16 @@ public class ClusterManagerController : Controller
     public async Task<IActionResult> CreateClusterManager([FromBody] CreateClusterManagerCommand command)
     {
         var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(result);
     }
+
     [HttpGet("Get-by-id")]
     public async Task<IActionResult> GetClusterManagerById([FromQuery] Guid clusterManagerId)
     {
         try
         {
-            var query = new GetClusterManagerByIdQuery
-            {
-                ClusterManagerId = clusterManagerId
-            };
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            var result = await _mediator.Send(new GetClusterManagerByIdQuery { ClusterManagerId = clusterManagerId });
+            return this.ToIActionResult(result);
         }
         catch (Exception ex)
         {
@@ -88,18 +74,8 @@ public class ClusterManagerController : Controller
     {
         try
         {
-            var query = new GetClusterIdByManagerIdQuery
-            {
-                ClusterManagerId = clusterManagerId
-            };
-            var result = await _mediator.Send(query);
-            
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            
-            return Ok(result);
+            var result = await _mediator.Send(new GetClusterIdByManagerIdQuery { ClusterManagerId = clusterManagerId });
+            return this.ToIActionResult(result);
         }
         catch (Exception ex)
         {

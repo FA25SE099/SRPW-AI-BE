@@ -31,7 +31,6 @@ public class ReviewStandardPlanQueryHandler :
                 "Reviewing standard plan ID: {StandardPlanId} with SowDate: {SowDate}, Area: {Area} ha",
                 request.StandardPlanId, request.SowDate, request.AreaInHectares);
 
-            // Load Standard Plan with all related entities
             var standardPlan = await _unitOfWork.Repository<StandardPlan>().FindAsync(
                 match: sp => sp.Id == request.StandardPlanId && sp.IsActive,
                 includeProperties: q => q
@@ -50,7 +49,6 @@ public class ReviewStandardPlanQueryHandler :
                     "StandardPlanNotFound");
             }
 
-            // Get material prices based on sow date
             var materialIds = standardPlan.StandardPlanStages
                 .SelectMany(s => s.StandardPlanTasks)
                 .SelectMany(t => t.StandardPlanTaskMaterials)
@@ -59,133 +57,19 @@ public class ReviewStandardPlanQueryHandler :
                 .ToList();
 
             var priceReferenceDate = DateTime.SpecifyKind(request.SowDate.Date, DateTimeKind.Utc);
+            var materialPriceMap = await GetLatestMaterialPricesAsync(materialIds, priceReferenceDate);
 
-            // Fetch latest prices valid up to the sow date
-            var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate
-            );
+            var stagesReview = standardPlan.StandardPlanStages
+                .OrderBy(s => s.SequenceOrder)
+                .Select(stage => BuildStageReview(stage, request.SowDate, request.AreaInHectares, materialPriceMap, priceReferenceDate))
+                .ToList();
 
-            var materialPriceMap = potentialPrices
-                .GroupBy(p => p.MaterialId)
-                .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
-                .ToDictionary(p => p.MaterialId, p => new { p.PricePerMaterial, p.ValidFrom });
+            var allTasks = stagesReview.SelectMany(s => s.Tasks).ToList();
+            var totalPlanCost = allTasks.Sum(t => t.EstimatedTaskCost);
+            var totalMaterialQuantity = allTasks.SelectMany(t => t.Materials).Sum(m => m.TotalQuantityNeeded);
+            DateTime? earliestTaskDate = allTasks.Count > 0 ? allTasks.Min(t => t.ScheduledStartDate) : null;
+            DateTime? latestTaskDate = allTasks.Count > 0 ? allTasks.Max(t => t.ScheduledEndDate) : null;
 
-            // Calculate timeline and costs
-            decimal totalPlanCost = 0M;
-            decimal totalMaterialQuantity = 0M;
-            var stagesReview = new List<StandardPlanStageReviewDto>();
-
-            DateTime? earliestTaskDate = null;
-            DateTime? latestTaskDate = null;
-
-            foreach (var standardStage in standardPlan.StandardPlanStages.OrderBy(s => s.SequenceOrder))
-            {
-                var tasksReview = new List<StandardPlanTaskReviewDto>();
-                DateTime? stageStartDate = null;
-                DateTime? stageEndDate = null;
-
-                foreach (var standardTask in standardStage.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
-                {
-                    decimal taskTotalCost = 0M;
-                    var scheduledStartDate = request.SowDate.AddDays(standardTask.DaysAfter);
-                    var scheduledEndDate = scheduledStartDate.AddDays(standardTask.DurationDays - 1);
-
-                    // Track stage dates
-                    if (stageStartDate == null || scheduledStartDate < stageStartDate)
-                        stageStartDate = scheduledStartDate;
-                    if (stageEndDate == null || scheduledEndDate > stageEndDate)
-                        stageEndDate = scheduledEndDate;
-
-                    // Track overall timeline
-                    if (earliestTaskDate == null || scheduledStartDate < earliestTaskDate)
-                        earliestTaskDate = scheduledStartDate;
-                    if (latestTaskDate == null || scheduledEndDate > latestTaskDate)
-                        latestTaskDate = scheduledEndDate;
-
-                    var materialsReview = new List<StandardPlanTaskMaterialReviewDto>();
-
-                    // Calculate material requirements
-                    foreach (var standardMaterial in standardTask.StandardPlanTaskMaterials)
-                    {
-                        var material = standardMaterial.Material;
-                        decimal quantityPerHa = standardMaterial.QuantityPerHa;
-                        decimal totalQuantity = quantityPerHa * request.AreaInHectares;
-                        totalMaterialQuantity += totalQuantity;
-
-                        decimal? unitPrice = null;
-                        decimal? totalCost = null;
-                        DateTime? priceDate = null;
-
-                        if (materialPriceMap.TryGetValue(standardMaterial.MaterialId, out var priceInfo))
-                        {
-                            unitPrice = priceInfo.PricePerMaterial;
-                            priceDate = priceInfo.ValidFrom;
-
-                            // Calculate cost considering amount per material unit
-                            decimal amountPerUnit = material.AmmountPerMaterial.GetValueOrDefault(1M);
-                            decimal unitsNeeded = Math.Ceiling(quantityPerHa / amountPerUnit);
-                            decimal pricePerHa = unitsNeeded * unitPrice.Value;
-                            totalCost = pricePerHa * request.AreaInHectares;
-
-                            taskTotalCost += totalCost.Value;
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                "No price found for material {MaterialId} on or before {Date}",
-                                standardMaterial.MaterialId, priceReferenceDate);
-                        }
-
-                        materialsReview.Add(new StandardPlanTaskMaterialReviewDto
-                        {
-                            MaterialId = material.Id,
-                            MaterialName = material.Name,
-                            MaterialType = material.Type,
-                            MaterialUnit = material.Unit,
-                            QuantityPerHa = quantityPerHa,
-                            TotalQuantityNeeded = totalQuantity,
-                            UnitPrice = unitPrice,
-                            TotalCost = totalCost,
-                            PriceDate = priceDate
-                        });
-                    }
-
-                    totalPlanCost += taskTotalCost;
-
-                    tasksReview.Add(new StandardPlanTaskReviewDto
-                    {
-                        TaskId = standardTask.Id,
-                        TaskName = standardTask.TaskName,
-                        Description = standardTask.Description,
-                        TaskType = standardTask.TaskType,
-                        Priority = standardTask.Priority,
-                        SequenceOrder = standardTask.SequenceOrder,
-                        DaysAfterSowing = standardTask.DaysAfter,
-                        DurationDays = standardTask.DurationDays,
-                        ScheduledStartDate = scheduledStartDate,
-                        ScheduledEndDate = scheduledEndDate,
-                        EstimatedTaskCost = taskTotalCost,
-                        EstimatedTaskCostPerHa = request.AreaInHectares > 0 
-                            ? taskTotalCost / request.AreaInHectares 
-                            : 0M,
-                        Materials = materialsReview
-                    });
-                }
-
-                stagesReview.Add(new StandardPlanStageReviewDto
-                {
-                    StageId = standardStage.Id,
-                    StageName = standardStage.StageName,
-                    SequenceOrder = standardStage.SequenceOrder,
-                    ExpectedDurationDays = standardStage.ExpectedDurationDays,
-                    Notes = standardStage.Notes,
-                    EstimatedStartDate = stageStartDate,
-                    EstimatedEndDate = stageEndDate,
-                    Tasks = tasksReview
-                });
-            }
-
-            // Build response
             var response = new StandardPlanReviewDto
             {
                 StandardPlanId = standardPlan.Id,
@@ -199,12 +83,10 @@ public class ReviewStandardPlanQueryHandler :
                 EstimatedEndDate = latestTaskDate ?? request.SowDate.AddDays(standardPlan.TotalDurationDays),
                 TotalDurationDays = standardPlan.TotalDurationDays,
                 EstimatedTotalCost = totalPlanCost,
-                EstimatedCostPerHectare = request.AreaInHectares > 0 
-                    ? totalPlanCost / request.AreaInHectares 
-                    : 0M,
+                EstimatedCostPerHectare = CalculateCostPerHectare(totalPlanCost, request.AreaInHectares),
                 Stages = stagesReview,
                 TotalStages = standardPlan.StandardPlanStages.Count,
-                TotalTasks = standardPlan.StandardPlanStages.SelectMany(s => s.StandardPlanTasks).Count(),
+                TotalTasks = allTasks.Count,
                 TotalMaterialTypes = materialIds.Count,
                 TotalMaterialQuantity = totalMaterialQuantity
             };
@@ -219,13 +101,138 @@ public class ReviewStandardPlanQueryHandler :
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Error reviewing standard plan ID: {StandardPlanId}", 
+            _logger.LogError(ex,
+                "Error reviewing standard plan ID: {StandardPlanId}",
                 request.StandardPlanId);
             return Result<StandardPlanReviewDto>.Failure(
                 "Failed to review standard plan.",
                 "ReviewStandardPlanFailed");
         }
     }
+
+    private async Task<Dictionary<Guid, MaterialPrice>> GetLatestMaterialPricesAsync(
+        List<Guid> materialIds,
+        DateTime priceReferenceDate)
+    {
+        if (materialIds.Count == 0)
+        {
+            return new Dictionary<Guid, MaterialPrice>();
+        }
+
+        var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
+            filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate);
+
+        return potentialPrices
+            .GroupBy(p => p.MaterialId)
+            .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
+            .ToDictionary(p => p.MaterialId);
+    }
+
+    private StandardPlanStageReviewDto BuildStageReview(
+        StandardPlanStage standardStage,
+        DateTime sowDate,
+        decimal areaInHectares,
+        Dictionary<Guid, MaterialPrice> materialPriceMap,
+        DateTime priceReferenceDate)
+    {
+        var tasksReview = standardStage.StandardPlanTasks
+            .OrderBy(t => t.SequenceOrder)
+            .Select(task => BuildTaskReview(task, sowDate, areaInHectares, materialPriceMap, priceReferenceDate))
+            .ToList();
+
+        return new StandardPlanStageReviewDto
+        {
+            StageId = standardStage.Id,
+            StageName = standardStage.StageName,
+            SequenceOrder = standardStage.SequenceOrder,
+            ExpectedDurationDays = standardStage.ExpectedDurationDays,
+            Notes = standardStage.Notes,
+            EstimatedStartDate = tasksReview.Count > 0 ? tasksReview.Min(t => t.ScheduledStartDate) : null,
+            EstimatedEndDate = tasksReview.Count > 0 ? tasksReview.Max(t => t.ScheduledEndDate) : null,
+            Tasks = tasksReview
+        };
+    }
+
+    private StandardPlanTaskReviewDto BuildTaskReview(
+        StandardPlanTask standardTask,
+        DateTime sowDate,
+        decimal areaInHectares,
+        Dictionary<Guid, MaterialPrice> materialPriceMap,
+        DateTime priceReferenceDate)
+    {
+        var scheduledStartDate = sowDate.AddDays(standardTask.DaysAfter);
+        var scheduledEndDate = scheduledStartDate.AddDays(standardTask.DurationDays - 1);
+
+        var materialsReview = standardTask.StandardPlanTaskMaterials
+            .Select(m => BuildMaterialReview(m, areaInHectares, materialPriceMap, priceReferenceDate))
+            .ToList();
+
+        var taskTotalCost = materialsReview.Sum(m => m.TotalCost ?? 0M);
+
+        return new StandardPlanTaskReviewDto
+        {
+            TaskId = standardTask.Id,
+            TaskName = standardTask.TaskName,
+            Description = standardTask.Description,
+            TaskType = standardTask.TaskType,
+            Priority = standardTask.Priority,
+            SequenceOrder = standardTask.SequenceOrder,
+            DaysAfterSowing = standardTask.DaysAfter,
+            DurationDays = standardTask.DurationDays,
+            ScheduledStartDate = scheduledStartDate,
+            ScheduledEndDate = scheduledEndDate,
+            EstimatedTaskCost = taskTotalCost,
+            EstimatedTaskCostPerHa = CalculateCostPerHectare(taskTotalCost, areaInHectares),
+            Materials = materialsReview
+        };
+    }
+
+    private StandardPlanTaskMaterialReviewDto BuildMaterialReview(
+        StandardPlanTaskMaterial standardMaterial,
+        decimal areaInHectares,
+        Dictionary<Guid, MaterialPrice> materialPriceMap,
+        DateTime priceReferenceDate)
+    {
+        var material = standardMaterial.Material;
+        var quantityPerHa = standardMaterial.QuantityPerHa;
+        var totalQuantity = quantityPerHa * areaInHectares;
+
+        decimal? unitPrice = null;
+        decimal? totalCost = null;
+        DateTime? priceDate = null;
+
+        if (materialPriceMap.TryGetValue(standardMaterial.MaterialId, out var priceInfo))
+        {
+            unitPrice = priceInfo.PricePerMaterial;
+            priceDate = priceInfo.ValidFrom;
+
+            var amountPerUnit = material.AmmountPerMaterial.GetValueOrDefault(1M);
+            var unitsNeeded = Math.Ceiling(quantityPerHa / amountPerUnit);
+            var pricePerHa = unitsNeeded * unitPrice.Value;
+            totalCost = pricePerHa * areaInHectares;
+        }
+        else
+        {
+            _logger.LogWarning(
+                "No price found for material {MaterialId} on or before {Date}",
+                standardMaterial.MaterialId, priceReferenceDate);
+        }
+
+        return new StandardPlanTaskMaterialReviewDto
+        {
+            MaterialId = material.Id,
+            MaterialName = material.Name,
+            MaterialType = material.Type,
+            MaterialUnit = material.Unit,
+            QuantityPerHa = quantityPerHa,
+            TotalQuantityNeeded = totalQuantity,
+            UnitPrice = unitPrice,
+            TotalCost = totalCost,
+            PriceDate = priceDate
+        };
+    }
+
+    private static decimal CalculateCostPerHectare(decimal totalCost, decimal areaInHectares) =>
+        areaInHectares > 0 ? totalCost / areaInHectares : 0M;
 }
 

@@ -34,42 +34,14 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
 
         try
         {
-            // Fetch the production plan with all necessary relationships
-            var plan = await FetchPlanWithRelationsAsync(notification.PlanId, cancellationToken);
-
-            if (plan == null)
+            var plan = await FetchPlanWithRelationsAsync(notification.PlanId);
+            if (!IsPlanEligibleForDistribution(plan, notification.PlanId))
             {
-                _logger.LogWarning("Production plan {PlanId} not found", notification.PlanId);
                 return;
             }
 
-            if (plan.Status != TaskStatus.Approved)
-            {
-                _logger.LogWarning(
-                    "Production plan {PlanId} is not in Approved status (current: {Status}). Skipping material distribution creation.",
-                    notification.PlanId, plan.Status);
-                return;
-            }
-
-            if (plan.Group == null)
-            {
-                _logger.LogWarning("Production plan {PlanId} has no associated group", notification.PlanId);
-                return;
-            }
-
-            if (plan.Group.Status != GroupStatus.Active)
-            {
-                _logger.LogWarning(
-                    "Group {GroupId} for plan {PlanId} is not Active (current: {Status}). Skipping material distribution creation.",
-                    plan.Group.Id, notification.PlanId, plan.Group.Status);
-                return;
-            }
-
-            // Get system settings for time window calculations
-            var settings = await GetDistributionSettingsAsync(cancellationToken);
-
-            // Get all plot cultivations for the group's season
-            var plotCultivations = await GetPlotCultivationsForPlanAsync(plan, cancellationToken);
+            var settings = await GetDistributionSettingsAsync();
+            var plotCultivations = GetPlotCultivationsForPlan(plan!);
 
             if (!plotCultivations.Any())
             {
@@ -79,9 +51,7 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
                 return;
             }
 
-            // Create material distributions
-            var distributions = await CreateMaterialDistributionsAsync(
-                plan, plotCultivations, settings, cancellationToken);
+            var distributions = await CreateMaterialDistributionsAsync(plan!, plotCultivations, settings);
 
             if (distributions.Any())
             {
@@ -90,7 +60,7 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
 
                 _logger.LogInformation(
                     "Successfully created {Count} material distributions for production plan {PlanId} (Group: {GroupId})",
-                    distributions.Count, notification.PlanId, plan.GroupId);
+                    distributions.Count, notification.PlanId, plan!.GroupId);
             }
             else
             {
@@ -108,7 +78,40 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
         }
     }
 
-    private async Task<ProductionPlan?> FetchPlanWithRelationsAsync(Guid planId, CancellationToken cancellationToken)
+    private bool IsPlanEligibleForDistribution(ProductionPlan? plan, Guid planId)
+    {
+        if (plan == null)
+        {
+            _logger.LogWarning("Production plan {PlanId} not found", planId);
+            return false;
+        }
+
+        if (plan.Status != TaskStatus.Approved)
+        {
+            _logger.LogWarning(
+                "Production plan {PlanId} is not in Approved status (current: {Status}). Skipping material distribution creation.",
+                planId, plan.Status);
+            return false;
+        }
+
+        if (plan.Group == null)
+        {
+            _logger.LogWarning("Production plan {PlanId} has no associated group", planId);
+            return false;
+        }
+
+        if (plan.Group.Status != GroupStatus.Active)
+        {
+            _logger.LogWarning(
+                "Group {GroupId} for plan {PlanId} is not Active (current: {Status}). Skipping material distribution creation.",
+                plan.Group.Id, planId, plan.Group.Status);
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<ProductionPlan?> FetchPlanWithRelationsAsync(Guid planId)
     {
         var plans = await _unitOfWork.Repository<ProductionPlan>().ListAsync(
             filter: p => p.Id == planId,
@@ -121,28 +124,24 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
                     .ThenInclude(pl => pl.PlotCultivations)
                 .Include(p => p.CurrentProductionStages)
                     .ThenInclude(s => s.ProductionPlanTasks)
-                    .ThenInclude(t => t.ProductionPlanTaskMaterials)
-        );
+                    .ThenInclude(t => t.ProductionPlanTaskMaterials));
 
         return plans.FirstOrDefault();
     }
 
-    private Task<List<PlotCultivation>> GetPlotCultivationsForPlanAsync(
-        ProductionPlan plan, CancellationToken cancellationToken)
+    private List<PlotCultivation> GetPlotCultivationsForPlan(ProductionPlan plan)
     {
         if (plan.Group?.YearSeason?.SeasonId == null)
         {
             _logger.LogWarning(
                 "Group {GroupId} for plan {PlanId} has no season assigned",
                 plan.GroupId, plan.Id);
-            return Task.FromResult(new List<PlotCultivation>());
+            return new List<PlotCultivation>();
         }
 
         var seasonId = plan.Group.YearSeason.SeasonId;
-        var plots = plan.Group.GroupPlots.Select(gp => gp.Plot).ToList();
-
-        // Get only plot cultivations for the current season
-        var plotCultivations = plots
+        var plotCultivations = plan.Group.GroupPlots
+            .Select(gp => gp.Plot)
             .SelectMany(pl => pl.PlotCultivations)
             .Where(pc => pc.SeasonId == seasonId)
             .GroupBy(pc => pc.PlotId)
@@ -153,10 +152,10 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
             "Found {Count} plot cultivations for plan {PlanId} in season {SeasonId}",
             plotCultivations.Count, plan.Id, seasonId);
 
-        return Task.FromResult(plotCultivations);
+        return plotCultivations;
     }
 
-    private async Task<DistributionSettings> GetDistributionSettingsAsync(CancellationToken cancellationToken)
+    private async Task<DistributionSettings> GetDistributionSettingsAsync()
     {
         var settingKeys = new[]
         {
@@ -171,19 +170,19 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
 
         var settingsDict = settings.ToDictionary(s => s.SettingKey, s => s.SettingValue);
 
-        return new DistributionSettings
-        {
-            DaysBeforeTask = ParseSettingInt(settingsDict, "MaterialDistributionDaysBeforeTask", 7),
-            SupervisorConfirmationWindow = ParseSettingInt(settingsDict, "SupervisorConfirmationWindowDays", 2),
-            FarmerConfirmationWindow = ParseSettingInt(settingsDict, "FarmerConfirmationWindowDays", 3),
-            GracePeriod = ParseSettingInt(settingsDict, "MaterialDistributionGracePeriodDays", 1)
-        };
+        return new DistributionSettings(
+            DaysBeforeTask: ParseSettingInt(settingsDict, "MaterialDistributionDaysBeforeTask", 7),
+            SupervisorConfirmationWindow: ParseSettingInt(settingsDict, "SupervisorConfirmationWindowDays", 2),
+            FarmerConfirmationWindow: ParseSettingInt(settingsDict, "FarmerConfirmationWindowDays", 3),
+            GracePeriod: ParseSettingInt(settingsDict, "MaterialDistributionGracePeriodDays", 1));
     }
 
     private int ParseSettingInt(Dictionary<string, string> settings, string key, int defaultValue)
     {
         if (settings.TryGetValue(key, out var value) && int.TryParse(value, out var result))
+        {
             return result;
+        }
 
         _logger.LogWarning(
             "Setting {Key} not found or invalid, using default value {Default}",
@@ -194,12 +193,10 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
     private async Task<List<MaterialDistribution>> CreateMaterialDistributionsAsync(
         ProductionPlan plan,
         List<PlotCultivation> plotCultivations,
-        DistributionSettings settings,
-        CancellationToken cancellationToken)
+        DistributionSettings settings)
     {
         var distributions = new List<MaterialDistribution>();
 
-        // Find the earliest task date for scheduling distribution
         var earliestTaskDate = plan.CurrentProductionStages
             .SelectMany(s => s.ProductionPlanTasks ?? Enumerable.Empty<ProductionPlanTask>())
             .Where(t => t.ScheduledEndDate.HasValue)
@@ -213,51 +210,15 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
             return distributions;
         }
 
-        // Calculate distribution dates based on earliest task
         var scheduledDate = earliestTaskDate.AddDays(-settings.DaysBeforeTask);
         var distributionDeadline = scheduledDate.AddDays(settings.GracePeriod);
         var supervisorDeadline = scheduledDate.AddDays(settings.SupervisorConfirmationWindow);
 
-        // Aggregate materials across all tasks - group by (PlotCultivation, Material)
-        var materialAggregations = new Dictionary<(Guid PlotCultivationId, Guid MaterialId), decimal>();
+        var materialAggregations = AggregateRequiredMaterials(plan, plotCultivations);
 
-        foreach (var stage in plan.CurrentProductionStages)
+        // Create one bulk distribution record per (PlotCultivation, Material) combination
+        foreach (var ((plotCultivationId, materialId), totalQuantity) in materialAggregations)
         {
-            foreach (var planTask in stage.ProductionPlanTasks ?? Enumerable.Empty<ProductionPlanTask>())
-            {
-                if (planTask.ProductionPlanTaskMaterials == null || !planTask.ProductionPlanTaskMaterials.Any())
-                    continue;
-
-                foreach (var plotCultivation in plotCultivations)
-                {
-                    if (plotCultivation.Area <= 0)
-                        continue;
-
-                    foreach (var planTaskMaterial in planTask.ProductionPlanTaskMaterials)
-                    {
-                        var key = (plotCultivation.Id, planTaskMaterial.MaterialId);
-                        var quantityNeeded = planTaskMaterial.QuantityPerHa * (plotCultivation.Area ?? 0m);
-
-                        if (materialAggregations.ContainsKey(key))
-                        {
-                            materialAggregations[key] += quantityNeeded;
-                        }
-                        else
-                        {
-                            materialAggregations[key] = quantityNeeded;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Create ONE distribution record per (PlotCultivation, Material) combination
-        foreach (var aggregation in materialAggregations)
-        {
-            var (plotCultivationId, materialId) = aggregation.Key;
-            var totalQuantity = aggregation.Value;
-
-            // Check if distribution already exists (prevent duplicates)
             var existingDistribution = await _unitOfWork.Repository<MaterialDistribution>()
                 .FindAsync(md =>
                     md.PlotCultivationId == plotCultivationId &&
@@ -273,7 +234,7 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
                 continue;
             }
 
-            var distribution = new MaterialDistribution
+            distributions.Add(new MaterialDistribution
             {
                 Id = Guid.NewGuid(),
                 PlotCultivationId = plotCultivationId,
@@ -285,9 +246,7 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
                 DistributionDeadline = distributionDeadline,
                 SupervisorConfirmationDeadline = supervisorDeadline,
                 CreatedAt = DateTime.UtcNow
-            };
-
-            distributions.Add(distribution);
+            });
 
             _logger.LogDebug(
                 "Created BULK distribution: PlotCultivation {PlotCultivationId}, Material {MaterialId}, Total Quantity {Quantity}",
@@ -301,12 +260,34 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
         return distributions;
     }
 
-    private class DistributionSettings
+    private static Dictionary<(Guid PlotCultivationId, Guid MaterialId), decimal> AggregateRequiredMaterials(
+        ProductionPlan plan,
+        List<PlotCultivation> plotCultivations)
     {
-        public int DaysBeforeTask { get; set; }
-        public int SupervisorConfirmationWindow { get; set; }
-        public int FarmerConfirmationWindow { get; set; }
-        public int GracePeriod { get; set; }
+        var materialAggregations = new Dictionary<(Guid PlotCultivationId, Guid MaterialId), decimal>();
+        var eligibleCultivations = plotCultivations.Where(pc => !(pc.Area <= 0)).ToList();
+
+        var allTaskMaterials = plan.CurrentProductionStages
+            .SelectMany(s => s.ProductionPlanTasks ?? Enumerable.Empty<ProductionPlanTask>())
+            .SelectMany(t => t.ProductionPlanTaskMaterials ?? Enumerable.Empty<ProductionPlanTaskMaterial>());
+
+        foreach (var planTaskMaterial in allTaskMaterials)
+        {
+            foreach (var plotCultivation in eligibleCultivations)
+            {
+                var key = (plotCultivation.Id, planTaskMaterial.MaterialId);
+                var quantityNeeded = planTaskMaterial.QuantityPerHa * (plotCultivation.Area ?? 0m);
+                materialAggregations[key] = materialAggregations.GetValueOrDefault(key) + quantityNeeded;
+            }
+        }
+
+        return materialAggregations;
     }
+
+    private sealed record DistributionSettings(
+        int DaysBeforeTask,
+        int SupervisorConfirmationWindow,
+        int FarmerConfirmationWindow,
+        int GracePeriod);
 }
 

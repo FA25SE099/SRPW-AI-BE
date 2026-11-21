@@ -1,9 +1,8 @@
-﻿using Azure.Core;
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using RiceProduction.API.Services;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request;
@@ -24,16 +23,10 @@ using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmersForAdmin;
-using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
 using RiceProduction.Application.PlotFeature.Queries.GetPlotsByFarmer;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
 using RiceProduction.Application.ReportFeature.Queries.GetReportsByFarmer;
-using RiceProduction.Application.SupervisorFeature.Commands.CreateSupervisor;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
-using System.Security.Claims;
-using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.API.Controllers
 {
@@ -87,10 +80,6 @@ namespace RiceProduction.API.Controllers
         {
             try
             {
-                if (id == null)
-                {
-                    return BadRequest("Invalid Farmer Id");
-                }
                 var query = new GetFarmerDetailQueries(id);
                 var result = await _mediator.Send(query);
                 if (result == null)
@@ -106,15 +95,13 @@ namespace RiceProduction.API.Controllers
             }
         }
 
-
-
         [HttpGet]
-         public async Task<ActionResult<PagedResult<IEnumerable<FarmerDTO>>>> GetAllFarmers(
+        public async Task<ActionResult<PagedResult<IEnumerable<FarmerDTO>>>> GetAllFarmers(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 10,
             [FromQuery] string? searchTerm = null,
             [FromQuery] Guid? clusterManagerId = null)
-         {
+        {
             var query = new GetAllFarmerQueries
             {
                 PageNumber = pageNumber,
@@ -131,7 +118,7 @@ namespace RiceProduction.API.Controllers
             }
 
             return Ok(result);
-         }
+        }
         [HttpGet("profile")]
         [ProducesResponseType(typeof(FarmerDetailDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -176,14 +163,8 @@ namespace RiceProduction.API.Controllers
                 return BadRequest(errorResult);
             }
             
-            // Get current cluster manager ID if authenticated
-            Guid? clusterManagerId = null;
-            var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
-            {
-                clusterManagerId = userId;
-            }
-            
+            Guid? clusterManagerId = User.TryGetUserId(out var userId) ? userId : null;
+
             var command = new ImportFarmerCommand(requestModel.File, clusterManagerId);
             var result = await _mediator.Send(command);
 
@@ -270,8 +251,8 @@ namespace RiceProduction.API.Controllers
                     return BadRequest(result);
                 }
 
-                return Ok(result);     
-                    }
+                return Ok(result);
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while creating farmer by user {UserId}", _currentUser.Id);
@@ -330,7 +311,7 @@ namespace RiceProduction.API.Controllers
                 {
                     _logger.LogWarning(
                         "Failed to create emergency report: {Errors}",
-                        string.Join(", ", result.Errors ?? new string[0]));
+                        string.Join(", ", result.Errors ?? Array.Empty<string>()));
                     return BadRequest(result);
                 }
 
@@ -362,11 +343,7 @@ namespace RiceProduction.API.Controllers
 
                 if (!result.Succeeded)
                 {
-                    if (result.Message?.Contains("not found") == true)
-                    {
-                        return NotFound(result);
-                    }
-                    return BadRequest(result);
+                    return NotFoundOrBadRequest(result, result.Message);
                 }
 
                 return Ok(result);
@@ -391,8 +368,7 @@ namespace RiceProduction.API.Controllers
         {
             try
             {
-                var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var farmerId))
+                if (!User.TryGetUserId(out var farmerId))
                 {
                     return Unauthorized(PagedResult<List<ReportItemResponse>>.Failure("User not authenticated"));
                 }
@@ -412,16 +388,12 @@ namespace RiceProduction.API.Controllers
 
                 if (!result.Succeeded)
                 {
-                    if (result.Message?.Contains("not found") == true)
-                    {
-                        return NotFound(result);
-                    }
-                    return BadRequest(result);
+                    return NotFoundOrBadRequest(result, result.Message);
                 }
 
                 return Ok(result);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return StatusCode(500, "An error occurred while processing your request");
             }
@@ -444,11 +416,7 @@ namespace RiceProduction.API.Controllers
 
                 if (!result.Succeeded)
                 {
-                    if (result.Message?.Contains("not found") == true)
-                    {
-                        return NotFound(result);
-                    }
-                    return BadRequest(result);
+                    return NotFoundOrBadRequest(result, result.Message);
                 }
 
                 return Ok(result);
@@ -496,6 +464,9 @@ namespace RiceProduction.API.Controllers
                 return StatusCode(500, "An error occurred while processing your request");
             }
         }
+
+        private ObjectResult NotFoundOrBadRequest(object result, string? message) =>
+            message?.Contains("not found") == true ? NotFound(result) : BadRequest(result);
     }
 }
 

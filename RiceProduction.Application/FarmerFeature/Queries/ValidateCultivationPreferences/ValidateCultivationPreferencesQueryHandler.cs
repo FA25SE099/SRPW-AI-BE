@@ -23,14 +23,13 @@ public class ValidateCultivationPreferencesQueryHandler
     }
 
     public async Task<Result<CultivationValidationDto>> Handle(
-        ValidateCultivationPreferencesQuery request, 
+        ValidateCultivationPreferencesQuery request,
         CancellationToken cancellationToken)
     {
         var validation = new CultivationValidationDto();
 
         try
         {
-            // 1. Get YearSeason
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
                 .Include(ys => ys.Season)
@@ -39,52 +38,31 @@ public class ValidateCultivationPreferencesQueryHandler
 
             if (yearSeason == null)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "YEARSEASON_NOT_FOUND",
-                    Message = "The specified season instance does not exist",
-                    Severity = "Error"
-                });
-                return Result<CultivationValidationDto>.Success(validation);
+                return FailureResult(validation, "YEARSEASON_NOT_FOUND", "The specified season instance does not exist");
             }
 
-            // 2. Check if farmer selection is enabled
             if (!yearSeason.AllowFarmerSelection)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "SELECTION_NOT_ALLOWED",
-                    Message = "Farmer selection is not enabled for this season",
-                    Severity = "Error"
-                });
-                return Result<CultivationValidationDto>.Success(validation);
+                return FailureResult(validation, "SELECTION_NOT_ALLOWED", "Farmer selection is not enabled for this season");
             }
 
-            // 3. Check selection window
             var now = DateTime.UtcNow;
-            if (yearSeason.FarmerSelectionWindowStart.HasValue && 
-                now < yearSeason.FarmerSelectionWindowStart.Value)
+            if (yearSeason.FarmerSelectionWindowStart.HasValue && now < yearSeason.FarmerSelectionWindowStart.Value)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "SELECTION_NOT_STARTED",
-                    Message = $"Selection window opens on {yearSeason.FarmerSelectionWindowStart.Value:yyyy-MM-dd}",
-                    Severity = "Error"
-                });
+                AddError(
+                    validation,
+                    "SELECTION_NOT_STARTED",
+                    $"Selection window opens on {yearSeason.FarmerSelectionWindowStart.Value:yyyy-MM-dd}");
             }
 
-            if (yearSeason.FarmerSelectionWindowEnd.HasValue && 
-                now > yearSeason.FarmerSelectionWindowEnd.Value)
+            if (yearSeason.FarmerSelectionWindowEnd.HasValue && now > yearSeason.FarmerSelectionWindowEnd.Value)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "SELECTION_CLOSED",
-                    Message = $"Selection window closed on {yearSeason.FarmerSelectionWindowEnd.Value:yyyy-MM-dd}",
-                    Severity = "Error"
-                });
+                AddError(
+                    validation,
+                    "SELECTION_CLOSED",
+                    $"Selection window closed on {yearSeason.FarmerSelectionWindowEnd.Value:yyyy-MM-dd}");
             }
 
-            // 4. Get Plot and verify ownership
             var plot = await _unitOfWork.Repository<Plot>()
                 .GetQueryable()
                 .Include(p => p.Farmer)
@@ -92,75 +70,46 @@ public class ValidateCultivationPreferencesQueryHandler
 
             if (plot == null)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "PLOT_NOT_FOUND",
-                    Message = "The specified plot does not exist",
-                    Severity = "Error"
-                });
-                return Result<CultivationValidationDto>.Success(validation);
+                return FailureResult(validation, "PLOT_NOT_FOUND", "The specified plot does not exist");
             }
 
             if (_currentUser.Id.HasValue && plot.FarmerId != _currentUser.Id.Value)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "PLOT_NOT_OWNED",
-                    Message = "You do not own this plot",
-                    Severity = "Error"
-                });
-                return Result<CultivationValidationDto>.Success(validation);
+                return FailureResult(validation, "PLOT_NOT_OWNED", "You do not own this plot");
             }
 
-            // 5. Get RiceVariety and check if suitable for season
             var riceVarietySeason = await _unitOfWork.Repository<RiceVarietySeason>()
                 .GetQueryable()
                 .Include(rvs => rvs.RiceVariety)
-                .FirstOrDefaultAsync(rvs => 
-                    rvs.RiceVarietyId == request.RiceVarietyId && 
-                    rvs.SeasonId == yearSeason.SeasonId, 
+                .FirstOrDefaultAsync(
+                    rvs => rvs.RiceVarietyId == request.RiceVarietyId && rvs.SeasonId == yearSeason.SeasonId,
                     cancellationToken);
 
             if (riceVarietySeason == null)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "VARIETY_NOT_SUITABLE",
-                    Message = "This rice variety is not suitable for the selected season",
-                    Severity = "Error"
-                });
-                return Result<CultivationValidationDto>.Success(validation);
+                return FailureResult(validation, "VARIETY_NOT_SUITABLE", "This rice variety is not suitable for the selected season");
             }
 
-            // 6. Check planting date within YearSeason dates
             if (request.PreferredPlantingDate < yearSeason.StartDate)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "PLANTING_DATE_TOO_EARLY",
-                    Message = $"Planting date must be after {yearSeason.StartDate:yyyy-MM-dd}",
-                    Severity = "Error"
-                });
+                AddError(
+                    validation,
+                    "PLANTING_DATE_TOO_EARLY",
+                    $"Planting date must be after {yearSeason.StartDate:yyyy-MM-dd}");
             }
 
             if (request.PreferredPlantingDate > yearSeason.EndDate)
             {
-                validation.Errors.Add(new ValidationIssue
-                {
-                    Code = "PLANTING_DATE_TOO_LATE",
-                    Message = $"Planting date must be before {yearSeason.EndDate:yyyy-MM-dd}",
-                    Severity = "Error"
-                });
+                AddError(
+                    validation,
+                    "PLANTING_DATE_TOO_LATE",
+                    $"Planting date must be before {yearSeason.EndDate:yyyy-MM-dd}");
             }
 
-            // 8. Check for existing cultivation
             var existingCultivation = await _unitOfWork.Repository<PlotCultivation>()
-                .FindAsync(pc => 
-                    pc.PlotId == request.PlotId && 
-                    pc.YearSeasonId == request.YearSeasonId
-                    );
+                .FindAsync(pc => pc.PlotId == request.PlotId && pc.YearSeasonId == request.YearSeasonId);
 
-            if (existingCultivation != null && existingCultivation.FarmerSelectionDate != null)
+            if (existingCultivation?.FarmerSelectionDate != null)
             {
                 validation.Warnings.Add(new ValidationIssue
                 {
@@ -179,7 +128,6 @@ public class ValidateCultivationPreferencesQueryHandler
                 validation.ExpectedYield = plot.Area * riceVarietySeason.ExpectedYieldPerHectare.Value;
             }
 
-            // 10. Add recommendations
             if (!riceVarietySeason.IsRecommended)
             {
                 validation.Recommendations.Add(new ValidationRecommendation
@@ -190,23 +138,39 @@ public class ValidateCultivationPreferencesQueryHandler
                 });
             }
 
-            // Set overall validity
             validation.IsValid = validation.Errors.Count == 0;
 
             _logger.LogInformation(
-                "Validated cultivation preferences for plot {PlotId}: Valid={IsValid}, Errors={ErrorCount}", 
+                "Validated cultivation preferences for plot {PlotId}: Valid={IsValid}, Errors={ErrorCount}",
                 request.PlotId, validation.IsValid, validation.Errors.Count);
 
             return Result<CultivationValidationDto>.Success(validation);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, 
-                "Error validating cultivation preferences for plot {PlotId}", 
+            _logger.LogError(ex,
+                "Error validating cultivation preferences for plot {PlotId}",
                 request.PlotId);
             return Result<CultivationValidationDto>.Failure(
                 "An error occurred while validating your selection");
         }
+    }
+
+    private static void AddError(CultivationValidationDto validation, string code, string message) =>
+        validation.Errors.Add(new ValidationIssue
+        {
+            Code = code,
+            Message = message,
+            Severity = "Error"
+        });
+
+    private static Result<CultivationValidationDto> FailureResult(
+        CultivationValidationDto validation,
+        string code,
+        string message)
+    {
+        AddError(validation, code, message);
+        return Result<CultivationValidationDto>.Success(validation);
     }
 }
 

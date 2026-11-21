@@ -114,20 +114,22 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
             }
 
             // Build PlotClusterInfo list
+            var plotDict = plotsList.ToDictionary(p => p.Id);
             var plotClusterInfos = new List<PlotClusterInfo>();
 
             foreach (var cultivation in cultivationsList)
             {
-                var plot = plotsList.FirstOrDefault(p => p.Id == cultivation.PlotId);
-                if (plot == null) continue;
+                if (!plotDict.TryGetValue(cultivation.PlotId, out var plot))
+                    continue;
 
                 // Skip plots already grouped for THIS SEASON
                 // Business rule: A plot can belong to multiple groups, but only one group per season
-                var isAlreadyGroupedForSeason = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
+                var isAlreadyGroupedForSeason = await _unitOfWork.PlotRepository
+                    .IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
                 if (isAlreadyGroupedForSeason)
                     continue;
 
-                var coordinate = plot.Coordinate ?? (plot.Boundary != null ? plot.Boundary.Centroid : null);
+                var coordinate = plot.Coordinate ?? plot.Boundary?.Centroid;
 
                 plotClusterInfos.Add(new PlotClusterInfo
                 {
@@ -255,24 +257,9 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 GroupsCreated = createdGroups.Count,
                 PlotsGrouped = createdGroups.Sum(g => g.GroupPlots.Count),
                 UngroupedPlots = ungroupedPlots.Count,
-                Groups = createdGroups.Select(g => new CreatedGroupDto
-                {
-                    GroupId = g.Id,
-                    RiceVarietyId = (Guid)(g.YearSeason?.RiceVarietyId),
-                    RiceVarietyName = g.YearSeason?.RiceVarietyId != null && g.YearSeason.RiceVarietyId.HasValue 
-                        ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName ?? "Unknown" 
-                        : "Not Set",
-                    SupervisorId = g.SupervisorId,
-                    SupervisorName = g.SupervisorId.HasValue ? supervisorsForResponse.GetValueOrDefault(g.SupervisorId.Value) : null,
-                    PlantingDate = g.PlantingDate!.Value,
-                    PlantingWindowStart = g.PlantingDate!.Value, // TODO: store actual window
-                    PlantingWindowEnd = g.PlantingDate!.Value,
-                    Status = g.Status.ToString(),
-                    PlotCount = g.GroupPlots.Count,
-                    TotalArea = g.TotalArea!.Value,
-                    GroupBoundaryWkt = g.Area != null ? _wktWriter.Write(g.Area) : null,
-                    PlotIds = g.GroupPlots.Select(gp => gp.PlotId).ToList()
-                }).ToList(),
+                Groups = createdGroups
+                    .Select(g => MapToCreatedGroupDto(g, varietyDict, supervisorsForResponse))
+                    .ToList(),
                 UngroupedPlotIds = ungroupedPlots.Select(u => u.Plot.Plot.Id).ToList(),
                 Warnings = warnings
             };
@@ -291,6 +278,33 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
             _logger.LogError(ex, "Error forming groups for cluster {ClusterId}", request.ClusterId);
             return Result<FormGroupsResponse>.Failure($"Error forming groups: {ex.Message}");
         }
+    }
+
+    private CreatedGroupDto MapToCreatedGroupDto(
+        Group group,
+        Dictionary<Guid, RiceVariety> varietyDict,
+        Dictionary<Guid, string> supervisorsForResponse)
+    {
+        return new CreatedGroupDto
+        {
+            GroupId = group.Id,
+            RiceVarietyId = (Guid)(group.YearSeason?.RiceVarietyId),
+            RiceVarietyName = group.YearSeason?.RiceVarietyId is Guid riceVarietyId
+                ? varietyDict.GetValueOrDefault(riceVarietyId)?.VarietyName ?? "Unknown"
+                : "Not Set",
+            SupervisorId = group.SupervisorId,
+            SupervisorName = group.SupervisorId.HasValue
+                ? supervisorsForResponse.GetValueOrDefault(group.SupervisorId.Value)
+                : null,
+            PlantingDate = group.PlantingDate!.Value,
+            PlantingWindowStart = group.PlantingDate!.Value, // TODO: store actual window
+            PlantingWindowEnd = group.PlantingDate!.Value,
+            Status = group.Status.ToString(),
+            PlotCount = group.GroupPlots.Count,
+            TotalArea = group.TotalArea!.Value,
+            GroupBoundaryWkt = group.Area != null ? _wktWriter.Write(group.Area) : null,
+            PlotIds = group.GroupPlots.Select(gp => gp.PlotId).ToList()
+        };
     }
 }
 

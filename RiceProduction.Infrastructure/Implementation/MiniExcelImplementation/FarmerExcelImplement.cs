@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -16,6 +15,9 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
 {
     public class FarmerExcelImplement : IFarmerExcel
     {
+        private const string FarmerRole = "Farmer";
+        private const string TempPassword = "123456";
+
         private readonly ApplicationDbContext _context;
         private readonly DbSet<Farmer> _farmers;
         private readonly UserManager<ApplicationUser> _userManager;
@@ -30,7 +32,6 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
         public async Task<ImportFarmerResult> ImportFarmerFromExcelAsync(IFormFile file, Guid? clusterManagerId = null, CancellationToken cancellationToken = default)
         {
             var result = new ImportFarmerResult();
-            var rowNumber = 1; // Excel usually has header at row 1, data starts at row 2
             Guid? clusterId = null;
 
             if (clusterManagerId.HasValue)
@@ -41,146 +42,77 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             }
 
             await using var stream = file.OpenReadStream();
-            
-            // First, let's read the raw data to see what we're getting
-            var rows = stream.Query(useHeaderRow: true).ToList();
-            
-            // Now convert to DTOs with better error handling
-            var farmerDtos = new List<FarmerImportDto>();
-            foreach (var row in rows)
-            {
-                var dict = row as IDictionary<string, object>;
-                if (dict != null)
-                {
-                    farmerDtos.Add(new FarmerImportDto
-                    {
-                        FullName = dict.ContainsKey("FullName") ? dict["FullName"]?.ToString() ?? string.Empty : string.Empty,
-                        PhoneNumber = dict.ContainsKey("PhoneNumber") ? dict["PhoneNumber"]?.ToString() ?? string.Empty : string.Empty,
-                        Address = dict.ContainsKey("Address") ? dict["Address"]?.ToString() : null,
-                        FarmCode = dict.ContainsKey("FarmCode") ? dict["FarmCode"]?.ToString() : null,
-                        NumberOfPlots = dict.ContainsKey("NumberOfPlots") && dict["NumberOfPlots"] != null 
-                            ? Convert.ToInt32(dict["NumberOfPlots"]) 
-                            : (int?)null,
-                        Email = dict.ContainsKey("Email") ? dict["Email"]?.ToString() : null
-                    });
-                }
-            }
-
+            var farmerDtos = ParseFarmerRows(stream.Query(useHeaderRow: true));
             result.TotalRows = farmerDtos.Count;
 
-            const string FARMER_ROLE = "Farmer"; // Make sure this role exists in DB
-            const string TEMP_PASSWORD = "123456";
-
+            // Excel header is row 1; data starts at row 2
+            var rowNumber = 1;
             foreach (var dto in farmerDtos)
             {
-                rowNumber++; // Current data row
+                rowNumber++;
 
-                // Validate FullName
                 if (string.IsNullOrWhiteSpace(dto.FullName))
                 {
-                    result.FailureCount++;
-                    result.Errors.Add(new ImportError
-                    {
-                        RowNumber = rowNumber,
-                        FieldName = "FullName",
-                        ErrorMessage = "Tên không được để trống"
-                    });
+                    AddImportError(result, rowNumber, "FullName", "Tên không được để trống");
                     continue;
                 }
 
-                // Validate PhoneNumber
                 if (string.IsNullOrWhiteSpace(dto.PhoneNumber))
                 {
-                    result.FailureCount++;
-                    result.Errors.Add(new ImportError
-                    {
-                        RowNumber = rowNumber,
-                        FieldName = "PhoneNumber",
-                        ErrorMessage = "Số điện thoại không được để trống"
-                    });
+                    AddImportError(result, rowNumber, "PhoneNumber", "Số điện thoại không được để trống");
                     continue;
                 }
 
-                // Check if phone already exists in Farmers table
-                var existingFarmer = await _farmers
-                    .AnyAsync(f => f.PhoneNumber == dto.PhoneNumber, cancellationToken);
-
-                if (existingFarmer)
+                if (await _farmers.AnyAsync(f => f.PhoneNumber == dto.PhoneNumber, cancellationToken))
                 {
-                    result.FailureCount++;
-                    result.Errors.Add(new ImportError
-                    {
-                        RowNumber = rowNumber,
-                        FieldName = "PhoneNumber",
-                        ErrorMessage = $"Số điện thoại '{dto.PhoneNumber}' đã tồn tại trong hệ thống"
-                    });
+                    AddImportError(result, rowNumber, "PhoneNumber", $"Số điện thoại '{dto.PhoneNumber}' đã tồn tại trong hệ thống");
                     continue;
                 }
 
-                // Check if username (PhoneNumber) already used in Identity
-                var existingUser = await _userManager.FindByNameAsync(dto.PhoneNumber);
-                if (existingUser != null)
+                if (await _userManager.FindByNameAsync(dto.PhoneNumber) != null)
                 {
-                    result.FailureCount++;
-                    result.Errors.Add(new ImportError
-                    {
-                        RowNumber = rowNumber,
-                        FieldName = "PhoneNumber",
-                        ErrorMessage = $"Số điện thoại '{dto.PhoneNumber}' đã được sử dụng làm tài khoản"
-                    });
+                    AddImportError(result, rowNumber, "PhoneNumber", $"Số điện thoại '{dto.PhoneNumber}' đã được sử dụng làm tài khoản");
                     continue;
                 }
 
-                // Create new Farmer (which inherits from IdentityUser or ApplicationUser)
                 var farmer = new Farmer
                 {
                     Id = Guid.NewGuid(),
                     UserName = dto.PhoneNumber,
                     PhoneNumber = dto.PhoneNumber,
-                    Email = dto.Email, // Optional email for notifications
+                    Email = dto.Email,
                     FullName = dto.FullName,
                     Address = dto.Address,
                     FarmCode = dto.FarmCode,
                     NumberOfPlots = dto.NumberOfPlots ?? 1,
                     ClusterId = clusterId,
                     EmailConfirmed = true,
-                    PhoneNumberConfirmed = true, 
-                    IsActive = true,
+                    PhoneNumberConfirmed = true,
+                    IsActive = true
                 };
 
-                var createResult = await _userManager.CreateAsync(farmer, TEMP_PASSWORD);
-
+                var createResult = await _userManager.CreateAsync(farmer, TempPassword);
                 if (!createResult.Succeeded)
                 {
-                    result.FailureCount++;
-                    result.Errors.Add(new ImportError
-                    {
-                        RowNumber = rowNumber,
-                        FieldName = "Identity Creation",
-                        ErrorMessage = $"Lỗi tạo tài khoản: {string.Join(", ", createResult.Errors.Select(e => e.Description))}"
-                    });
+                    AddImportError(
+                        result,
+                        rowNumber,
+                        "Identity Creation",
+                        $"Lỗi tạo tài khoản: {string.Join(", ", createResult.Errors.Select(e => e.Description))}");
                     continue;
                 }
 
-                // === ADD ROLE "Farmer" ===
-                var roleResult = await _userManager.AddToRoleAsync(farmer, FARMER_ROLE);
-
+                var roleResult = await _userManager.AddToRoleAsync(farmer, FarmerRole);
                 if (!roleResult.Succeeded)
                 {
-                    // Even if role fails, user was created — you might want to log or delete user?
-                    result.FailureCount++;
-                    result.Errors.Add(new ImportError
-                    {
-                        RowNumber = rowNumber,
-                        FieldName = "Role Assignment",
-                        ErrorMessage = $"Tạo tài khoản thành công nhưng gán vai trò 'Farmer' thất bại: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}"
-                    });
-                    // Optionally: delete the created user if role is mandatory
-                    // await _userManager.DeleteAsync(farmer);
+                    AddImportError(
+                        result,
+                        rowNumber,
+                        "Role Assignment",
+                        $"Tạo tài khoản thành công nhưng gán vai trò 'Farmer' thất bại: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
                     continue;
                 }
 
-                // Success
                 result.SuccessCount++;
                 result.ImportedFarmers.Add(new ImportedFarmerData
                 {
@@ -190,11 +122,44 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
                     FarmCode = dto.FarmCode,
                     NumberOfPlots = dto.NumberOfPlots,
                     Email = dto.Email,
-                    TempPassword = TEMP_PASSWORD // Store password for email notification
+                    TempPassword = TempPassword
                 });
             }
 
             return result;
+        }
+
+        private static List<FarmerImportDto> ParseFarmerRows(IEnumerable<dynamic> rows)
+        {
+            return rows
+                .OfType<IDictionary<string, object>>()
+                .Select(dict => new FarmerImportDto
+                {
+                    FullName = GetOptionalString(dict, "FullName") ?? string.Empty,
+                    PhoneNumber = GetOptionalString(dict, "PhoneNumber") ?? string.Empty,
+                    Address = GetOptionalString(dict, "Address"),
+                    FarmCode = GetOptionalString(dict, "FarmCode"),
+                    NumberOfPlots = GetOptionalInt(dict, "NumberOfPlots"),
+                    Email = GetOptionalString(dict, "Email")
+                })
+                .ToList();
+        }
+
+        private static string? GetOptionalString(IDictionary<string, object> dict, string key) =>
+            dict.TryGetValue(key, out var value) ? value?.ToString() : null;
+
+        private static int? GetOptionalInt(IDictionary<string, object> dict, string key) =>
+            dict.TryGetValue(key, out var value) && value != null ? Convert.ToInt32(value) : null;
+
+        private static void AddImportError(ImportFarmerResult result, int rowNumber, string fieldName, string errorMessage)
+        {
+            result.FailureCount++;
+            result.Errors.Add(new ImportError
+            {
+                RowNumber = rowNumber,
+                FieldName = fieldName,
+                ErrorMessage = errorMessage
+            });
         }
     }
 }
