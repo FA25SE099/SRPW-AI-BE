@@ -27,42 +27,37 @@ public class GetPolygonAssignmentTasksQueryHandler
     {
         try
         {
-            // Build query for polygon tasks
             var query = _unitOfWork.Repository<PlotPolygonTask>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(t => t.AssignedToSupervisorId == request.SupervisorId);
 
-            // Filter by status if provided
             if (!string.IsNullOrEmpty(request.Status))
             {
                 query = query.Where(t => t.Status == request.Status);
             }
 
-            // Get tasks with related plot and farmer data
-            var tasks = await query
-                .Include(t => t.Plot)
-                .ThenInclude(p => p.Farmer)
+            var taskDtos = await query
                 .OrderByDescending(t => t.Priority)
                 .ThenBy(t => t.AssignedAt)
+                .Select(t => new PlotPolygonTaskDto
+                {
+                    Id = t.Id,
+                    PlotId = t.PlotId,
+                    Status = t.Status,
+                    AssignedAt = t.AssignedAt,
+                    CompletedAt = t.CompletedAt,
+                    Notes = t.Notes,
+                    Priority = t.Priority,
+                    SoThua = t.Plot.SoThua,
+                    SoTo = t.Plot.SoTo,
+                    PlotArea = t.Plot.Area,
+                    SoilType = t.Plot.SoilType,
+                    FarmerId = t.Plot.FarmerId,
+                    FarmerName = t.Plot.Farmer != null ? t.Plot.Farmer.FullName : null,
+                    FarmerPhone = t.Plot.Farmer != null ? t.Plot.Farmer.PhoneNumber : null
+                })
                 .ToListAsync(cancellationToken);
-
-            var taskDtos = tasks.Select(t => new PlotPolygonTaskDto
-            {
-                Id = t.Id,
-                PlotId = t.PlotId,
-                Status = t.Status,
-                AssignedAt = t.AssignedAt,
-                CompletedAt = t.CompletedAt,
-                Notes = t.Notes,
-                Priority = t.Priority,
-                SoThua = t.Plot.SoThua,
-                SoTo = t.Plot.SoTo,
-                PlotArea = t.Plot.Area,
-                SoilType = t.Plot.SoilType,
-                FarmerId = t.Plot.FarmerId,
-                FarmerName = t.Plot.Farmer?.FullName,
-                FarmerPhone = t.Plot.Farmer?.PhoneNumber
-            }).ToList();
 
             return Result<List<PlotPolygonTaskDto>>.Success(taskDtos);
         }

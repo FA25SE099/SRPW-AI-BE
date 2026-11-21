@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
@@ -37,6 +38,7 @@ public class GetEmergencyPlansQueryHandler : IRequestHandler<GetEmergencyPlansQu
             // Build the query
             var query = _unitOfWork.Repository<ProductionPlan>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(p => p.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
                 .Include(p => p.Group)
                     .ThenInclude(g => g.Cluster)

@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 
 namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadAllStandardPlansExcel
 {
-    public class DownloadAllStandardPlansExcelQuery : IRequest<Result<IActionResult>>
+    public class DownloadAllStandardPlansExcelQuery : IRequest<Result<FileExportResult>>
     {
         public DateTime InputDate { get; set; }
         public Guid? CategoryId { get; set; }

@@ -32,11 +32,12 @@ public class GetAllStandardPlansQueryHandler : IRequestHandler<GetAllStandardPla
 
             var query = _unitOfWork.Repository<StandardPlan>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(sp => sp.GetType() == typeof(StandardPlan))
                 .Include(sp => sp.Category)
                 .Include(sp => sp.StandardPlanStages)
                 .ThenInclude(sps => sps.StandardPlanTasks)
-                .AsQueryable();
+                .AsSplitQuery();
 
             if (request.CategoryId.HasValue)
             {

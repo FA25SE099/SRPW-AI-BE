@@ -41,6 +41,7 @@ public class GetMaterialDistributionsGroupedByPlotQueryHandler
             // Get plot cultivations
             var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(pc => plotIds.Contains(pc.PlotId))
                 .Include(pc => pc.Plot)
                 .ToListAsync(cancellationToken);
@@ -50,6 +51,7 @@ public class GetMaterialDistributionsGroupedByPlotQueryHandler
             // Get all distributions
             var distributions = await _unitOfWork.Repository<MaterialDistribution>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(md => cultivationIds.Contains(md.PlotCultivationId))
                 .Include(md => md.Material)
                 .Include(md => md.PlotCultivation)

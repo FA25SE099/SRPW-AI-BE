@@ -3,16 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequest;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.PlotFeature.Queries.DownloadSample
 {
-    public class DownloadPlotSampleExcelQueryHandler : IRequestHandler<DownloadPlotSampleExcelQuery, Result<IActionResult>>
+    public class DownloadPlotSampleExcelQueryHandler : IRequestHandler<DownloadPlotSampleExcelQuery, Result<FileExportResult>>
     {
         private readonly IGenericExcel _genericExcel;
         private readonly ILogger<DownloadPlotSampleExcelQueryHandler> _logger;
@@ -25,7 +25,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.DownloadSample
             _logger = logger;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadPlotSampleExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadPlotSampleExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -69,12 +69,12 @@ namespace RiceProduction.Application.PlotFeature.Queries.DownloadSample
                     DateTime.Now.ToString("yyyy-MM-dd"),
                     fileName);
 
-                return Result<IActionResult>.Success(result, "Sample Plot Excel template downloaded successfully");
+                return Result<FileExportResult>.Success(result, "Sample Plot Excel template downloaded successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while creating sample Plot Excel template");
-                return Result<IActionResult>.Failure("Failed to create sample Plot Excel template");
+                return Result<FileExportResult>.Failure("Failed to create sample Plot Excel template");
             }
         }
     }

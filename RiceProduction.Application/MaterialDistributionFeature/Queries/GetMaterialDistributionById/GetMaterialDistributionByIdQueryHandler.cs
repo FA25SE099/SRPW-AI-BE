@@ -22,6 +22,7 @@ public class GetMaterialDistributionByIdQueryHandler
     {
         var distribution = await _unitOfWork.Repository<MaterialDistribution>()
             .GetQueryable()
+            .AsNoTracking()
             .Where(md => md.Id == request.DistributionId)
             .Include(md => md.Material)
             .Include(md => md.PlotCultivation)

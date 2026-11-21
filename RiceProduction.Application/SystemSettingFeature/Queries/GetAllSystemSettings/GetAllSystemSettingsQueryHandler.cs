@@ -21,7 +21,7 @@ public class GetAllSystemSettingsQueryHandler : IRequestHandler<GetAllSystemSett
     {
         try
         {
-            var query = _unitOfWork.Repository<SystemSetting>().GetQueryable();
+            var query = _unitOfWork.Repository<SystemSetting>().GetQueryable().AsNoTracking();
 
             // Apply filters
             if (!string.IsNullOrEmpty(request.SearchKey))

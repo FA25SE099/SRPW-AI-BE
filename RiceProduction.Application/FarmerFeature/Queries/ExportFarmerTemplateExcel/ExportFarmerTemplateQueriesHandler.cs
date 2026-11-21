@@ -3,22 +3,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.ExportFarmerTemplateExcel
 {
-    public class ExportFarmerTemplateQueriesHandler : IRequestHandler<ExportFarmerTemplateQueries, Result<IActionResult>>
+    public class ExportFarmerTemplateQueriesHandler : IRequestHandler<ExportFarmerTemplateQueries, Result<FileExportResult>>
     {
         private readonly IGenericExcel _genericExcel;
         public ExportFarmerTemplateQueriesHandler(IGenericExcel genericExcel)
         {
             _genericExcel = genericExcel;
         }
-        public async Task<Result<IActionResult>> Handle(ExportFarmerTemplateQueries request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(ExportFarmerTemplateQueries request, CancellationToken cancellationToken)
         {
             try
             {
@@ -43,11 +43,11 @@ namespace RiceProduction.Application.FarmerFeature.Queries.ExportFarmerTemplateE
                     }
                 };
                 var result = await _genericExcel.DownloadGenericExcelFile(farmerList, DateTime.UtcNow.ToString(), "Mẫu dữ liệu nông dân ngày" + DateTime.UtcNow);
-                return Result<IActionResult>.Success(result, "File created successfully");
+                return Result<FileExportResult>.Success(result, "File created successfully");
             }
             catch (Exception ex)
             {
-                return Result<IActionResult>.Failure($"Error generating Excel file: {ex.Message}");
+                return Result<FileExportResult>.Failure($"Error generating Excel file: {ex.Message}");
             }
         }
     }

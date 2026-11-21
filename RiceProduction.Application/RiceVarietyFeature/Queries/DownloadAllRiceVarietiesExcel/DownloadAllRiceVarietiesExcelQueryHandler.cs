@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -8,7 +7,7 @@ using System.Linq.Expressions;
 
 namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceVarietiesExcel
 {
-    public class DownloadAllRiceVarietiesExcelQueryHandler : IRequestHandler<DownloadAllRiceVarietiesExcelQuery, Result<IActionResult>>
+    public class DownloadAllRiceVarietiesExcelQueryHandler : IRequestHandler<DownloadAllRiceVarietiesExcelQuery, Result<FileExportResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _genericExcel;
@@ -24,7 +23,7 @@ namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceV
             _logger = logger;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadAllRiceVarietiesExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadAllRiceVarietiesExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -42,7 +41,7 @@ namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceV
                 if (riceVarieties == null || !riceVarieties.Any())
                 {
                     _logger.LogWarning("No rice varieties found for export");
-                    return Result<IActionResult>.Failure("No rice varieties found to export");
+                    return Result<FileExportResult>.Failure("No rice varieties found to export");
                 }
 
                 var riceVarietyResponses = riceVarieties.Select(v => new RiceVarietyResponse
@@ -67,12 +66,12 @@ namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceV
                     fileName);
 
                 _logger.LogInformation("Successfully exported {Count} rice varieties to Excel", riceVarietyResponses.Count);
-                return Result<IActionResult>.Success(result, "Rice varieties exported successfully");
+                return Result<FileExportResult>.Success(result, "Rice varieties exported successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while exporting rice varieties to Excel");
-                return Result<IActionResult>.Failure("Failed to export rice varieties to Excel");
+                return Result<FileExportResult>.Failure("Failed to export rice varieties to Excel");
             }
         }
     }

@@ -5,7 +5,7 @@ using RiceProduction.Application.Common.Interfaces;
 using System.Text;
 using System.Text.Json;
 
-namespace YourApp.Application.Common.Behaviors;
+namespace RiceProduction.Application.Common.Behaviours;
 
 public class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : ICacheable

@@ -26,15 +26,42 @@ public class GetYearSeasonDetailQueryHandler : IRequestHandler<GetYearSeasonDeta
         {
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
-                .Include(ys => ys.Season)
-                .Include(ys => ys.Cluster)
-                .Include(ys => ys.RiceVariety)
-                .Include(ys => ys.ManagedByExpert)
-                .Include(ys => ys.Groups)
-                    .ThenInclude(g => g.Supervisor)
-                .Include(ys => ys.Groups)
-                    .ThenInclude(g => g.GroupPlots)
-                .FirstOrDefaultAsync(ys => ys.Id == request.Id, cancellationToken);
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Where(ys => ys.Id == request.Id)
+                .Select(ys => new
+                {
+                    ys.Id,
+                    ys.SeasonId,
+                    ys.Season.SeasonName,
+                    ys.Season.SeasonType,
+                    ys.ClusterId,
+                    ys.Cluster.ClusterName,
+                    ys.Year,
+                    ys.RiceVarietyId,
+                    RiceVarietyName = ys.RiceVariety != null ? ys.RiceVariety.VarietyName : null,
+                    ys.StartDate,
+                    ys.EndDate,
+                    ys.BreakStartDate,
+                    ys.BreakEndDate,
+                    ys.PlanningWindowStart,
+                    ys.PlanningWindowEnd,
+                    ys.Status,
+                    ys.Notes,
+                    ys.ManagedByExpertId,
+                    ManagedByExpertName = ys.ManagedByExpert != null ? ys.ManagedByExpert.FullName : null,
+                    Groups = ys.Groups.Select(g => new
+                    {
+                        g.Id,
+                        g.GroupName,
+                        g.SupervisorId,
+                        SupervisorName = g.Supervisor != null ? g.Supervisor.FullName : null,
+                        g.Status,
+                        g.TotalArea,
+                        PlotCount = g.GroupPlots.Count
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (yearSeason == null)
             {
@@ -45,13 +72,13 @@ public class GetYearSeasonDetailQueryHandler : IRequestHandler<GetYearSeasonDeta
             {
                 Id = yearSeason.Id,
                 SeasonId = yearSeason.SeasonId,
-                SeasonName = yearSeason.Season.SeasonName,
-                SeasonType = yearSeason.Season.SeasonType,
+                SeasonName = yearSeason.SeasonName,
+                SeasonType = yearSeason.SeasonType,
                 ClusterId = yearSeason.ClusterId,
-                ClusterName = yearSeason.Cluster.ClusterName,
+                ClusterName = yearSeason.ClusterName,
                 Year = yearSeason.Year,
                 RiceVarietyId = yearSeason.RiceVarietyId,
-                RiceVarietyName = yearSeason.RiceVariety?.VarietyName,
+                RiceVarietyName = yearSeason.RiceVarietyName,
                 StartDate = yearSeason.StartDate,
                 EndDate = yearSeason.EndDate,
                 BreakStartDate = yearSeason.BreakStartDate,
@@ -61,17 +88,17 @@ public class GetYearSeasonDetailQueryHandler : IRequestHandler<GetYearSeasonDeta
                 Status = yearSeason.Status.ToString(),
                 Notes = yearSeason.Notes,
                 ManagedByExpertId = yearSeason.ManagedByExpertId,
-                ManagedByExpertName = yearSeason.ManagedByExpert?.FullName,
+                ManagedByExpertName = yearSeason.ManagedByExpertName,
                 GroupCount = yearSeason.Groups.Count,
                 Groups = yearSeason.Groups.Select(g => new GroupSummaryDTO
                 {
                     Id = g.Id,
                     GroupName = g.GroupName,
                     SupervisorId = g.SupervisorId,
-                    SupervisorName = g.Supervisor?.FullName,
+                    SupervisorName = g.SupervisorName,
                     Status = g.Status.ToString(),
                     TotalArea = g.TotalArea,
-                    PlotCount = g.GroupPlots.Count
+                    PlotCount = g.PlotCount
                 }).ToList()
             };
 

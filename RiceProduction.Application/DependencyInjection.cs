@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Behaviours;
 using RiceProduction.Application.Common.Services;
-using YourApp.Application.Common.Behaviors;
 
 namespace RiceProduction.Application;
 
@@ -11,7 +10,7 @@ public static class DependencyInjection
 {
     public static void AddApplicationServices(this IHostApplicationBuilder builder)
     {
-        builder.Services.AddAutoMapper(Assembly.GetEntryAssembly());
+        builder.Services.AddAutoMapper(Assembly.GetExecutingAssembly());
 
         builder.Services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
 

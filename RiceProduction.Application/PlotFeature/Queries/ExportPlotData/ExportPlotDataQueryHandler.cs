@@ -3,19 +3,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequest;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.PlotFeature.Queries.ExportPlotData;
 
-public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, Result<IActionResult>>
+public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, Result<FileExportResult>>
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGenericExcel _genericExcel;
@@ -31,19 +31,20 @@ public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, R
         _logger = logger;
     }
 
-    public async Task<Result<IActionResult>> Handle(
+    public async Task<Result<FileExportResult>> Handle(
         ExportPlotDataQuery request,
         CancellationToken cancellationToken)
     {
         try
         {
             var query = _unitOfWork.Repository<Plot>().GetQueryable()
+                .AsNoTracking()
                 .Include(p => p.Farmer)
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
                 .Include(p => p.PlotCultivations)
                     .ThenInclude(pc => pc.RiceVariety)
-                .AsQueryable();
+                .AsSplitQuery();
 
             if (request.ClusterManagerId.HasValue)
             {
@@ -84,7 +85,7 @@ public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, R
             if (!plots.Any())
             {
                 _logger.LogWarning("No plots found for export with the given filters");
-                return Result<IActionResult>.Failure("No plots found to export");
+                return Result<FileExportResult>.Failure("No plots found to export");
             }
 
             var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
@@ -111,7 +112,7 @@ public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, R
             if (result == null)
             {
                 _logger.LogError("Failed to generate Excel file");
-                return Result<IActionResult>.Failure("Failed to generate Excel file");
+                return Result<FileExportResult>.Failure("Failed to generate Excel file");
             }
 
             _logger.LogInformation(
@@ -121,14 +122,14 @@ public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, R
                 request.FarmerId,
                 request.GroupId);
 
-            return Result<IActionResult>.Success(
+            return Result<FileExportResult>.Success(
                 result,
                 $"Successfully exported {exportRows.Count} plots");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error exporting plot data");
-            return Result<IActionResult>.Failure($"Failed to export plot data: {ex.Message}");
+            return Result<FileExportResult>.Failure($"Failed to export plot data: {ex.Message}");
         }
     }
 

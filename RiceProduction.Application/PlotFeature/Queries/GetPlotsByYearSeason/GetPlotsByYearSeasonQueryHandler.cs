@@ -36,6 +36,7 @@ public class GetPlotsByYearSeasonQueryHandler
             // Get YearSeason with related data
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.RiceVariety)
                 .Include(ys => ys.Cluster)
@@ -87,12 +88,14 @@ public class GetPlotsByYearSeasonQueryHandler
 
             IQueryable<Plot> plotsQuery = _unitOfWork.Repository<Plot>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(predicate)
                 .Include(p => p.Farmer)
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
                 .Include(p => p.PlotCultivations.Where(pc => pc.SeasonId == yearSeason.SeasonId))
-                    .ThenInclude(pc => pc.RiceVariety);
+                    .ThenInclude(pc => pc.RiceVariety)
+                .AsSplitQuery();
 
             if (request.GroupId.HasValue)
             {

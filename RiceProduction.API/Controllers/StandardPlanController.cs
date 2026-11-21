@@ -37,27 +37,18 @@ public class StandardPlanController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<Result<Guid>>> Create([FromBody] CreateStandardPlanCommand command)
     {
-        try
+        _logger.LogInformation("Create StandardPlan request received: {PlanName}", command.PlanName);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("Create StandardPlan request received: {PlanName}", command.PlanName);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to create standard plan: {Errors}",
-                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully created standard plan with ID: {StandardPlanId}", result.Data);
-            return Ok(result);
+            _logger.LogWarning("Failed to create standard plan: {Errors}", FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while creating standard plan");
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-        }
+
+        _logger.LogInformation("Successfully created standard plan with ID: {StandardPlanId}", result.Data);
+        return Ok(result);
     }
 
     [HttpGet]
@@ -66,57 +57,40 @@ public class StandardPlanController : ControllerBase
         [FromQuery] string? searchTerm = null,
         [FromQuery] bool? isActive = null)
     {
-        try
+        _logger.LogInformation("GetAll standard plans request received");
+
+        var query = new GetAllStandardPlansQuery
         {
-            _logger.LogInformation("GetAll standard plans request received");
+            CategoryId = categoryId,
+            SearchTerm = searchTerm,
+            IsActive = isActive
+        };
 
-            var query = new GetAllStandardPlansQuery
-            {
-                CategoryId = categoryId,
-                SearchTerm = searchTerm,
-                IsActive = isActive
-            };
+        var result = await _mediator.Send(query);
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve standard plans: {Errors}",
-                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
-            }
-
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Unexpected error occurred while getting standard plans");
-            return StatusCode(500, Result<List<StandardPlanDto>>.Failure("An unexpected error occurred"));
+            _logger.LogWarning("Failed to retrieve standard plans: {Errors}", FormatErrors(result.Errors));
         }
+
+        return this.ToActionResult(result);
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<Result<StandardPlanDetailDto>>> GetStandardPlanDetail(Guid id)
     {
-        try
+        _logger.LogInformation("GetStandardPlanDetail request received for ID: {StandardPlanId}", id);
+
+        var query = new GetStandardPlanDetailQuery { StandardPlanId = id };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("GetStandardPlanDetail request received for ID: {StandardPlanId}", id);
-
-            var query = new GetStandardPlanDetailQuery { StandardPlanId = id };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve standard plan detail for ID {StandardPlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
-            }
-
-            return this.ToActionResult(result);
+            _logger.LogWarning("Failed to retrieve standard plan detail for ID {StandardPlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while getting standard plan detail for ID: {StandardPlanId}", id);
-            return StatusCode(500, Result<StandardPlanDetailDto>.Failure("An unexpected error occurred"));
-        }
+
+        return this.ToActionResult(result);
     }
 
     [HttpGet("{id:guid}/review")]
@@ -125,38 +99,27 @@ public class StandardPlanController : ControllerBase
         [FromQuery] DateTime sowDate,
         [FromQuery] decimal areaInHectares)
     {
-        try
+        _logger.LogInformation(
+            "ReviewStandardPlan request received for ID: {StandardPlanId}, SowDate: {SowDate}, Area: {Area}",
+            id, sowDate, areaInHectares);
+
+        var query = new ReviewStandardPlanQuery
         {
-            _logger.LogInformation(
-                "ReviewStandardPlan request received for ID: {StandardPlanId}, SowDate: {SowDate}, Area: {Area}",
-                id, sowDate, areaInHectares);
+            StandardPlanId = id,
+            SowDate = sowDate,
+            AreaInHectares = areaInHectares
+        };
 
-            var query = new ReviewStandardPlanQuery
-            {
-                StandardPlanId = id,
-                SowDate = sowDate,
-                AreaInHectares = areaInHectares
-            };
+        var result = await _mediator.Send(query);
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to review standard plan ID {StandardPlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
-            }
-
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex,
-                "Unexpected error occurred while reviewing standard plan ID: {StandardPlanId}",
-                id);
-            return StatusCode(500, Result<StandardPlanReviewDto>.Failure(
-                "An unexpected error occurred"));
+            _logger.LogWarning(
+                "Failed to review standard plan ID {StandardPlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
         }
+
+        return this.ToActionResult(result);
     }
 
     [HttpPut("{id:guid}")]
@@ -164,52 +127,39 @@ public class StandardPlanController : ControllerBase
         Guid id,
         [FromBody] UpdateStandardPlanCommand command)
     {
-        try
+        if (id != command.StandardPlanId)
         {
-            if (id != command.StandardPlanId)
-            {
-                return BadRequest(Result<Guid>.Failure(
-                    "Route ID does not match command ID.",
-                    "IdMismatch"));
-            }
-
-            _logger.LogInformation("UpdateStandardPlan request received for ID: {StandardPlanId}", id);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to update standard plan ID {StandardPlanId}: {Errors}",
-                    id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
-            }
-
-            return this.ToActionResult(result);
+            return BadRequest(Result<Guid>.Failure(
+                "Route ID does not match command ID.",
+                "IdMismatch"));
         }
-        catch (Exception ex)
+
+        _logger.LogInformation("UpdateStandardPlan request received for ID: {StandardPlanId}", id);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex,
-                "Unexpected error occurred while updating standard plan ID: {StandardPlanId}",
-                id);
-            return StatusCode(500, Result<Guid>.Failure(
-                "An unexpected error occurred"));
+            _logger.LogWarning(
+                "Failed to update standard plan ID {StandardPlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
         }
+
+        return this.ToActionResult(result);
     }
 
     [HttpPost("download-excel")]
     public async Task<IActionResult> DownloadStandardPlansExcel([FromBody] DownloadAllStandardPlansExcelQuery query)
     {
-        return ToFileActionResult(await _mediator.Send(query));
+        return this.ToFileActionResult(await _mediator.Send(query));
     }
 
     [HttpGet("download-sample-excel")]
     public async Task<IActionResult> DownloadSampleExcel()
     {
-        return ToFileActionResult(await _mediator.Send(new DownloadStandardPlanSampleExcelQuery()));
+        return this.ToFileActionResult(await _mediator.Send(new DownloadStandardPlanSampleExcelQuery()));
     }
 
-    private IActionResult ToFileActionResult<T>(Result<T> result) where T : IActionResult =>
-        result.Succeeded && result.Data != null
-            ? result.Data
-            : BadRequest(new { message = result.Message });
+    private static string FormatErrors(IEnumerable<string>? errors) =>
+        string.Join(", ", errors ?? Array.Empty<string>());
 }

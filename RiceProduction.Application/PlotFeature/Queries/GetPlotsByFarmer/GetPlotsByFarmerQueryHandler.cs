@@ -40,6 +40,7 @@ public class GetPlotsByFarmerQueryHandler : IRequestHandler<GetPlotsByFarmerQuer
 
             // Build filter
             var query = _unitOfWork.Repository<Plot>().GetQueryable()
+                .AsNoTracking()
                 .Where(p => p.FarmerId == request.FarmerId);
 
 
@@ -48,7 +49,8 @@ public class GetPlotsByFarmerQueryHandler : IRequestHandler<GetPlotsByFarmerQuer
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
                 .Include(p => p.PlotCultivations)
-                .Include(p => p.Alerts);
+                .Include(p => p.Alerts)
+                .AsSplitQuery();
 
             var totalCount = await query.CountAsync(cancellationToken);
 

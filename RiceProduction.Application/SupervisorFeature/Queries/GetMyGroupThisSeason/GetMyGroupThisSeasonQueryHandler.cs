@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
@@ -45,15 +46,15 @@ public class GetMyGroupThisSeasonQueryHandler
                 return Result<MyGroupResponse>.Failure(seasonError!);
             }
 
-            var groups = await _unitOfWork.Repository<Group>()
+            var group = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(g => g.YearSeason)
-                    .ThenInclude(ys => ys.RiceVariety)
-                .Where(g => g.SupervisorId == request.SupervisorId &&
-                            g.YearSeason != null && g.YearSeason.SeasonId == targetSeason.Id)
-                .ToListAsync(cancellationToken);
-
-            var group = groups.FirstOrDefault();
+                    .ThenInclude(ys => ys!.RiceVariety)
+                .Include(g => g.Cluster)
+                .FirstOrDefaultAsync(g => g.SupervisorId == request.SupervisorId &&
+                            g.YearSeason != null && g.YearSeason.SeasonId == targetSeason.Id,
+                    cancellationToken);
 
             if (group == null)
             {
@@ -66,16 +67,6 @@ public class GetMyGroupThisSeasonQueryHandler
             var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
             var farmers = await _unitOfWork.FarmerRepository.ListAsync(f => farmerIds.Contains(f.Id));
             var farmerDict = farmers.ToDictionary(f => f.Id);
-
-            RiceVariety? riceVariety = null;
-            if (group.YearSeason?.RiceVarietyId != null)
-            {
-                riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                    .FindAsync(rv => rv.Id == group.YearSeason.RiceVarietyId);
-            }
-
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == group.ClusterId);
 
             var plansList = (await _unitOfWork.Repository<ProductionPlan>()
                 .ListAsync(pp => pp.GroupId == group.Id)).ToList();
@@ -123,7 +114,7 @@ public class GetMyGroupThisSeasonQueryHandler
                 TotalArea = group.TotalArea,
                 AreaGeoJson = PlotGeometryHelper.SerializeGeometry(group.Area),
                 RiceVarietyId = group.YearSeason?.RiceVarietyId,
-                RiceVarietyName = riceVariety?.VarietyName,
+                RiceVarietyName = group.YearSeason?.RiceVariety?.VarietyName,
                 Season = new SeasonInfo
                 {
                     SeasonId = targetSeason.Id,
@@ -134,7 +125,7 @@ public class GetMyGroupThisSeasonQueryHandler
                     IsActive = targetSeason.IsActive
                 },
                 ClusterId = group.ClusterId,
-                ClusterName = cluster?.ClusterName,
+                ClusterName = group.Cluster?.ClusterName,
                 Plots = plotDetails,
                 Readiness = readiness,
                 ProductionPlans = plansSummary

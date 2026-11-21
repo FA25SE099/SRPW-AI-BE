@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -30,6 +31,7 @@ public class GetReportWithEmergencyMaterialsQueryHandler
         {
             var report = await _unitOfWork.Repository<EmergencyReport>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                         .ThenInclude(p => p.Farmer)
@@ -57,9 +59,11 @@ public class GetReportWithEmergencyMaterialsQueryHandler
             {
                 emergencyTasks = await _unitOfWork.Repository<CultivationTask>()
                     .GetQueryable()
+                    .AsNoTracking()
                     .Include(ct => ct.CultivationTaskMaterials)
                         .ThenInclude(ctm => ctm.Material)
                             .ThenInclude(m => m.MaterialPrices)
+                    .AsSplitQuery()
                     .Where(ct => ct.PlotCultivationId == report.PlotCultivationId.Value &&
                                 (ct.Status == TaskStatus.Emergency || ct.Status == TaskStatus.EmergencyApproval) &&
                                 ct.IsContingency)

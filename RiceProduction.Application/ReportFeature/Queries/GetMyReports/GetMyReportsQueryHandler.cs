@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -29,6 +30,7 @@ public class GetMyReportsQueryHandler : IRequestHandler<GetMyReportsQuery, Paged
         {
             var query = _unitOfWork.Repository<EmergencyReport>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(r => r.ReportedBy == request.UserId)
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)

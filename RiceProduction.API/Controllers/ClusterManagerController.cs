@@ -27,24 +27,16 @@ public class ClusterManagerController : Controller
     [HttpPost("get-all")]
     public async Task<ActionResult<PagedResult<List<ClusterManagerResponse>>>> GetClusterManagersPagingAndSearch([FromBody] ClusterManagerListRequest request)
     {
-        try
+        var query = new GetClusterManagersQuery
         {
-            var query = new GetClusterManagersQuery
-            {
-                PageSize = request.PageSize,
-                CurrentPage = request.CurrentPage,
-                Search = request.Search,
-                PhoneNumber = request.PhoneNumber,
-                FreeOrAssigned = request.FreeOrAssigned
-            };
-            var result = await _mediator.Send(query);
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting free cluster managers");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+            PageSize = request.PageSize,
+            CurrentPage = request.CurrentPage,
+            Search = request.Search,
+            PhoneNumber = request.PhoneNumber,
+            FreeOrAssigned = request.FreeOrAssigned
+        };
+        var result = await _mediator.Send(query);
+        return this.ToActionResult(result);
     }
 
     [HttpPost]
@@ -57,30 +49,14 @@ public class ClusterManagerController : Controller
     [HttpGet("Get-by-id")]
     public async Task<IActionResult> GetClusterManagerById([FromQuery] Guid clusterManagerId)
     {
-        try
-        {
-            var result = await _mediator.Send(new GetClusterManagerByIdQuery { ClusterManagerId = clusterManagerId });
-            return this.ToIActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting cluster manager by ID");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(new GetClusterManagerByIdQuery { ClusterManagerId = clusterManagerId });
+        return this.ToIActionResult(result);
     }
 
     [HttpGet("get-cluster-id")]
     public async Task<IActionResult> GetClusterIdByManagerId([FromQuery] Guid clusterManagerId)
     {
-        try
-        {
-            var result = await _mediator.Send(new GetClusterIdByManagerIdQuery { ClusterManagerId = clusterManagerId });
-            return this.ToIActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting cluster ID by manager ID");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(new GetClusterIdByManagerIdQuery { ClusterManagerId = clusterManagerId });
+        return this.ToIActionResult(result);
     }
 }

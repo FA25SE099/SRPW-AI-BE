@@ -105,6 +105,7 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             // DEBUG: First check raw database values without includes
             var rawTaskData = await _unitOfWork.Repository<CultivationTask>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId)
                 .Select(ct => new { 
                     TaskId = ct.Id, 

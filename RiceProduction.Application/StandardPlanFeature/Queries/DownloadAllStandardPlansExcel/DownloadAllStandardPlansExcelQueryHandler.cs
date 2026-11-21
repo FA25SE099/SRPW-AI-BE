@@ -1,14 +1,14 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.StandardPlanFeature.Queries.GetAllStandardPlans;
 using RiceProduction.Domain.Entities;
 using System.Linq.Expressions;
 
 namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadAllStandardPlansExcel
 {
-    public class DownloadAllStandardPlansExcelQueryHandler : IRequestHandler<DownloadAllStandardPlansExcelQuery, Result<IActionResult>>
+    public class DownloadAllStandardPlansExcelQueryHandler : IRequestHandler<DownloadAllStandardPlansExcelQuery, Result<FileExportResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _genericExcel;
@@ -24,7 +24,7 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadAllStan
             _logger = logger;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadAllStandardPlansExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadAllStandardPlansExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -45,7 +45,7 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadAllStan
                 if (standardPlans == null || !standardPlans.Any())
                 {
                     _logger.LogWarning("No standard plans found for export");
-                    return Result<IActionResult>.Failure("No standard plans found to export");
+                    return Result<FileExportResult>.Failure("No standard plans found to export");
                 }
 
                 var standardPlanDtos = standardPlans.Select(sp => new StandardPlanDto
@@ -76,12 +76,12 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadAllStan
                     fileName);
 
                 _logger.LogInformation("Successfully exported {Count} standard plans to Excel", standardPlanDtos.Count);
-                return Result<IActionResult>.Success(result, "Standard plans exported successfully");
+                return Result<FileExportResult>.Success(result, "Standard plans exported successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while exporting standard plans to Excel");
-                return Result<IActionResult>.Failure("Failed to export standard plans to Excel");
+                return Result<FileExportResult>.Failure("Failed to export standard plans to Excel");
             }
         }
     }

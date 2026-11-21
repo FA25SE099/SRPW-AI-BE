@@ -51,6 +51,7 @@ public class GetPendingReceiptsForFarmerQueryHandler
         // Get all plot cultivations for these plots
         var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
             .GetQueryable()
+            .AsNoTracking()
             .Where(pc => plotIds.Contains(pc.PlotId))
             .Include(pc => pc.Plot)
             .ToListAsync(cancellationToken);
@@ -60,6 +61,7 @@ public class GetPendingReceiptsForFarmerQueryHandler
         // Get distributions where supervisor confirmed but farmer hasn't (PartiallyConfirmed status)
         var pendingReceipts = await _unitOfWork.Repository<MaterialDistribution>()
             .GetQueryable()
+            .AsNoTracking()
             .Where(md => cultivationIds.Contains(md.PlotCultivationId) && 
                         md.Status == DistributionStatus.PartiallyConfirmed &&
                         md.SupervisorConfirmedAt.HasValue &&

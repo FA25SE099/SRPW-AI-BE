@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -28,6 +29,7 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
         {
             var report = await _unitOfWork.Repository<EmergencyReport>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                         .ThenInclude(p => p.Farmer)

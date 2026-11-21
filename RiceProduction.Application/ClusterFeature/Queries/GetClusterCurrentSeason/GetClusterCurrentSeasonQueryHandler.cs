@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
@@ -47,8 +48,9 @@ public class GetClusterCurrentSeasonQueryHandler
 
             var groupsList = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(g => g.YearSeason)
-                    .ThenInclude(ys => ys.RiceVariety)
+                    .ThenInclude(ys => ys!.RiceVariety)
                 .Where(g => g.ClusterId == cluster.Id &&
                            g.YearSeason != null && g.YearSeason.SeasonId == currentSeason.Id &&
                            g.Year == currentYear)
@@ -129,16 +131,6 @@ public class GetClusterCurrentSeasonQueryHandler
         var farmers = await _unitOfWork.FarmerRepository
             .ListAsync(f => farmerIds.Contains(f.Id));
 
-        var varietyIds = groups
-            .Where(g => g.YearSeason?.RiceVarietyId != null)
-            .Select(g => g.YearSeason!.RiceVarietyId)
-            .Distinct()
-            .ToList();
-
-        var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-            .ListAsync(rv => varietyIds.Contains(rv.Id));
-        var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
-
         var supervisorIds = groups
             .Where(g => g.SupervisorId.HasValue)
             .Select(g => g.SupervisorId!.Value)
@@ -157,9 +149,7 @@ public class GetClusterCurrentSeasonQueryHandler
                 ? supervisorDict.GetValueOrDefault(g.SupervisorId.Value)?.FullName
                 : null,
             RiceVarietyId = g.YearSeason?.RiceVarietyId,
-            RiceVarietyName = g.YearSeason?.RiceVarietyId != null
-                ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName
-                : null,
+            RiceVarietyName = g.YearSeason?.RiceVariety?.VarietyName,
             PlantingDate = g.PlantingDate,
             Status = g.Status.ToString(),
             PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => gp.GroupId == g.Id)),
@@ -175,7 +165,7 @@ public class GetClusterCurrentSeasonQueryHandler
                 return new RiceVarietyGroupSummary
                 {
                     RiceVarietyId = g.Key,
-                    RiceVarietyName = varietyDict.GetValueOrDefault(g.Key)?.VarietyName ?? "Unknown",
+                    RiceVarietyName = g.First().YearSeason?.RiceVariety?.VarietyName ?? "Unknown",
                     GroupCount = g.Count(),
                     PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => varietyGroupIds.Contains(gp.GroupId))),
                     TotalArea = g.Sum(gr => gr.TotalArea ?? 0)

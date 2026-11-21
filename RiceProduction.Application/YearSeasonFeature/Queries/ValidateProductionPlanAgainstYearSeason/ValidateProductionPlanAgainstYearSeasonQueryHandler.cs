@@ -36,6 +36,7 @@ public class ValidateProductionPlanAgainstYearSeasonQueryHandler
 
             var group = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(g => g.YearSeason)
                     .ThenInclude(ys => ys.Season)
                 .FirstOrDefaultAsync(g => g.Id == request.GroupId, cancellationToken);

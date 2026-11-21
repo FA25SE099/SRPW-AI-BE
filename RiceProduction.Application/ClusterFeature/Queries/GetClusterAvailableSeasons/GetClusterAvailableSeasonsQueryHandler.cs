@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
@@ -44,8 +45,15 @@ public class GetClusterAvailableSeasonsQueryHandler
 
             var groupsList = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
-                .Include(g => g.YearSeason)
+                .AsNoTracking()
                 .Where(g => g.ClusterId == cluster.Id)
+                .Select(g => new
+                {
+                    g.Id,
+                    SeasonId = g.YearSeason != null ? (Guid?)g.YearSeason.SeasonId : null,
+                    g.Year,
+                    g.TotalArea
+                })
                 .ToListAsync(cancellationToken);
 
             var response = new ClusterSeasonsResponse();
@@ -53,7 +61,7 @@ public class GetClusterAvailableSeasonsQueryHandler
             if (currentSeason != null)
             {
                 var currentGroups = groupsList
-                    .Where(g => g.YearSeason != null && g.YearSeason.SeasonId == currentSeason.Id && g.Year == currentYear)
+                    .Where(g => g.SeasonId == currentSeason.Id && g.Year == currentYear)
                     .ToList();
 
                 var (completionRate, pending, canFormGroups) = await CalculateSelectionProgressAsync(
@@ -68,7 +76,8 @@ public class GetClusterAvailableSeasonsQueryHandler
                     IsCurrent = true,
                     HasGroups = currentGroups.Any(),
                     GroupCount = currentGroups.Count,
-                    TotalPlots = await GetPlotCountForGroupsAsync(currentGroups),
+                    TotalPlots = await GetPlotCountForGroupsAsync(
+                        currentGroups.Select(g => g.Id).ToList(), cancellationToken),
                     TotalArea = currentGroups.Sum(g => g.TotalArea ?? 0),
                     SelectionProgress = completionRate,
                     SelectionsPending = pending,
@@ -90,7 +99,7 @@ public class GetClusterAvailableSeasonsQueryHandler
                 var year = DetermineYearForSeason(season);
 
                 var seasonGroups = groupsList
-                    .Where(g => g.YearSeason != null && g.YearSeason.SeasonId == season.Id && g.Year == year)
+                    .Where(g => g.SeasonId == season.Id && g.Year == year)
                     .ToList();
 
                 if (!request.IncludeEmpty && !seasonGroups.Any())
@@ -107,7 +116,8 @@ public class GetClusterAvailableSeasonsQueryHandler
                     IsCurrent = false,
                     HasGroups = seasonGroups.Any(),
                     GroupCount = seasonGroups.Count,
-                    TotalPlots = await GetPlotCountForGroupsAsync(seasonGroups),
+                    TotalPlots = await GetPlotCountForGroupsAsync(
+                        seasonGroups.Select(g => g.Id).ToList(), cancellationToken),
                     TotalArea = seasonGroups.Sum(g => g.TotalArea ?? 0)
                 };
 
@@ -174,18 +184,17 @@ public class GetClusterAvailableSeasonsQueryHandler
         return (completionRate, pending, canFormGroups);
     }
 
-    private async Task<int> GetPlotCountForGroupsAsync(List<Group> groups)
+    private async Task<int> GetPlotCountForGroupsAsync(List<Guid> groupIds, CancellationToken cancellationToken)
     {
-        if (!groups.Any())
+        if (groupIds.Count == 0)
         {
             return 0;
         }
 
-        var groupIds = groups.Select(g => g.Id).ToList();
-        var groupPlots = await _unitOfWork.Repository<GroupPlot>()
-            .ListAsync(gp => groupIds.Contains(gp.GroupId));
-
-        return groupPlots.Count();
+        return await _unitOfWork.Repository<GroupPlot>()
+            .GetQueryable()
+            .AsNoTracking()
+            .CountAsync(gp => groupIds.Contains(gp.GroupId), cancellationToken);
     }
 
     private static bool IsSeasonPast(Season season, Season? currentSeason) =>

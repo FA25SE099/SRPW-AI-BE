@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.EmergencyProtocolResponses;
@@ -38,6 +39,7 @@ public class GetAllEmergencyProtocolsQueryHandler : IRequestHandler<GetAllEmerge
             // Start with base queryable
             var query = _unitOfWork.Repository<EmergencyProtocol>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ep => ep.Category)
                 .Include(ep => ep.StandardPlanStages)
                     .ThenInclude(s => s.StandardPlanTasks)
@@ -45,7 +47,7 @@ public class GetAllEmergencyProtocolsQueryHandler : IRequestHandler<GetAllEmerge
                     .ThenInclude(t => t.PestProtocol)
                 .Include(ep => ep.Thresholds)
                     .ThenInclude(t => t.WeatherProtocol)
-                .AsQueryable();
+                .AsSplitQuery();
 
             // Apply CategoryId filter
             if (request.CategoryId.HasValue)

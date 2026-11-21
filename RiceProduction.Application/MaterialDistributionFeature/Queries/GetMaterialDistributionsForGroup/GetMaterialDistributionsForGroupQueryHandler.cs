@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -38,6 +39,7 @@ public class GetMaterialDistributionsForGroupQueryHandler
 
             var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(pc => plotIds.Contains(pc.PlotId))
                 .Include(pc => pc.Plot)
                 .ToListAsync(cancellationToken);
@@ -46,6 +48,7 @@ public class GetMaterialDistributionsForGroupQueryHandler
 
             var distributions = await _unitOfWork.Repository<MaterialDistribution>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(md => cultivationIds.Contains(md.PlotCultivationId))
                 .Include(md => md.Material)
                 .Include(md => md.PlotCultivation)

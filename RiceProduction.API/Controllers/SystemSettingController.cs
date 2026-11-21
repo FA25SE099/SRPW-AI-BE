@@ -31,23 +31,15 @@ public class SystemSettingController : ControllerBase
     public async Task<ActionResult<PagedResult<List<SystemSettingResponse>>>> GetAllSystemSettings(
         [FromBody] SystemSettingListRequest request)
     {
-        try
+        var query = new GetAllSystemSettingsQuery
         {
-            var query = new GetAllSystemSettingsQuery
-            {
-                CurrentPage = request.CurrentPage,
-                PageSize = request.PageSize,
-                SearchKey = request.SearchKey,
-                Category = request.Category
-            };
+            CurrentPage = request.CurrentPage,
+            PageSize = request.PageSize,
+            SearchKey = request.SearchKey,
+            Category = request.Category
+        };
 
-            return this.ToActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting system settings");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -58,18 +50,10 @@ public class SystemSettingController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<Result<SystemSettingResponse>>> GetSystemSettingById(Guid id)
     {
-        try
-        {
-            var query = new GetSystemSettingByIdQuery { SettingId = id };
-            var result = await _mediator.Send(query);
+        var query = new GetSystemSettingByIdQuery { SettingId = id };
+        var result = await _mediator.Send(query);
 
-            return result.Succeeded ? Ok(result) : NotFound(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting system setting with ID: {SettingId}", id);
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        return result.Succeeded ? Ok(result) : NotFound(result);
     }
 
     /// <summary>
@@ -83,22 +67,14 @@ public class SystemSettingController : ControllerBase
         Guid id,
         [FromBody] UpdateSystemSettingRequest request)
     {
-        try
+        var command = new UpdateSystemSettingCommand
         {
-            var command = new UpdateSystemSettingCommand
-            {
-                SettingId = id,
-                SettingValue = request.SettingValue,
-                SettingDescription = request.SettingDescription
-            };
+            SettingId = id,
+            SettingValue = request.SettingValue,
+            SettingDescription = request.SettingDescription
+        };
 
-            return this.ToActionResult(await _mediator.Send(command));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while updating system setting with ID: {SettingId}", id);
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        return this.ToActionResult(await _mediator.Send(command));
     }
 
     /// <summary>
@@ -108,35 +84,27 @@ public class SystemSettingController : ControllerBase
     [HttpGet("categories")]
     public async Task<ActionResult<Result<List<string>>>> GetCategories()
     {
-        try
+        // Get all settings and extract unique categories
+        var query = new GetAllSystemSettingsQuery
         {
-            // Get all settings and extract unique categories
-            var query = new GetAllSystemSettingsQuery
-            {
-                CurrentPage = 1,
-                PageSize = 1000 // Get all for categories
-            };
+            CurrentPage = 1,
+            PageSize = 1000 // Get all for categories
+        };
 
-            var result = await _mediator.Send(query);
+        var result = await _mediator.Send(query);
 
-            if (!result.Succeeded || result.Data == null)
-            {
-                return BadRequest(result);
-            }
-
-            var categories = result.Data
-                .Select(s => s.SettingCategory)
-                .Distinct()
-                .OrderBy(c => c)
-                .ToList();
-
-            return Ok(Result<List<string>>.Success(categories, "Successfully retrieved categories"));
-        }
-        catch (Exception ex)
+        if (!result.Succeeded || result.Data == null)
         {
-            _logger.LogError(ex, "Error occurred while getting system setting categories");
-            return StatusCode(500, "An error occurred while processing your request");
+            return BadRequest(result);
         }
+
+        var categories = result.Data
+            .Select(s => s.SettingCategory)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        return Ok(Result<List<string>>.Success(categories, "Successfully retrieved categories"));
     }
 }
 

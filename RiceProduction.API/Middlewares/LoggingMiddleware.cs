@@ -43,25 +43,28 @@ namespace RiceProduction.API.Middlewares
                 catch (Exception ex)
                 {
                     caughtException = ex;
-                    // ← We catch it, log it, but DO NOT re-throw
-                    // ASP.NET will still set 500 and your exception filters/problem details still work
+                    throw;
                 }
                 finally
                 {
                     stopwatch.Stop();
 
-                    var logLevel = caughtException != null
-                        ? LogLevel.Error
-                        : context.Response.StatusCode >= 400 ? LogLevel.Warning : LogLevel.Information;
+                    var statusCode = caughtException != null && context.Response.StatusCode < 400
+                        ? StatusCodes.Status500InternalServerError
+                        : context.Response.StatusCode;
 
-                    var message = "← {Method} {Path} → {StatusCode} in {ElapsedMs}ms";
+                    var logLevel = caughtException != null || statusCode >= 500
+                        ? LogLevel.Error
+                        : statusCode >= 400 ? LogLevel.Warning : LogLevel.Information;
+
+                    const string message = "← {Method} {Path} → {StatusCode} in {ElapsedMs}ms";
 
                     if (caughtException != null)
                     {
                         _logger.LogError(caughtException, message,
                             context.Request.Method,
                             context.Request.Path,
-                            context.Response.StatusCode,
+                            statusCode,
                             stopwatch.ElapsedMilliseconds);
                     }
                     else
@@ -69,7 +72,7 @@ namespace RiceProduction.API.Middlewares
                         _logger.Log(logLevel, message,
                             context.Request.Method,
                             context.Request.Path,
-                            context.Response.StatusCode,
+                            statusCode,
                             stopwatch.ElapsedMilliseconds);
                     }
                 }

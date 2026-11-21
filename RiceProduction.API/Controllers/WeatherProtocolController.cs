@@ -41,57 +41,40 @@ public class WeatherProtocolController : Controller
     [HttpPost]
     public async Task<ActionResult<Result<Guid>>> Create([FromBody] CreateWeatherProtocolCommand command)
     {
-        try
+        _logger.LogInformation(
+            "Create WeatherProtocol request received: {ProtocolName}, Source: {Source}",
+            command.Name,
+            command.Source);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation(
-                "Create WeatherProtocol request received: {ProtocolName}, Source: {Source}",
-                command.Name,
-                command.Source);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to create weather protocol: {Errors}",
-                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully created weather protocol with ID: {ProtocolId}", result.Data);
-            return Ok(result);
+            _logger.LogWarning("Failed to create weather protocol: {Errors}",
+                string.Join(", ", result.Errors ?? Array.Empty<string>()));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while creating weather protocol");
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-        }
+
+        _logger.LogInformation("Successfully created weather protocol with ID: {ProtocolId}", result.Data);
+        return Ok(result);
     }
 
     [HttpPut]
     public async Task<ActionResult<Result<Guid>>> Update([FromBody] UpdateWeatherProtocolCommand command)
     {
-        try
+        _logger.LogInformation("Update WeatherProtocol request received for ID: {ProtocolId}", command.Id);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("Update WeatherProtocol request received for ID: {ProtocolId}", command.Id);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to update weather protocol ID {ProtocolId}: {Errors}",
-                    command.Id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
-
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully updated weather protocol with ID: {ProtocolId}", result.Data);
-            return Ok(result);
+            _logger.LogWarning(
+                "Failed to update weather protocol ID {ProtocolId}: {Errors}",
+                command.Id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while updating weather protocol ID: {ProtocolId}", command.Id);
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-        }
+
+        _logger.LogInformation("Successfully updated weather protocol with ID: {ProtocolId}", result.Data);
+        return Ok(result);
     }
 }

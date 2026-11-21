@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationVersionFeature.Queries.GetVersionsByPlotCultivation;
 
@@ -24,24 +25,9 @@ public class CultivationVersionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetVersionsByPlotCultivation(Guid plotCultivationId)
     {
-        try
-        {
-            var query = new GetVersionsByPlotCultivationQuery { PlotCultivationId = plotCultivationId };
-            var result = await _mediator.Send(query);
+        var query = new GetVersionsByPlotCultivationQuery { PlotCultivationId = plotCultivationId };
+        var result = await _mediator.Send(query);
 
-            if (!result.Succeeded)
-            {
-                return result.Message?.Contains("not found") == true
-                    ? NotFound(result)
-                    : BadRequest(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting versions for PlotCultivation {PlotCultivationId}", plotCultivationId);
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        return result.Succeeded ? Ok(result) : this.ToNotFoundOrBadRequest(result);
     }
 }

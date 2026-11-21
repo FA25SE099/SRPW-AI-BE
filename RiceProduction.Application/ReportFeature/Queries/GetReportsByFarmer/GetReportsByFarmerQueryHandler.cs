@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -36,6 +37,7 @@ public class GetReportsByFarmerQueryHandler : IRequestHandler<GetReportsByFarmer
 
             var farmerPlotIds = await _unitOfWork.Repository<Plot>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(p => p.FarmerId == request.FarmerId)
                 .Select(p => p.Id)
                 .ToListAsync(cancellationToken);
@@ -52,6 +54,7 @@ public class GetReportsByFarmerQueryHandler : IRequestHandler<GetReportsByFarmer
 
             IQueryable<EmergencyReport> query = _unitOfWork.Repository<EmergencyReport>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(r => r.PlotCultivation != null && farmerPlotIds.Contains(r.PlotCultivation.PlotId))
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)

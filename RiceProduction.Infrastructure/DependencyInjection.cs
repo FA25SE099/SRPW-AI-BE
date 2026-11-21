@@ -1,29 +1,23 @@
-﻿using AutoMapper;
-using Ardalis.GuardClauses;
+﻿using Ardalis.GuardClauses;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
-using RiceProduction.Application.Common.Mappings;
-using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using RiceProduction.Infrastructure.Data.Interceptors;
 using RiceProduction.Infrastructure.Identity;
 using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using RiceProduction.Infrastructure.Implementation.NotificationImplementation.Infobip;
-using RiceProduction.Infrastructure.Implementation.NotificationImplementation.SpeedSMS;
 using RiceProduction.Infrastructure.Implementation.StorageImplementation.Azure;
 using RiceProduction.Infrastructure.Implementation.Zalo;
 using RiceProduction.Infrastructure.Repository;
 using RiceProduction.Infrastructure.Services;
-using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
 namespace RiceProduction.Infrastructure;
@@ -36,13 +30,7 @@ public static class DependencyInjection
         Guard.Against.Null(connectionString, message: "Connection string 'CleanArchitectureDb' not found.");
 
         builder.Services.AddScoped<ISaveChangesInterceptor, AuditableEntityInterceptor>();
-        builder.Services.AddScoped<IGenericExcel, GenericExcel>();
         builder.Services.AddScoped<ISaveChangesInterceptor, PlotGeometryInterceptor>();
-        builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-    });
 
         builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
@@ -50,91 +38,65 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString, npgsqlOptions =>
             {
                 npgsqlOptions.UseNetTopologySuite();
-
                 npgsqlOptions.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName);
             });
         });
 
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
-        builder.Services.AddAutoMapper(typeof(FarmerMapping).Assembly);
+        builder.Services.AddMemoryCache();
+        builder.Services.AddSingleton(TimeProvider.System);
 
-        // Register the Channel as a singleton first
-        builder.Services.AddSingleton<Channel<Func<CancellationToken, Task>>>(sp =>
-        {
-            return Channel.CreateUnbounded<Func<CancellationToken, Task>>(
-                new UnboundedChannelOptions
-                {
-                    SingleWriter = false,
-                    SingleReader = false
-                });
-        });
+        builder.Services.AddSingleton(_ =>
+            Channel.CreateUnbounded<Func<CancellationToken, Task>>(new UnboundedChannelOptions
+            {
+                SingleWriter = false,
+                SingleReader = false
+            }));
         builder.Services.AddHostedService<QueuedEmailBackgroundService>();
-        // Then register the BackgroundTaskQueue using the channel
-        builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();      
+        builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
 
-        // Configure Identity with proper stores
         builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
         {
-            // Password settings
             options.Password.RequireDigit = false;
             options.Password.RequireLowercase = false;
             options.Password.RequireNonAlphanumeric = false;
             options.Password.RequireUppercase = false;
-
-            // Lockout settings
         })
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
 
-        // MediatR registration removed from Infrastructure - it's already registered in Application layer
-        // Duplicate registration was causing event handlers to be invoked twice, leading to duplicate emails
-
-        builder.Services.AddScoped<IEmailJobService, EmailJobService>();
-        builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
-        builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
-        //builder.Services.AddScoped<ISmSService, SpeedSMSAPI>();
-        builder.Services.AddScoped<INotificationService, NotificationService>();
-        // Configure SMS Retry Strategy
-        //builder.Services.Configure<SmsRetryConfiguration>(
-        //    builder.Configuration.GetSection("SmsRetry"));
-
-        //builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
-        //builder.Services.AddHostedService<SmsRetryBackgroundService>();
+        builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
         builder.Services.AddScoped<IFarmerRepository, FarmerRepository>();
-        //builder.Services.AddScoped<ISmsRetryService, SmsRetryService>();
+        builder.Services.AddScoped<ICacheInvalidator, CacheInvalidator>();
 
-        builder.Services.AddScoped<IGenericExcel, GenericExcel>();
-        builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
-        //Email Services
+
+        builder.Services.AddScoped<IGenericExcel, GenericExcel>();
+        builder.Services.AddScoped<IFarmerExcel, FarmerExcelImplement>();
+
         builder.Services.AddScoped<IEmailService, EmailService>();
-        // Register Zalo Services
+        builder.Services.AddScoped<IEmailJobService, EmailJobService>();
+        builder.Services.AddScoped<INotificationService, NotificationService>();
         builder.Services.AddHttpClient<IZaloOAuthService, ZaloOAuthService>();
         builder.Services.AddHttpClient<IZaloZnsService, ZaloZnsService>();
-        builder.Services.AddScoped<IMemoryCache, MemoryCache>();
-        builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
-        builder.Services.AddScoped<ICacheInvalidator, CacheInvalidator>();
-        builder.Services.AddSingleton<BlobServiceClient>(
-    new BlobServiceClient(builder.Configuration["AzureStorage:ConnectionString"]));
+
+        builder.Services.AddSingleton(_ =>
+            new BlobServiceClient(builder.Configuration["AzureStorage:ConnectionString"]));
         builder.Services.AddScoped<IStorageService, AzureStorageService>();
-        // Add this where services are registered
-        //builder.Services.AddSingleton<ISmSService>(sp =>
-        //    new SpeedSMSAPI("S-Kyl0ISrgtM7EArMd8Rfonn5hh-eKl8"));
+
         builder.Services.AddSingleton<ISmSService>(sp =>
-    new InfobipSmsAPI("21767813b128cc6a42da45672e2926f9-76a6192c-c30d-462f-8a37-abd2797742ac", "https://2m6wzp.api.infobip.com"));
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var apiKey = config["Infobip:ApiKey"] ?? string.Empty;
+            var basePath = config["Infobip:BasePath"] ?? "https://api.infobip.com";
+            var defaultSender = config["Infobip:DefaultSender"] ?? "InfoSMS";
+            return new InfobipSmsAPI(apiKey, basePath, defaultSender);
+        });
+
         builder.Services.AddScoped<IRicePestDetectionService, RicePestDetectionService>();
-        
-        // Register Gemini AI service for emergency plan recommendations
-        //builder.Services.AddScoped<IGeminiAIService, GeminiAIService>();
-        
-        // Register Contextual Gemini AI service for incremental suggestions
         builder.Services.AddScoped<IContextualAIService, ContextualGeminiAIService>();
-
-        // Register PostGIS spatial group formation service
         builder.Services.AddScoped<IPostGISGroupFormationService, Services.PostGISGroupFormationService>();
-
     }
 }
-

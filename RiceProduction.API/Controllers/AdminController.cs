@@ -29,26 +29,18 @@ public class AdminController : Controller
     [HttpPost("users")]
     public async Task<ActionResult<PagedResult<List<UserResponse>>>> GetAllUsers([FromBody] GetAllUsersRequest request)
     {
-        try
+        var query = new GetAllUsersQuery
         {
-            var query = new GetAllUsersQuery
-            {
-                CurrentPage = request.CurrentPage,
-                PageSize = request.PageSize,
-                SearchEmailAndName = request.SearchEmailAndName,
-                SearchPhoneNumber = request.SearchPhoneNumber,
-                Role = request.Role,
-                IsActive = request.IsActive,
-                SortBy = request.SortBy
-            };
+            CurrentPage = request.CurrentPage,
+            PageSize = request.PageSize,
+            SearchEmailAndName = request.SearchEmailAndName,
+            SearchPhoneNumber = request.SearchPhoneNumber,
+            Role = request.Role,
+            IsActive = request.IsActive,
+            SortBy = request.SortBy
+        };
 
-            var result = await _mediator.Send(query);
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting users");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(query);
+        return this.ToActionResult(result);
     }
 }

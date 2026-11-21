@@ -15,6 +15,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Sinks.Grafana.Loki;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,7 +56,14 @@ var isProduction = builder.Configuration.GetValue<bool>("IsProduction");
 builder.AddApplicationServices();
 builder.AddInfrastructureServices();
 
-builder.Services.AddControllers();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -251,6 +259,7 @@ app.UseCors("AllowGemini");
 app.UseOpenTelemetryPrometheusScrapingEndpoint();
 app.UseHttpsRedirection();
 app.UseMiddleware<LoggingMiddleware>();
+app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -31,6 +31,7 @@ public class GetYearSeasonDashboardQueryHandler
             // Load YearSeason with all necessary relationships
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.Cluster)
                 .Include(ys => ys.RiceVariety)
@@ -49,37 +50,50 @@ public class GetYearSeasonDashboardQueryHandler
 
             var groups = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
-                .Include(g => g.GroupPlots)
+                .AsNoTracking()
                 .Where(g => g.YearSeasonId == yearSeason.Id)
+                .Select(g => new GroupDashboardItem(
+                    g.Id,
+                    g.Status,
+                    g.SupervisorId,
+                    g.TotalArea,
+                    g.GroupPlots.Select(gp => gp.PlotId).ToList()))
                 .ToListAsync(cancellationToken);
 
             var plotIds = groups
-                .SelectMany(g => g.GroupPlots)
-                .Select(gp => gp.PlotId)
+                .SelectMany(g => g.PlotIds)
                 .Distinct()
                 .ToList();
 
             dashboard.GroupStatus = await BuildGroupFormationStatus(groups, plotIds, cancellationToken);
 
             var groupIds = groups.Select(g => g.Id).ToList();
-            var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
-                .GetQueryable()
-                .Where(pp => pp.GroupId.HasValue && groupIds.Contains(pp.GroupId.Value))
-                .ToListAsync(cancellationToken);
+            var productionPlans = groupIds.Count > 0
+                ? await _unitOfWork.Repository<ProductionPlan>()
+                    .GetQueryable()
+                    .AsNoTracking()
+                    .Where(pp => pp.GroupId.HasValue && groupIds.Contains(pp.GroupId.Value))
+                    .ToListAsync(cancellationToken)
+                : new List<ProductionPlan>();
 
-            dashboard.PlanningStatus = BuildProductionPlanningStatus(groups, productionPlans);
+            dashboard.PlanningStatus = BuildProductionPlanningStatus(groups.Count, productionPlans);
 
-            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
-                .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
-                .ToListAsync(cancellationToken);
+            var plotCultivationIds = plotIds.Count > 0
+                ? await _unitOfWork.Repository<PlotCultivation>()
+                    .GetQueryable()
+                    .AsNoTracking()
+                    .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
+                    .Select(pc => pc.Id)
+                    .ToListAsync(cancellationToken)
+                : new List<Guid>();
 
-            var plotCultivationIds = plotCultivations.Select(pc => pc.Id).ToList();
-
-            var materialDistributions = await _unitOfWork.Repository<MaterialDistribution>()
-                .GetQueryable()
-                .Where(md => plotCultivationIds.Contains(md.PlotCultivationId))
-                .ToListAsync(cancellationToken);
+            var materialDistributions = plotCultivationIds.Count > 0
+                ? await _unitOfWork.Repository<MaterialDistribution>()
+                    .GetQueryable()
+                    .AsNoTracking()
+                    .Where(md => plotCultivationIds.Contains(md.PlotCultivationId))
+                    .ToListAsync(cancellationToken)
+                : new List<MaterialDistribution>();
 
             dashboard.MaterialStatus = BuildMaterialDistributionStatus(materialDistributions, now);
             dashboard.Timeline = BuildTimeline(yearSeason, now);
@@ -114,8 +128,15 @@ public class GetYearSeasonDashboardQueryHandler
         MaterialConfirmationDaysBeforePlanting = yearSeason.MaterialConfirmationDaysBeforePlanting
     };
 
+    private sealed record GroupDashboardItem(
+        Guid Id,
+        GroupStatus Status,
+        Guid? SupervisorId,
+        decimal? TotalArea,
+        List<Guid> PlotIds);
+
     private async Task<GroupFormationStatus> BuildGroupFormationStatus(
-        List<Group> groups,
+        List<GroupDashboardItem> groups,
         List<Guid> plotIds,
         CancellationToken cancellationToken)
     {
@@ -128,13 +149,14 @@ public class GetYearSeasonDashboardQueryHandler
             GroupsWithSupervisor = groups.Count(g => g.SupervisorId.HasValue),
             GroupsWithoutSupervisor = groups.Count(g => !g.SupervisorId.HasValue),
             TotalAreaHectares = groups.Sum(g => g.TotalArea ?? 0),
-            TotalPlotsInGroups = groups.Sum(g => g.GroupPlots.Count)
+            TotalPlotsInGroups = groups.Sum(g => g.PlotIds.Count)
         };
 
         if (plotIds.Any())
         {
             status.TotalFarmersInGroups = await _unitOfWork.Repository<Plot>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(p => plotIds.Contains(p.Id))
                 .Select(p => p.FarmerId)
                 .Distinct()
@@ -144,10 +166,9 @@ public class GetYearSeasonDashboardQueryHandler
         return status;
     }
 
-    private static ProductionPlanningStatus BuildProductionPlanningStatus(List<Group> groups, List<ProductionPlan> plans)
+    private static ProductionPlanningStatus BuildProductionPlanningStatus(int totalGroups, List<ProductionPlan> plans)
     {
         var groupsWithPlans = plans.Where(p => p.GroupId.HasValue).Select(p => p.GroupId!.Value).Distinct().Count();
-        var totalGroups = groups.Count;
 
         return new ProductionPlanningStatus
         {

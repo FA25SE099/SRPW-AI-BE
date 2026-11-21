@@ -27,9 +27,9 @@ public class GetYearSeasonReadinessQueryHandler
     {
         try
         {
-            // Load YearSeason
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.Cluster)
                 .FirstOrDefaultAsync(ys => ys.Id == request.YearSeasonId, cancellationToken);
@@ -40,10 +40,11 @@ public class GetYearSeasonReadinessQueryHandler
                     $"YearSeason with ID {request.YearSeasonId} not found");
             }
 
-            // Check if groups already exist
             var groups = await _unitOfWork.Repository<Group>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(g => g.YearSeasonId == yearSeason.Id)
+                .Select(g => new GroupReadinessSummary(g.Id, g.SupervisorId, g.Status))
                 .ToListAsync(cancellationToken);
 
             var hasGroups = groups.Any();
@@ -150,9 +151,11 @@ public class GetYearSeasonReadinessQueryHandler
         };
     }
 
+    private sealed record GroupReadinessSummary(Guid Id, Guid? SupervisorId, GroupStatus Status);
+
     private async Task<ClusterReadinessInfo> BuildGroupedReadinessAsync(
         YearSeason yearSeason,
-        List<Group> groups,
+        List<GroupReadinessSummary> groups,
         CancellationToken cancellationToken)
     {
         var groupIds = groups.Select(g => g.Id).ToList();
@@ -218,18 +221,26 @@ public class GetYearSeasonReadinessQueryHandler
         Guid seasonId,
         CancellationToken cancellationToken)
     {
+        if (plots.Count == 0)
+        {
+            return 0;
+        }
+
         var plotIds = plots.Select(p => p.Id).ToList();
-        var cultivations = await _unitOfWork.Repository<PlotCultivation>()
+        var cultivationPlotIds = await _unitOfWork.Repository<PlotCultivation>()
             .GetQueryable()
+            .AsNoTracking()
             .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == seasonId)
+            .Select(pc => pc.PlotId)
+            .Distinct()
             .ToListAsync(cancellationToken);
 
         var plotToFarmerId = plots
             .GroupBy(p => p.Id)
             .ToDictionary(g => g.Key, g => g.First().FarmerId);
 
-        return cultivations
-            .Select(pc => plotToFarmerId[pc.PlotId])
+        return cultivationPlotIds
+            .Select(plotId => plotToFarmerId[plotId])
             .Distinct()
             .Count();
     }

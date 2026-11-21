@@ -49,22 +49,13 @@ public class FarmerCultivationController : ControllerBase
         Guid seasonId,
         [FromQuery] bool onlyRecommended = true)
     {
-        try
+        var query = new GetAvailableRiceVarietiesForSeasonQuery
         {
-            var query = new GetAvailableRiceVarietiesForSeasonQuery
-            {
-                SeasonId = seasonId,
-                OnlyRecommended = onlyRecommended
-            };
+            SeasonId = seasonId,
+            OnlyRecommended = onlyRecommended
+        };
 
-            return this.ToIActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving available varieties for season {SeasonId}", seasonId);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while retrieving available varieties" });
-        }
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -81,30 +72,21 @@ public class FarmerCultivationController : ControllerBase
         Guid yearSeasonId,
         [FromQuery] bool onlyRecommended = true)
     {
-        try
+        var yearSeason = await _unitOfWork.Repository<YearSeason>()
+            .FindAsync(ys => ys.Id == yearSeasonId);
+
+        if (yearSeason == null)
         {
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .FindAsync(ys => ys.Id == yearSeasonId);
-
-            if (yearSeason == null)
-            {
-                return NotFound(new { message = "Year Season not found" });
-            }
-
-            var query = new GetAvailableRiceVarietiesForSeasonQuery
-            {
-                SeasonId = yearSeason.SeasonId,
-                OnlyRecommended = onlyRecommended
-            };
-
-            return this.ToIActionResult(await _mediator.Send(query));
+            return NotFound(new { message = "Year Season not found" });
         }
-        catch (Exception ex)
+
+        var query = new GetAvailableRiceVarietiesForSeasonQuery
         {
-            _logger.LogError(ex, "Error retrieving available varieties for year season {YearSeasonId}", yearSeasonId);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while retrieving available varieties" });
-        }
+            SeasonId = yearSeason.SeasonId,
+            OnlyRecommended = onlyRecommended
+        };
+
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -118,16 +100,7 @@ public class FarmerCultivationController : ControllerBase
     public async Task<IActionResult> ValidatePreferences(
         [FromBody] ValidateCultivationPreferencesQuery query)
     {
-        try
-        {
-            return this.ToIActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error validating cultivation preferences");
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while validating your preferences" });
-        }
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -143,36 +116,27 @@ public class FarmerCultivationController : ControllerBase
     public async Task<IActionResult> SelectPreferences(
         [FromBody] SelectCultivationPreferencesCommand command)
     {
-        try
+        // Additional authorization check: ensure farmer owns the plot
+        if (_currentUser.Id.HasValue)
         {
-            // Additional authorization check: ensure farmer owns the plot
-            if (_currentUser.Id.HasValue)
+            var plot = await _unitOfWork.Repository<Plot>()
+                .FindAsync(p => p.Id == command.PlotId);
+
+            if (plot == null)
             {
-                var plot = await _unitOfWork.Repository<Plot>()
-                    .FindAsync(p => p.Id == command.PlotId);
-
-                if (plot == null)
-                {
-                    return NotFound(new { message = "Plot not found" });
-                }
-
-                if (plot.FarmerId != _currentUser.Id.Value)
-                {
-                    _logger.LogWarning(
-                        "Farmer {FarmerId} attempted to select cultivation for plot {PlotId} owned by {OwnerId}",
-                        _currentUser.Id.Value, command.PlotId, plot.FarmerId);
-                    return Forbid();
-                }
+                return NotFound(new { message = "Plot not found" });
             }
 
-            return this.ToIActionResult(await _mediator.Send(command));
+            if (plot.FarmerId != _currentUser.Id.Value)
+            {
+                _logger.LogWarning(
+                    "Farmer {FarmerId} attempted to select cultivation for plot {PlotId} owned by {OwnerId}",
+                    _currentUser.Id.Value, command.PlotId, plot.FarmerId);
+                return Forbid();
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error selecting cultivation preferences");
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while saving your selection" });
-        }
+
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     /// <summary>
@@ -187,27 +151,18 @@ public class FarmerCultivationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetMySelections(Guid yearSeasonId)
     {
-        try
+        if (!_currentUser.Id.HasValue)
         {
-            if (!_currentUser.Id.HasValue)
-            {
-                return Unauthorized(new { message = "User not authenticated" });
-            }
-
-            var query = new GetFarmerCultivationSelectionsQuery
-            {
-                FarmerId = _currentUser.Id.Value,
-                YearSeasonId = yearSeasonId
-            };
-
-            return this.ToIActionResult(await _mediator.Send(query));
+            return Unauthorized(new { message = "User not authenticated" });
         }
-        catch (Exception ex)
+
+        var query = new GetFarmerCultivationSelectionsQuery
         {
-            _logger.LogError(ex, "Error retrieving farmer selections");
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while retrieving your selections" });
-        }
+            FarmerId = _currentUser.Id.Value,
+            YearSeasonId = yearSeasonId
+        };
+
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -222,22 +177,13 @@ public class FarmerCultivationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetFarmerSelections(Guid farmerId, Guid yearSeasonId)
     {
-        try
+        var query = new GetFarmerCultivationSelectionsQuery
         {
-            var query = new GetFarmerCultivationSelectionsQuery
-            {
-                FarmerId = farmerId,
-                YearSeasonId = yearSeasonId
-            };
+            FarmerId = farmerId,
+            YearSeasonId = yearSeasonId
+        };
 
-            return this.ToIActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving farmer {FarmerId} selections", farmerId);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while retrieving farmer selections" });
-        }
+        return this.ToIActionResult(await _mediator.Send(query));
     }
 }
 

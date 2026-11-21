@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -38,6 +39,7 @@ public class GetAvailableRiceVarietiesForSeasonQueryHandler
             // Get rice varieties suitable for this season
             var query = _unitOfWork.Repository<RiceVarietySeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(rvs => rvs.RiceVariety)
                 .Where(rvs => rvs.SeasonId == yearSeason.SeasonId);
 

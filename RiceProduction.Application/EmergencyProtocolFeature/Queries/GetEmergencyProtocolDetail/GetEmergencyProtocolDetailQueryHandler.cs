@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.EmergencyProtocolResponses;
@@ -31,6 +32,7 @@ public class GetEmergencyProtocolDetailQueryHandler : IRequestHandler<GetEmergen
 
             var emergencyProtocol = await _unitOfWork.Repository<EmergencyProtocol>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ep => ep.Category)
                 .Include(ep => ep.Creator)
                 .Include(ep => ep.Thresholds)
@@ -43,6 +45,7 @@ public class GetEmergencyProtocolDetailQueryHandler : IRequestHandler<GetEmergen
                     .ThenInclude(s => s.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
                         .ThenInclude(t => t.StandardPlanTaskMaterials)
                             .ThenInclude(m => m.Material)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(ep => ep.Id == request.EmergencyProtocolId, cancellationToken);
 
             if (emergencyProtocol == null)

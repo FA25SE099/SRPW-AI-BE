@@ -38,6 +38,7 @@ public class GetContextualAISuggestionsQueryHandler
             // 1. Load the emergency report
             var report = await _unitOfWork.Repository<EmergencyReport>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                 .Include(r => r.PlotCultivation)
@@ -56,6 +57,7 @@ public class GetContextualAISuggestionsQueryHandler
             // 2. Load the plot cultivation with current active version and tasks
             var plotCultivation = await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(pc => pc.Plot)
                 .Include(pc => pc.RiceVariety)
                 .Include(pc => pc.Season)
@@ -63,6 +65,7 @@ public class GetContextualAISuggestionsQueryHandler
                 .Include(pc => pc.CultivationTasks)
                     .ThenInclude(ct => ct.CultivationTaskMaterials)
                         .ThenInclude(ctm => ctm.Material)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(pc => pc.Id == request.PlotCultivationId, cancellationToken);
 
             if (plotCultivation == null)
@@ -99,6 +102,7 @@ public class GetContextualAISuggestionsQueryHandler
             // 4. Load available materials from database
             var availableMaterials = await _unitOfWork.Repository<Material>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(m => m.IsActive)
                 .Select(m => new AvailableMaterialContext
                 {

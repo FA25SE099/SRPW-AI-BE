@@ -3,16 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
 {
-    public class DownloadAllFarmerExcelQueryHandler : IRequestHandler<DownloadAllFarmerExcelQuery, Result<IActionResult>>
+    public class DownloadAllFarmerExcelQueryHandler : IRequestHandler<DownloadAllFarmerExcelQuery, Result<FileExportResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _downloadGenericExcel;
@@ -25,7 +25,7 @@ namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
             _mapper = mapper;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadAllFarmerExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadAllFarmerExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -33,7 +33,7 @@ namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
 
                 if (farmers == null || !farmers.Any())
                 {
-                    return Result<IActionResult>.Failure("No farmers found to export");
+                    return Result<FileExportResult>.Failure("No farmers found to export");
                 }
                 var farmerDTOs = _mapper.Map<List<FarmerDTO>>(farmers);
                 var sheetName = $"Farmers_{request.InputDate:yyyyMMdd}";
@@ -42,11 +42,11 @@ namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
                 farmerDTOs,
                 sheetName,
                 fileName);
-                return Result<IActionResult>.Success(result, "Farmer download successfully");
+                return Result<FileExportResult>.Success(result, "Farmer download successfully");
             }
             catch (Exception ex)
             {
-                return Result<IActionResult>.Failure("File created fail");
+                return Result<FileExportResult>.Failure("File created fail");
             }
         }
     }

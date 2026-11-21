@@ -1,5 +1,6 @@
 ﻿using System.Linq.Expressions;
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -36,6 +37,7 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
                     request.ClusterId, request.SeasonId);
                 var groupsQuery = _unitOfWork.Repository<Group>()
                     .GetQueryable()
+                    .AsNoTracking()
                     .Include(g => g.YearSeason)
                     .Where(g => (request.ClusterId == Guid.Empty || g.ClusterId == request.ClusterId) &&
                                (request.SeasonId == Guid.Empty || (g.YearSeason != null && g.YearSeason.SeasonId == request.SeasonId)) &&

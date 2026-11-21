@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -68,6 +69,7 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
 
             IQueryable<EmergencyReport> query = _unitOfWork.Repository<EmergencyReport>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(r => r.PlotCultivation != null && supervisedPlotIds.Contains(r.PlotCultivation.PlotId))
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)

@@ -1,6 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using RiceProduction.Application.Common.Interfaces;
+﻿using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Domain.Entities;
 using System;
@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel
 {
-    public class DownloadAllMaterialExcelQueryHandler : IRequestHandler<DownloadAllMaterialExcelQuery, Result<IActionResult>>
+    public class DownloadAllMaterialExcelQueryHandler : IRequestHandler<DownloadAllMaterialExcelQuery, Result<FileExportResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _genericExcel;
@@ -23,7 +23,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
             _genericExcel = genericExcel;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadAllMaterialExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadAllMaterialExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -57,12 +57,12 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                     }).OrderByDescending(p => p.Type)
                     .ToList();
                 var result = await _genericExcel.DownloadGenericExcelFile(materialResponses, request.InputDate.ToString(), "Bảng giá sản phẩm ngày " + request.InputDate);
-                return Result<IActionResult>.Success(result,"File created successfully");
+                return Result<FileExportResult>.Success(result,"File created successfully");
 
             }
             catch (Exception ex)
             {
-                return Result<IActionResult>.Failure("File created fail");
+                return Result<FileExportResult>.Failure("File created fail");
             }
         }
 

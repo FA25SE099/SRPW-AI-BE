@@ -3,18 +3,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.PlotRequest;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 
 public class DownloadPlotImportTemplateQueryHandler
-    : IRequestHandler<DownloadPlotImportTemplateQuery, Result<IActionResult>>
+    : IRequestHandler<DownloadPlotImportTemplateQuery, Result<FileExportResult>>
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGenericExcel _genericExcel;
@@ -30,7 +30,7 @@ public class DownloadPlotImportTemplateQueryHandler
         _logger = logger;
     }
 
-    public async Task<Result<IActionResult>> Handle(
+    public async Task<Result<FileExportResult>> Handle(
         DownloadPlotImportTemplateQuery request,
         CancellationToken cancellationToken)
     {
@@ -56,7 +56,7 @@ public class DownloadPlotImportTemplateQueryHandler
             if (!farmersList.Any())
             {
                 _logger.LogWarning("No farmers found for template generation");
-                return Result<IActionResult>.Failure(
+                return Result<FileExportResult>.Failure(
                     "No farmers found. Please import farmers first using the farmer import template.");
             }
 
@@ -82,7 +82,7 @@ public class DownloadPlotImportTemplateQueryHandler
             if (result == null)
             {
                 _logger.LogError("Failed to generate multi-sheet Excel file");
-                return Result<IActionResult>.Failure("Failed to generate Excel template");
+                return Result<FileExportResult>.Failure("Failed to generate Excel template");
             }
 
             _logger.LogInformation(
@@ -91,14 +91,14 @@ public class DownloadPlotImportTemplateQueryHandler
                 templateRows.Count,
                 riceVarietiesList.Count);
 
-            return Result<IActionResult>.Success(
+            return Result<FileExportResult>.Success(
                 result,
                 $"Template generated successfully: {farmersList.Count} farmers with {templateRows.Count} plot rows");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating plot import template");
-            return Result<IActionResult>.Failure($"Failed to generate template: {ex.Message}");
+            return Result<FileExportResult>.Failure($"Failed to generate template: {ex.Message}");
         }
     }
 

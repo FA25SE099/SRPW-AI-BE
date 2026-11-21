@@ -1,10 +1,10 @@
 ﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MiniExcelLibs;
 using MiniExcelLibs.Attributes;
 using MiniExcelLibs.OpenXml;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models.Response;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,16 +24,16 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             _logger = logger;
         }
 
-        public async Task<IActionResult> DownloadGenericExcelFile<T>(List<T> inputList, string date, string fileName = "export.xlsx") where T : class
+        public Task<FileExportResult?> DownloadGenericExcelFile<T>(List<T> inputList, string date, string fileName = "export.xlsx") where T : class
         {
             if (inputList == null || !inputList.Any())
             {
-                return null;
+                return Task.FromResult<FileExportResult?>(null);
             }
 
             try
             {
-                var memoryStream = new MemoryStream();
+                using var memoryStream = new MemoryStream();
                 var excelData = ConvertToExcelData(inputList);
                 var columns = BuildDynamicColumns(inputList);
                 var config = new OpenXmlConfiguration { DynamicColumns = columns };
@@ -41,34 +41,34 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
 
                 memoryStream.SaveAs(excelData, sheetName: sanitizedSheetName, configuration: config);
 
-                return CreateExcelFileResult(memoryStream, fileName);
+                return Task.FromResult<FileExportResult?>(CreateExcelFileResult(memoryStream, fileName));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error generating Excel file: {ex.Message}");
-                return null;
+                _logger.LogError(ex, "Error generating Excel file: {ErrorMessage}", ex.Message);
+                return Task.FromResult<FileExportResult?>(null);
             }
         }
 
-        public async Task<IActionResult> DownloadMultiSheetExcelFile(Dictionary<string, object> sheets, string fileName)
+        public Task<FileExportResult?> DownloadMultiSheetExcelFile(Dictionary<string, object> sheets, string fileName)
         {
             if (sheets == null || !sheets.Any())
             {
                 _logger.LogWarning("Sheet dictionary is null or empty");
-                return null;
+                return Task.FromResult<FileExportResult?>(null);
             }
 
             try
             {
-                var memoryStream = new MemoryStream();
+                using var memoryStream = new MemoryStream();
                 MiniExcel.SaveAs(memoryStream, sheets);
 
-                return CreateExcelFileResult(memoryStream, fileName);
+                return Task.FromResult<FileExportResult?>(CreateExcelFileResult(memoryStream, fileName));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error generating multi-sheet Excel file: {ex.Message}");
-                return null;
+                _logger.LogError(ex, "Error generating multi-sheet Excel file: {ErrorMessage}", ex.Message);
+                return Task.FromResult<FileExportResult?>(null);
             }
         }
 
@@ -100,14 +100,13 @@ namespace RiceProduction.Infrastructure.Implementation.MiniExcelImplementation
             }
         }
 
-        private static FileStreamResult CreateExcelFileResult(MemoryStream memoryStream, string fileName)
-        {
-            memoryStream.Seek(0, SeekOrigin.Begin);
-            return new FileStreamResult(memoryStream, ExcelContentType)
+        private static FileExportResult CreateExcelFileResult(MemoryStream memoryStream, string fileName) =>
+            new()
             {
-                FileDownloadName = fileName
+                FileContents = memoryStream.ToArray(),
+                ContentType = ExcelContentType,
+                FileName = fileName
             };
-        }
 
         private static DynamicExcelColumn[] BuildDynamicColumns<T>(List<T> inputList) where T : class
         {

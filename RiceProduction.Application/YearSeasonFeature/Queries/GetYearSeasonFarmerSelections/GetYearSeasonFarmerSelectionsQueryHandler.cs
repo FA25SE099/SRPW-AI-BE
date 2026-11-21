@@ -26,9 +26,9 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
     {
         try
         {
-            // Load YearSeason
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.Cluster)
                 .Include(ys => ys.RiceVariety)
@@ -57,6 +57,7 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
 
             var cultivations = await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
                 .ToListAsync(cancellationToken);
 
@@ -198,23 +199,25 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
         {
             var previousYear = currentYearSeason.Year - 1;
 
-            var previousYearSeason = await _unitOfWork.Repository<YearSeason>()
+            var hasPreviousYearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
-                .FirstOrDefaultAsync(ys =>
+                .AsNoTracking()
+                .AnyAsync(ys =>
                     ys.ClusterId == currentYearSeason.ClusterId &&
                     ys.SeasonId == currentYearSeason.SeasonId &&
                     ys.Year == previousYear,
                     cancellationToken);
 
-            if (previousYearSeason == null)
+            if (!hasPreviousYearSeason)
             {
                 return new List<PlotCultivation>();
             }
 
             return await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(pc => plotIds.Contains(pc.PlotId) &&
-                             pc.SeasonId == previousYearSeason.SeasonId)
+                             pc.SeasonId == currentYearSeason.SeasonId)
                 .ToListAsync(cancellationToken);
         }
         catch (Exception ex)

@@ -47,52 +47,35 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(typeof(FarmerDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-
         public async Task<ActionResult<FarmerDTO>> GetFarmerById(Guid id)
         {
-            try
+            if (id == Guid.Empty)
             {
-                if (id == Guid.Empty)
-                {
-                    return BadRequest("Invalid Farmer ID");
-                }
-
-                var query = new GetFarmerByIdQueries(id);
-                var result = await _mediator.Send(query);
-                if (result == null)
-                {
-                    return NotFound($"Farmer with ID {id} not found");
-                }
-                return Ok(result);
-
+                return BadRequest("Invalid Farmer ID");
             }
-            catch (Exception ex)
+
+            var query = new GetFarmerByIdQueries(id);
+            var result = await _mediator.Send(query);
+            if (result == null)
             {
-                _logger.LogError(ex, "Error occurred while getting farmer {FarmerId}", id);
-                return StatusCode(500, "An error occurred while processing your request");
+                return NotFound($"Farmer with ID {id} not found");
             }
+            return Ok(result);
         }
+
         [HttpGet("Detail/{id}")]
         [ProducesResponseType(typeof(FarmerDetailDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<FarmerDetailDTO>> GetFarmerDetailById(Guid id)
         {
-            try
+            var query = new GetFarmerDetailQueries(id);
+            var result = await _mediator.Send(query);
+            if (result == null)
             {
-                var query = new GetFarmerDetailQueries(id);
-                var result = await _mediator.Send(query);
-                if (result == null)
-                {
-                    return NotFound($"Farmer detail with ID {id} not found");
-                }
-                return Ok(result);
+                return NotFound($"Farmer detail with ID {id} not found");
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while getting farmer {FarmerId}", id);
-                return StatusCode(500, "An error occurred while processing your request");
-            }
+            return Ok(result);
         }
 
         [HttpGet]
@@ -110,42 +93,28 @@ namespace RiceProduction.API.Controllers
                 ClusterManagerId = clusterManagerId
             };
 
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(query));
         }
+
         [HttpGet("profile")]
         [ProducesResponseType(typeof(FarmerDetailDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<FarmerDetailDTO>> GetFarmerProfile()
         {
-            try
+            var userId = _currentUser.Id;
+            if (userId == null || userId == Guid.Empty)
             {
-                var userId = _currentUser.Id;
-                if (userId == null || userId == Guid.Empty)
-                {
-                    return BadRequest("Invalid User ID");
-                }
+                return BadRequest("Invalid User ID");
+            }
 
-                var query = new GetFarmerByIdQueries(userId.Value);
-                var result = await _mediator.Send(query);
-                if (result == null)
-                {
-                    return NotFound($"Farmer profile for user ID {userId} not found");
-                }
-                return Ok(result);
-            }
-            catch (Exception ex)
+            var query = new GetFarmerByIdQueries(userId.Value);
+            var result = await _mediator.Send(query);
+            if (result == null)
             {
-                _logger.LogError(ex, "Error occurred while getting farmer profile");
-                return StatusCode(500, "An error occurred while processing your request");
+                return NotFound($"Farmer profile for user ID {userId} not found");
             }
+            return Ok(result);
         }
 
         [HttpPost("Import")]
@@ -184,11 +153,7 @@ namespace RiceProduction.API.Controllers
                 InputDate = request
             };
             var result = await _mediator.Send(query);
-            if (!result.Succeeded || result.Data == null)
-            {
-                return BadRequest(new { message = result.Message });
-            }
-            return result.Data;
+            return this.ToFileActionResult(result);
         }
 
         [HttpPost("Export-Template-Data")]
@@ -196,11 +161,7 @@ namespace RiceProduction.API.Controllers
         {
             var query = new ExportFarmerTemplateQueries();
             var result = await _mediator.Send(query);
-            if (!result.Succeeded || result.Data == null)
-            {
-                return BadRequest(new { message = result.Message });
-            }
-            return result.Data;
+            return this.ToFileActionResult(result);
         }
 
         [HttpGet("download-import-template")]
@@ -208,24 +169,15 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> DownloadFarmerImportTemplate()
         {
-            try
-            {
-                var query = new DownloadFarmerImportTemplateQuery();
-                var result = await _mediator.Send(query);
+            var query = new DownloadFarmerImportTemplateQuery();
+            var result = await _mediator.Send(query);
 
-                if (!result.Succeeded || result.Data == null)
-                {
-                    _logger.LogWarning("Failed to generate farmer import template: {Message}", result.Message);
-                    return BadRequest(new { message = result.Message ?? "Failed to generate template" });
-                }
-
-                return result.Data;
-            }
-            catch (Exception ex)
+            if (!result.Succeeded || result.Data == null)
             {
-                _logger.LogError(ex, "Error generating farmer import template");
-                return StatusCode(500, new { message = "An error occurred while generating the template" });
+                _logger.LogWarning("Failed to generate farmer import template: {Message}", result.Message);
             }
+
+            return this.ToFileActionResult(result);
         }
 
         [HttpPost]
@@ -234,31 +186,14 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateFarmer([FromBody] CreateFarmersCommand command)
         {
-            try
+            if (!_currentUser.Id.HasValue)
             {
-                // Ensure user is authenticated and has a valid Guid ID
-                if (!_currentUser.Id.HasValue)
-                {
-                    return Unauthorized("User is not authenticated or has no valid ID.");
-                }
-
-                command.ClusterManagerId = _currentUser.Id;
-
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    return BadRequest(result);
-                }
-
-                return Ok(result);
+                return Unauthorized("User is not authenticated or has no valid ID.");
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while creating farmer by user {UserId}", _currentUser.Id);
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    "An error occurred while processing your request.");
-            }
+
+            command.ClusterManagerId = _currentUser.Id;
+
+            return this.ToIActionResult(await _mediator.Send(command));
         }
 
         [HttpPut]
@@ -267,31 +202,17 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateFarmer([FromBody] UpdateFarmerRequest request)
         {
-            try
+            var command = new UpdateFarmerCommand
             {
-                var command = new UpdateFarmerCommand
-                {
-                    FarmerId = request.FarmerId,
-                    FullName = request.FullName,
-                    Address = request.Address,
-                    FarmCode = request.FarmCode
-                };
+                FarmerId = request.FarmerId,
+                FullName = request.FullName,
+                Address = request.Address,
+                FarmCode = request.FarmCode
+            };
 
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    return BadRequest(result);
-                }
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while updating farmer");
-                return StatusCode(500, "An error occurred while processing your request");
-            }
+            return this.ToIActionResult(await _mediator.Send(command));
         }
+
         [HttpPost("create-report")]
         [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
@@ -299,32 +220,24 @@ namespace RiceProduction.API.Controllers
         [Consumes("multipart/form-data")]
         public async Task<ActionResult<Result<Guid>>> CreateReport([FromForm] CreateEmergencyReportCommand command)
         {
-            try
+            _logger.LogInformation(
+                "Create emergency report request received: Type={AlertType}, Title={Title}, Severity={Severity}, Images={ImageCount}",
+                command.AlertType, command.Title, command.Severity, command.Images?.Count ?? 0);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
             {
-                _logger.LogInformation(
-                    "Create emergency report request received: Type={AlertType}, Title={Title}, Severity={Severity}, Images={ImageCount}",
-                    command.AlertType, command.Title, command.Severity, command.Images?.Count ?? 0);
-
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning(
-                        "Failed to create emergency report: {Errors}",
-                        string.Join(", ", result.Errors ?? Array.Empty<string>()));
-                    return BadRequest(result);
-                }
-
-                _logger.LogInformation(
-                    "Emergency report created successfully with ID: {ReportId}",
-                    result.Data);
-                return Ok(result);
+                _logger.LogWarning(
+                    "Failed to create emergency report: {Errors}",
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
+                return BadRequest(result);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected error occurred while creating emergency report");
-                return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-            }
+
+            _logger.LogInformation(
+                "Emergency report created successfully with ID: {ReportId}",
+                result.Data);
+            return Ok(result);
         }
 
         /// <summary>
@@ -337,22 +250,14 @@ namespace RiceProduction.API.Controllers
         public async Task<ActionResult<PagedResult<List<PlotListResponse>>>> GetPlotsByFarmer(
             [FromBody] GetPlotsByFarmerQuery query)
         {
-            try
-            {
-                var result = await _mediator.Send(query);
+            var result = await _mediator.Send(query);
 
-                if (!result.Succeeded)
-                {
-                    return NotFoundOrBadRequest(result, result.Message);
-                }
-
-                return Ok(result);
-            }
-            catch (Exception ex)
+            if (!result.Succeeded)
             {
-                _logger.LogError(ex, "Error occurred while getting plots for farmer {FarmerId}", query.FarmerId);
-                return StatusCode(500, "An error occurred while processing your request");
+                return (ActionResult)this.ToNotFoundOrBadRequest(result);
             }
+
+            return Ok(result);
         }
 
         /// <summary>
@@ -366,37 +271,30 @@ namespace RiceProduction.API.Controllers
         public async Task<ActionResult<PagedResult<List<ReportItemResponse>>>> GetReportsByFarmer(
             [FromBody] GetReportsByFarmerRequest request)
         {
-            try
+            if (!User.TryGetUserId(out var farmerId))
             {
-                if (!User.TryGetUserId(out var farmerId))
-                {
-                    return Unauthorized(PagedResult<List<ReportItemResponse>>.Failure("User not authenticated"));
-                }
-
-                var query = new GetReportsByFarmerQuery
-                {
-                    FarmerId = farmerId,
-                    CurrentPage = request.CurrentPage,
-                    PageSize = request.PageSize,
-                    SearchTerm = request.SearchTerm,
-                    Status = request.Status,
-                    Severity = request.Severity,
-                    ReportType = request.ReportType
-                };
-
-                var result = await _mediator.Send(query);
-
-                if (!result.Succeeded)
-                {
-                    return NotFoundOrBadRequest(result, result.Message);
-                }
-
-                return Ok(result);
+                return Unauthorized(PagedResult<List<ReportItemResponse>>.Failure("User not authenticated"));
             }
-            catch (Exception)
+
+            var query = new GetReportsByFarmerQuery
             {
-                return StatusCode(500, "An error occurred while processing your request");
+                FarmerId = farmerId,
+                CurrentPage = request.CurrentPage,
+                PageSize = request.PageSize,
+                SearchTerm = request.SearchTerm,
+                Status = request.Status,
+                Severity = request.Severity,
+                ReportType = request.ReportType
+            };
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                return (ActionResult)this.ToNotFoundOrBadRequest(result);
             }
+
+            return Ok(result);
         }
 
         /// <summary>
@@ -410,22 +308,14 @@ namespace RiceProduction.API.Controllers
             Guid farmerId,
             [FromBody] ChangeFarmerStatusCommand command)
         {
-            try
-            {
-                var result = await _mediator.Send(command);
+            var result = await _mediator.Send(command);
 
-                if (!result.Succeeded)
-                {
-                    return NotFoundOrBadRequest(result, result.Message);
-                }
-
-                return Ok(result);
-            }
-            catch (Exception ex)
+            if (!result.Succeeded)
             {
-                _logger.LogError(ex, "Error occurred while changing status for farmer {FarmerId}", farmerId);
-                return StatusCode(500, "An error occurred while processing your request");
+                return this.ToNotFoundOrBadRequest(result);
             }
+
+            return Ok(result);
         }
 
         /// <summary>
@@ -437,36 +327,18 @@ namespace RiceProduction.API.Controllers
         public async Task<ActionResult<PagedResult<List<FarmerListResponse>>>> GetAllFarmersForAdmin(
             [FromBody] FarmerListRequest request)
         {
-            try
+            var query = new GetFarmersForAdminQuery
             {
-                var query = new GetFarmersForAdminQuery
-                {
-                    CurrentPage = request.CurrentPage,
-                    PageSize = request.PageSize,
-                    Search = request.Search,
-                    PhoneNumber = request.PhoneNumber,
-                    ClusterId = request.ClusterId,
-                    FarmerStatus = request.FarmerStatus
-                };
+                CurrentPage = request.CurrentPage,
+                PageSize = request.PageSize,
+                Search = request.Search,
+                PhoneNumber = request.PhoneNumber,
+                ClusterId = request.ClusterId,
+                FarmerStatus = request.FarmerStatus
+            };
 
-                var result = await _mediator.Send(query);
-
-                if (!result.Succeeded)
-                {
-                    return BadRequest(result);
-                }
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while getting farmers for admin");
-                return StatusCode(500, "An error occurred while processing your request");
-            }
+            return this.ToActionResult(await _mediator.Send(query));
         }
-
-        private ObjectResult NotFoundOrBadRequest(object result, string? message) =>
-            message?.Contains("not found") == true ? NotFound(result) : BadRequest(result);
     }
 }
 

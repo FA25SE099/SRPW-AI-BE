@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
@@ -43,14 +44,7 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateProductionPlanCommand command)
     {
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     [HttpGet("draft")]
@@ -58,15 +52,9 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(typeof(Result<GeneratePlanDraftResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GenerateDraft([FromQuery] GeneratePlanDraftQuery query)
     {
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(query));
     }
+
     [HttpGet("approved")]
     public async Task<IActionResult> GetApprovedProductionPlans(
         [FromQuery] Guid? groupId,
@@ -74,30 +62,22 @@ public class ProductionPlanController : ControllerBase
         [FromQuery] DateTime? fromDate,
         [FromQuery] DateTime? toDate)
     {
-        try
+        _logger.LogInformation("Received request to get approved production plans");
+        var query = new GetApprovedQueries
         {
-            _logger.LogInformation("Received request to get approved production plans");
-            var query = new GetApprovedQueries
-            {
-                GroupId = groupId,
-                SupervisorId = supervisorId,
-                FromDate = fromDate,
-                ToDate = toDate
-            };
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve approved production plans: {Message}", result.Message);
-                return BadRequest(result);
-            }
-            _logger.LogInformation("Successfully retrieved approved production plans");
-            return Ok(result);
-        }
-        catch (Exception ex)
+            GroupId = groupId,
+            SupervisorId = supervisorId,
+            FromDate = fromDate,
+            ToDate = toDate
+        };
+        var result = await _mediator.Send(query);
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Error occurred in GetApprovedProductionPlans endpoint");
-            return StatusCode(500, new { message = "An error occurred while processing your request" });
+            _logger.LogWarning("Failed to retrieve approved production plans: {Message}", result.Message);
+            return BadRequest(result);
         }
+        _logger.LogInformation("Successfully retrieved approved production plans");
+        return Ok(result);
     }
 
     [HttpPut]
@@ -106,29 +86,21 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Edit([FromBody] EditPlanCommand command)
     {
-        try
+        _logger.LogInformation("EditProductionPlan request received for ID: {PlanId}", command.PlanId);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("EditProductionPlan request received for ID: {PlanId}", command.PlanId);
+            _logger.LogWarning(
+                "Failed to edit production plan ID {PlanId}: {Errors}",
+                command.PlanId, FormatErrors(result.Errors));
 
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to edit production plan ID {PlanId}: {Errors}",
-                    command.PlanId, FormatErrors(result.Errors));
-
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully edited production plan with ID: {PlanId}", command.PlanId);
-            return Ok(result);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while editing production plan ID: {PlanId}", command.PlanId);
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-        }
+
+        _logger.LogInformation("Successfully edited production plan with ID: {PlanId}", command.PlanId);
+        return Ok(result);
     }
 
     [HttpPost("{id:guid}/submit")]
@@ -137,36 +109,28 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Submit(Guid id, [FromBody] SubmitPlanCommand command)
     {
-        try
+        if (id != command.PlanId)
         {
-            if (id != command.PlanId)
-            {
-                return BadRequest(Result<Guid>.Failure(
-                    "Route ID does not match command PlanId.",
-                    "IdMismatch"));
-            }
-
-            _logger.LogInformation("SubmitProductionPlan request received for ID: {PlanId}", id);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to submit production plan ID {PlanId}: {Errors}",
-                    id, FormatErrors(result.Errors));
-
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully submitted production plan with ID: {PlanId}", id);
-            return Ok(result);
+            return BadRequest(Result<Guid>.Failure(
+                "Route ID does not match command PlanId.",
+                "IdMismatch"));
         }
-        catch (Exception ex)
+
+        _logger.LogInformation("SubmitProductionPlan request received for ID: {PlanId}", id);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Unexpected error occurred while submitting production plan ID: {PlanId}", id);
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
+            _logger.LogWarning(
+                "Failed to submit production plan ID {PlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
+
+            return BadRequest(result);
         }
+
+        _logger.LogInformation("Successfully submitted production plan with ID: {PlanId}", id);
+        return Ok(result);
     }
 
     [HttpPost("{id:guid}/approve-reject")]
@@ -175,38 +139,30 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ApproveReject(Guid id, [FromBody] ApproveRejectPlanCommand command)
     {
-        try
+        if (id != command.PlanId)
         {
-            if (id != command.PlanId)
-            {
-                return BadRequest(Result<Guid>.Failure(
-                    "Route ID does not match command PlanId.",
-                    "IdMismatch"));
-            }
-
-            _logger.LogInformation("ApproveRejectProductionPlan request received for ID: {PlanId}, Approved: {Approved}",
-                id, command.Approved);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to approve/reject production plan ID {PlanId}: {Errors}",
-                    id, FormatErrors(result.Errors));
-
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully {Action} production plan with ID: {PlanId}",
-                command.Approved ? "approved" : "rejected", id);
-            return Ok(result);
+            return BadRequest(Result<Guid>.Failure(
+                "Route ID does not match command PlanId.",
+                "IdMismatch"));
         }
-        catch (Exception ex)
+
+        _logger.LogInformation("ApproveRejectProductionPlan request received for ID: {PlanId}, Approved: {Approved}",
+            id, command.Approved);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Unexpected error occurred while approving/rejecting production plan ID: {PlanId}", id);
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
+            _logger.LogWarning(
+                "Failed to approve/reject production plan ID {PlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
+
+            return BadRequest(result);
         }
+
+        _logger.LogInformation("Successfully {Action} production plan with ID: {PlanId}",
+            command.Approved ? "approved" : "rejected", id);
+        return Ok(result);
     }
 
     [HttpGet("pending-approvals")]
@@ -214,57 +170,41 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetPendingApprovals()
     {
-        try
+        _logger.LogInformation("GetPendingApprovals request received");
+
+        var query = new GetPendingApprovalsQuery();
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("GetPendingApprovals request received");
-
-            var query = new GetPendingApprovalsQuery();
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve pending approvals: {Errors}",
-                    FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully retrieved pending approvals");
-            return Ok(result);
+            _logger.LogWarning("Failed to retrieve pending approvals: {Errors}",
+                FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while getting pending approvals");
-            return StatusCode(500, new { message = "An unexpected error occurred" });
-        }
+
+        _logger.LogInformation("Successfully retrieved pending approvals");
+        return Ok(result);
     }
 
     [HttpPost("emergency")]
     public async Task<IActionResult> GetEmergencyPlans([FromBody] GetEmergencyPlansQuery query)
     {
-        try
+        _logger.LogInformation(
+            "GetEmergencyPlans request received - Page: {Page}, PageSize: {PageSize}",
+            query.CurrentPage, query.PageSize);
+
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation(
-                "GetEmergencyPlans request received - Page: {Page}, PageSize: {PageSize}",
-                query.CurrentPage, query.PageSize);
-
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to retrieve emergency plans: {Errors}",
-                    FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully retrieved emergency plans");
-            return Ok(result);
+            _logger.LogWarning(
+                "Failed to retrieve emergency plans: {Errors}",
+                FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while getting emergency plans");
-            return StatusCode(500, new { message = "An unexpected error occurred" });
-        }
+
+        _logger.LogInformation("Successfully retrieved emergency plans");
+        return Ok(result);
     }
 
     /// <summary>
@@ -275,35 +215,25 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(typeof(Result<Guid>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateEmergencyPlanForPlot([FromBody] CreateEmergencyPlanForPlotCommand command)
     {
-        try
+        _logger.LogInformation(
+            "CreateEmergencyPlanForPlot request received for Plot: {PlotId}, Report: {ReportId}, NewVersion: {VersionName}",
+            command.PlotId, command.EmergencyReportId, command.NewVersionName);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation(
-                "CreateEmergencyPlanForPlot request received for Plot: {PlotId}, Report: {ReportId}, NewVersion: {VersionName}",
-                command.PlotId, command.EmergencyReportId, command.NewVersionName);
+            _logger.LogWarning(
+                "Failed to create emergency plan for Plot {PlotId}: {Errors}",
+                command.PlotId, FormatErrors(result.Errors));
 
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to create emergency plan for Plot {PlotId}: {Errors}",
-                    command.PlotId, FormatErrors(result.Errors));
-
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation(
-                "Successfully created emergency plan for Plot {PlotId} with new version '{VersionName}'",
-                command.PlotId, command.NewVersionName);
-            return Ok(result);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Unexpected error occurred while creating emergency plan for Plot: {PlotId}",
-                command.PlotId);
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-        }
+
+        _logger.LogInformation(
+            "Successfully created emergency plan for Plot {PlotId} with new version '{VersionName}'",
+            command.PlotId, command.NewVersionName);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
@@ -311,28 +241,20 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetDetail(Guid id)
     {
-        try
+        _logger.LogInformation("GetPlanDetail request received for ID: {PlanId}", id);
+
+        var query = new GetPlanDetailsForExpertQuery { PlanId = id };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("GetPlanDetail request received for ID: {PlanId}", id);
-
-            var query = new GetPlanDetailsForExpertQuery { PlanId = id };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve plan detail for ID {PlanId}: {Errors}",
-                    id, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully retrieved plan detail for ID: {PlanId}", id);
-            return Ok(result);
+            _logger.LogWarning("Failed to retrieve plan detail for ID {PlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while getting plan detail for ID: {PlanId}", id);
-            return StatusCode(500, new { message = "An unexpected error occurred" });
-        }
+
+        _logger.LogInformation("Successfully retrieved plan detail for ID: {PlanId}", id);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}/execution-summary")]
@@ -340,28 +262,20 @@ public class ProductionPlanController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetExecutionSummary(Guid id)
     {
-        try
+        _logger.LogInformation("GetPlanExecutionSummary request received for ID: {PlanId}", id);
+
+        var query = new GetPlanExecutionSummaryQuery { PlanId = id };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("GetPlanExecutionSummary request received for ID: {PlanId}", id);
-
-            var query = new GetPlanExecutionSummaryQuery { PlanId = id };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve execution summary for ID {PlanId}: {Errors}",
-                    id, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully retrieved execution summary for ID: {PlanId}", id);
-            return Ok(result);
+            _logger.LogWarning("Failed to retrieve execution summary for ID {PlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while getting execution summary for ID: {PlanId}", id);
-            return StatusCode(500, new { message = "An unexpected error occurred" });
-        }
+
+        _logger.LogInformation("Successfully retrieved execution summary for ID: {PlanId}", id);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}/cultivation-tasks")]
@@ -372,33 +286,25 @@ public class ProductionPlanController : ControllerBase
         [FromQuery] TaskStatus? status = null,
         [FromQuery] Guid? plotId = null)
     {
-        try
+        _logger.LogInformation("GetCultivationTasksByPlan request received for Plan ID: {PlanId}", id);
+
+        var query = new GetCultivationTasksByPlanQuery
         {
-            _logger.LogInformation("GetCultivationTasksByPlan request received for Plan ID: {PlanId}", id);
+            ProductionPlanId = id,
+            StatusFilter = status,
+            PlotFilter = plotId
+        };
+        var result = await _mediator.Send(query);
 
-            var query = new GetCultivationTasksByPlanQuery
-            {
-                ProductionPlanId = id,
-                StatusFilter = status,
-                PlotFilter = plotId
-            };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve cultivation tasks for Plan ID {PlanId}: {Errors}",
-                    id, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully retrieved cultivation tasks for Plan ID: {PlanId}", id);
-            return Ok(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Unexpected error occurred while getting cultivation tasks for Plan ID: {PlanId}", id);
-            return StatusCode(500, new { message = "An unexpected error occurred" });
+            _logger.LogWarning("Failed to retrieve cultivation tasks for Plan ID {PlanId}: {Errors}",
+                id, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
+
+        _logger.LogInformation("Successfully retrieved cultivation tasks for Plan ID: {PlanId}", id);
+        return Ok(result);
     }
 
     [HttpGet("plot-implementation")]
@@ -408,35 +314,26 @@ public class ProductionPlanController : ControllerBase
         [FromQuery] Guid plotId,
         [FromQuery] Guid productionPlanId)
     {
-        try
+        _logger.LogInformation("GetPlotImplementation request received for Plot ID: {PlotId}, Plan ID: {PlanId}",
+            plotId, productionPlanId);
+
+        var query = new GetPlotImplementationQuery
         {
-            _logger.LogInformation("GetPlotImplementation request received for Plot ID: {PlotId}, Plan ID: {PlanId}",
-                plotId, productionPlanId);
+            PlotId = plotId,
+            ProductionPlanId = productionPlanId
+        };
+        var result = await _mediator.Send(query);
 
-            var query = new GetPlotImplementationQuery
-            {
-                PlotId = plotId,
-                ProductionPlanId = productionPlanId
-            };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to retrieve plot implementation for Plot ID {PlotId}, Plan ID {PlanId}: {Errors}",
-                    plotId, productionPlanId, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully retrieved plot implementation for Plot ID: {PlotId}, Plan ID: {PlanId}",
-                plotId, productionPlanId);
-            return Ok(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Unexpected error occurred while getting plot implementation for Plot ID: {PlotId}, Plan ID: {PlanId}",
-                plotId, productionPlanId);
-            return StatusCode(500, new { message = "An unexpected error occurred" });
+            _logger.LogWarning("Failed to retrieve plot implementation for Plot ID {PlotId}, Plan ID {PlanId}: {Errors}",
+                plotId, productionPlanId, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
+
+        _logger.LogInformation("Successfully retrieved plot implementation for Plot ID: {PlotId}, Plan ID: {PlanId}",
+            plotId, productionPlanId);
+        return Ok(result);
     }
 
     private static string FormatErrors(IEnumerable<string>? errors) =>

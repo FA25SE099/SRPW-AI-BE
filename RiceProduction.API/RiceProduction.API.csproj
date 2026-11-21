@@ -31,9 +31,6 @@
     <PackageReference Include="Serilog.Expressions" Version="5.0.0" />
 
 	  <PackageReference Include="Serilog.Sinks.Http" Version="8.0.0" />
-	  <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.7.0-beta.1" />
-
-
   </ItemGroup>
 
   <ItemGroup>
