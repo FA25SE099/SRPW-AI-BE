@@ -1,7 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿namespace RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Domain.Entities;
-//status: Is Active: true false, về mặt thời gian: xét theo thời gian thì có active hay không
 public class Material : BaseAuditableEntity
 {
     [Required]
@@ -11,12 +9,15 @@ public class Material : BaseAuditableEntity
     [Required]
     public MaterialType Type { get; set; }
 
-    public decimal? AmmountPerMaterial { get; set; }//lieu luong cua 1 vat tu vd: 400
+    public decimal? AmmountPerMaterial { get; set; }
+
     [Required]
     [MaxLength(50)]
-    public string Unit { get; set; } = string.Empty;//don vi tinh vd: ml, kg
+    public string Unit { get; set; } = string.Empty;
+
     public string? Description { get; set; }
     public List<string>? imgUrls { get; set; }
+
     [MaxLength(255)]
     public string? Manufacturer { get; set; }
 
@@ -31,4 +32,13 @@ public class Material : BaseAuditableEntity
     public ICollection<CultivationTaskMaterial> CultivationTaskMaterials { get; set; } = new List<CultivationTaskMaterial>();
     public ICollection<MaterialDistribution> MaterialDistributions { get; set; } = new List<MaterialDistribution>();
 
+    public decimal EffectiveAmountPerMaterial => AmmountPerMaterial is > 0 ? AmmountPerMaterial.Value : 1M;
+
+    public decimal CalculatePackagesNeeded(decimal totalQuantityNeeded) =>
+        IsPartition
+            ? totalQuantityNeeded / EffectiveAmountPerMaterial
+            : Math.Ceiling(totalQuantityNeeded / EffectiveAmountPerMaterial);
+
+    public decimal CalculateTotalCost(decimal totalQuantityNeeded, decimal pricePerMaterial) =>
+        CalculatePackagesNeeded(totalQuantityNeeded) * pricePerMaterial;
 }

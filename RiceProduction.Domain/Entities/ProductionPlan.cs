@@ -2,12 +2,9 @@
 
 namespace RiceProduction.Domain.Entities;
 
-//stauts: Pending Approval, Approved, Cancelled, Completed
-//InProgress (về lý thuyết thì có, nhưng có vẻ chưa apply vào code
 public class ProductionPlan : BaseAuditableEntity
 {
     public Guid? GroupId { get; set; }
-
 
     public Guid? StandardPlanId { get; set; }
 
@@ -19,7 +16,7 @@ public class ProductionPlan : BaseAuditableEntity
     public DateTime BasePlantingDate { get; set; }
 
     public TaskStatus Status { get; set; } = TaskStatus.Draft;
-    
+
     [Column(TypeName = "decimal(10,2)")]
     public decimal? TotalArea { get; set; }
 
@@ -31,11 +28,9 @@ public class ProductionPlan : BaseAuditableEntity
 
     public Guid? SubmittedBy { get; set; }
 
-
     // Navigation properties
     [ForeignKey("GroupId")]
     public Group? Group { get; set; }
-
 
     [ForeignKey("StandardPlanId")]
     public StandardPlan? StandardPlan { get; set; }
@@ -47,4 +42,36 @@ public class ProductionPlan : BaseAuditableEntity
     public Supervisor? Submitter { get; set; }
 
     public ICollection<ProductionStage> CurrentProductionStages { get; set; } = new List<ProductionStage>();
+
+    public bool CanBeReviewed => Status == TaskStatus.PendingApproval;
+
+    public bool IsApproved => Status == TaskStatus.Approved;
+
+    public void Submit(Guid submittedBy, DateTime? submittedAt = null)
+    {
+        var timestamp = submittedAt ?? DateTime.UtcNow;
+        Status = TaskStatus.PendingApproval;
+        SubmittedBy = submittedBy;
+        SubmittedAt = timestamp;
+        LastModified = timestamp;
+        LastModifiedBy = submittedBy;
+    }
+
+    public void Approve(Guid approvedBy, DateTime? approvedAt = null)
+    {
+        var timestamp = approvedAt ?? DateTime.UtcNow;
+        Status = TaskStatus.Approved;
+        ApprovedBy = approvedBy;
+        ApprovedAt = timestamp;
+        LastModified = timestamp;
+        LastModifiedBy = approvedBy;
+    }
+
+    public void Reject(Guid rejectedBy, DateTime? rejectedAt = null)
+    {
+        var timestamp = rejectedAt ?? DateTime.UtcNow;
+        Status = TaskStatus.Cancelled;
+        LastModified = timestamp;
+        LastModifiedBy = rejectedBy;
+    }
 }

@@ -4,7 +4,6 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.CultivationFeature.Event;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 namespace RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
 
 public class ApproveRejectPlanCommandHandler :
@@ -42,29 +41,24 @@ public class ApproveRejectPlanCommandHandler :
                 return Result<Guid>.Failure($"Production Plan with ID {request.PlanId} not found.", "PlanNotFound");
             }
 
-            if (plan.Status != RiceProduction.Domain.Enums.TaskStatus.PendingApproval)
+            if (!plan.CanBeReviewed)
             {
                 return Result<Guid>.Failure($"Plan is currently in status '{plan.Status}'. Only PendingApproval plans can be approved or rejected.", "InvalidStatus");
             }
 
             if (request.Approved)
             {
-                plan.Status = RiceProduction.Domain.Enums.TaskStatus.Approved;
-                plan.ApprovedAt = DateTime.UtcNow;
-                plan.ApprovedBy = expertId; // <-- Gán ID chuyên gia
+                plan.Approve(expertId.Value);
 
                 _logger.LogInformation("Plan {PlanId} approved by Expert {ExpertId}.", plan.Id, expertId);
                 // Note: CultivationVersions are now created per PlotCultivation by ProductionPlanApprovalEventHandler
             }
             else
             {
-                plan.Status = RiceProduction.Domain.Enums.TaskStatus.Cancelled;
-                
+                plan.Reject(expertId.Value);
+
                 _logger.LogInformation("Plan {PlanId} rejected by Expert {ExpertId}. Reason: {Notes}", plan.Id, expertId, request.Notes);
             }
-
-            plan.LastModified = DateTime.UtcNow;
-            plan.LastModifiedBy = expertId; // Cập nhật người chỉnh sửa lần cuối là chuyên gia
 
             _unitOfWork.Repository<ProductionPlan>().Update(plan);
             await _unitOfWork.Repository<ProductionPlan>().SaveChangesAsync();

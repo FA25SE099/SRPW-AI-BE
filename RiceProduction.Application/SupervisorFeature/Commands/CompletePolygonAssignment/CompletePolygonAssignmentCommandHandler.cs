@@ -6,7 +6,6 @@ using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.SupervisorFeature.Commands.CompletePolygonAssignment;
 
@@ -60,21 +59,13 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
                 return Result<bool>.Failure(parseError!);
             }
 
-            var drawnAreaHa = PlotGeometryHelper.CalculateAreaInHectares(polygon!);
-            var plotAreaHa = targetPlot.Area;
-            var difference = Math.Abs(drawnAreaHa - plotAreaHa);
-            var differencePercent = plotAreaHa > 0 ? (difference / plotAreaHa) * 100 : 0;
-
-            if (differencePercent > TolerancePercent)
+            if (!targetPlot.IsBoundaryWithinTolerance(polygon!, TolerancePercent, out var drawnAreaHa, out var differencePercent))
             {
                 return Result<bool>.Failure(
-                    $"Polygon area validation failed. Drawn area ({Math.Round(drawnAreaHa, 2)} ha) differs by {Math.Round(differencePercent, 2)}% from registered plot area ({Math.Round(plotAreaHa, 2)} ha). Maximum allowed difference is {TolerancePercent}%.");
+                    $"Polygon area validation failed. Drawn area ({Math.Round(drawnAreaHa, 2)} ha) differs by {Math.Round(differencePercent, 2)}% from registered plot area ({Math.Round(targetPlot.Area, 2)} ha). Maximum allowed difference is {TolerancePercent}%.");
             }
 
-            targetPlot.Boundary = polygon;
-            targetPlot.Status = PlotStatus.Active;
-            targetPlot.Coordinate = polygon!.Centroid;
-            targetPlot.Coordinate.SRID = PlotGeometryHelper.Wgs84Srid;
+            targetPlot.AssignBoundary(polygon!);
 
             _unitOfWork.Repository<Plot>().Update(targetPlot);
 

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 
@@ -14,13 +15,11 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved
     public class GetAppprovedQueriesHandler : IRequestHandler<GetApprovedQueries, Result<List<ProductionPlanDTO>>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
         private readonly ILogger<GetAppprovedQueriesHandler> _logger;
 
-        public GetAppprovedQueriesHandler(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetAppprovedQueriesHandler> logger)
+        public GetAppprovedQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetAppprovedQueriesHandler> logger)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
             _logger = logger;
         }
 
@@ -54,7 +53,7 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved
                         "No approved production plans found");
                 }
 
-                var productionPlanDTOs = _mapper.Map<List<ProductionPlanDTO>>(productionPlan);
+                var productionPlanDTOs = productionPlan.Select(pp => pp.ToDto()).ToList();
                 _logger.LogInformation("Successfully mapped {Count} production plans to DTOs", productionPlanDTOs.Count);
                 return Result<List<ProductionPlanDTO>>.Success(
                    productionPlanDTOs,

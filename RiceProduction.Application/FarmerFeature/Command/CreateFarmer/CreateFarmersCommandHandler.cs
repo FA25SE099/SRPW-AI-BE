@@ -7,6 +7,7 @@ using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Events;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById;
@@ -20,7 +21,6 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<CreateFarmersCommand> _logger;
         private readonly IFarmerRepository _farmerRepository;
-        private readonly IMapper _mapper;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IMediator _mediator;
         
@@ -28,14 +28,12 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
             IUnitOfWork unitOfWork, 
             ILogger<CreateFarmersCommand> logger, 
             IFarmerRepository farmerRepository, 
-            IMapper mapper, 
             UserManager<ApplicationUser> userManager,
             IMediator mediator)
         {
             _unitOfWork = unitOfWork;
             _logger = logger;
             _farmerRepository = farmerRepository;
-            _mapper = mapper;
             _userManager = userManager;
             _mediator = mediator;
         }
@@ -133,7 +131,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                     _logger.LogInformation("Published email notification event for farmer {FarmerId}", newFarmer.Id);
                 }
 
-                var farmerDTOs = _mapper.Map<FarmerDTO>(newFarmer);
+                var farmerDTOs = newFarmer.ToDto();
                 return Result<FarmerDTO>.Success(farmerDTOs, "Tạo nông dân thành công.");
             }
             catch (Exception ex)

@@ -47,18 +47,14 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
                 return Result<PolygonValidationResponse>.Failure(parseError!);
             }
 
-            var drawnAreaHa = PlotGeometryHelper.CalculateAreaInHectares(polygon!);
-            var plotAreaHa = plot.Area;
-            var difference = Math.Abs(drawnAreaHa - plotAreaHa);
-            var differencePercent = plotAreaHa > 0 ? (difference / plotAreaHa) * 100 : 0;
+            var isValid = plot.IsBoundaryWithinTolerance(polygon!, tolerancePercent, out var drawnAreaHa, out var differencePercent);
             var roundedDifferencePercent = Math.Round(differencePercent, 2);
-            var isValid = differencePercent <= tolerancePercent;
 
             var response = new PolygonValidationResponse
             {
                 IsValid = isValid,
                 DrawnAreaHa = Math.Round(drawnAreaHa, 2),
-                PlotAreaHa = Math.Round(plotAreaHa, 2),
+                PlotAreaHa = Math.Round(plot.Area, 2),
                 DifferencePercent = roundedDifferencePercent,
                 TolerancePercent = tolerancePercent,
                 Message = isValid

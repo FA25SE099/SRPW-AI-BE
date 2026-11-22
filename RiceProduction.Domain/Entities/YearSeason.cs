@@ -18,7 +18,7 @@ public class YearSeason : BaseAuditableEntity
     public Guid? ManagedByExpertId { get; set; }
 
     public Guid? RiceVarietyId { get; set; }
-    
+
     public bool AllowFarmerSelection { get; set; } = false;
     public DateTime? FarmerSelectionWindowStart { get; set; }
     public DateTime? FarmerSelectionWindowEnd { get; set; }
@@ -26,7 +26,7 @@ public class YearSeason : BaseAuditableEntity
     [Required]
     public DateTime StartDate { get; set; }
     public int? MaterialConfirmationDaysBeforePlanting { get; set; }
-    
+
     [Required]
     public DateTime EndDate { get; set; }
 
@@ -54,7 +54,22 @@ public class YearSeason : BaseAuditableEntity
 
     [ForeignKey("RiceVarietyId")]
     public RiceVariety? RiceVariety { get; set; }
-    
-    public ICollection<Group> Groups { get; set; } = new List<Group>();
-}
 
+    public ICollection<Group> Groups { get; set; } = new List<Group>();
+
+    public bool IsSelectionWindowOpen(DateTime asOfUtc) =>
+        AllowFarmerSelection
+        && FarmerSelectionWindowStart.HasValue
+        && FarmerSelectionWindowEnd.HasValue
+        && asOfUtc >= FarmerSelectionWindowStart.Value
+        && asOfUtc <= FarmerSelectionWindowEnd.Value;
+
+    public bool IsPlanningWindowOpen(DateTime asOfUtc) =>
+        PlanningWindowStart.HasValue
+        && PlanningWindowEnd.HasValue
+        && asOfUtc >= PlanningWindowStart.Value
+        && asOfUtc <= PlanningWindowEnd.Value;
+
+    public bool IsDateWithinSeason(DateTime asOfUtc) =>
+        asOfUtc >= StartDate && asOfUtc <= EndDate;
+}

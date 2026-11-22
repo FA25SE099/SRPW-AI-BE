@@ -1,8 +1,8 @@
 ﻿using System.Linq.Expressions;
-using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
@@ -14,16 +14,13 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
     {
         private readonly ILogger<GetAllGroupQueryHandler> _logger;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
 
         public GetAllGroupQueryHandler(
             ILogger<GetAllGroupQueryHandler> logger,
-            IUnitOfWork unitOfWork,
-            IMapper mapper)
+            IUnitOfWork unitOfWork)
         {
             _logger = logger;
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
         }
 
         public async Task<Result<IEnumerable<GroupDTO>>> Handle(
@@ -57,7 +54,7 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
                         "No groups found");
                 }
 
-                var groupDTOs = _mapper.Map<IEnumerable<GroupDTO>>(groups);
+                var groupDTOs = groups.Select(g => g.ToDto()).ToList();
 
                 _logger.LogInformation(
                     "Successfully retrieved {Count} groups",

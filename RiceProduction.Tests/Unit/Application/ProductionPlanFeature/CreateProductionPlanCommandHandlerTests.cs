@@ -1,5 +1,4 @@
 using FluentAssertions;
-using AutoMapper;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RiceProduction.Application.Common.Interfaces;
@@ -18,7 +17,6 @@ namespace RiceProduction.Tests.Unit.Application.ProductionPlanFeature;
 public class CreateProductionPlanCommandHandlerTests
 {
     private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IMapper> _mockMapper;
     private readonly Mock<ILogger<CreateProductionPlanCommandHandler>> _mockLogger;
     private readonly Mock<IGenericRepository<ProductionPlan>> _mockProductionPlanRepo;
     private readonly Mock<IGenericRepository<ProductionStage>> _mockProductionStageRepo;
@@ -31,7 +29,6 @@ public class CreateProductionPlanCommandHandlerTests
     public CreateProductionPlanCommandHandlerTests()
     {
         _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockMapper = new Mock<IMapper>();
         _mockLogger = new Mock<ILogger<CreateProductionPlanCommandHandler>>();
         _mockProductionPlanRepo = new Mock<IGenericRepository<ProductionPlan>>();
         _mockProductionStageRepo = new Mock<IGenericRepository<ProductionStage>>();
@@ -49,7 +46,6 @@ public class CreateProductionPlanCommandHandlerTests
 
         _handler = new CreateProductionPlanCommandHandler(
             _mockUnitOfWork.Object,
-            _mockMapper.Object,
             _mockLogger.Object);
     }
 

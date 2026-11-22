@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
-using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
@@ -18,16 +18,13 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
     {
         private readonly ILogger<GetAllPlotQueriesHandler> _logger;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
 
         public GetAllPlotQueriesHandler(
             ILogger<GetAllPlotQueriesHandler> logger,
-            IUnitOfWork unitOfWork,
-            IMapper mapper)
+            IUnitOfWork unitOfWork)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
-            _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
         }
 
         public async Task<PagedResult<IEnumerable<PlotDTO>>> Handle(GetAllPlotQueries request, CancellationToken cancellationToken)
@@ -80,7 +77,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                         predicate: predicate,
                         cancellationToken: cancellationToken);
 
-                var plotDTOs = _mapper.Map<List<PlotDTO>>(items);
+                var plotDTOs = items.Select(p => p.ToDto()).ToList();
 
                 await EnrichWithEditabilityAsync(plotDTOs, cancellationToken);
 

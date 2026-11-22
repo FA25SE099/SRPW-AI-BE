@@ -1,4 +1,3 @@
-using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
@@ -18,16 +17,13 @@ public class CreateProductionPlanCommandHandler :
     IRequestHandler<CreateProductionPlanCommand, Result<Guid>>
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
     private readonly ILogger<CreateProductionPlanCommandHandler> _logger;
 
     public CreateProductionPlanCommandHandler(
         IUnitOfWork unitOfWork,
-        IMapper mapper,
         ILogger<CreateProductionPlanCommandHandler> logger)
     {
         _unitOfWork = unitOfWork;
-        _mapper = mapper;
         _logger = logger;
     }
 

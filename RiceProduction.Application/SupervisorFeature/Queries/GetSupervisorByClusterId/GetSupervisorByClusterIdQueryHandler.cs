@@ -1,8 +1,8 @@
 ﻿// GetSupervisorsByClusterIdQueryHandler.cs
-using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorByClusterId;
 
@@ -12,16 +12,13 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorsByC
         : IRequestHandler<GetSupervisorByClusterIdQuery, List<SupervisorDTO>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
         private readonly ILogger<GetSupervisorsByClusterIdQueryHandler> _logger;
 
         public GetSupervisorsByClusterIdQueryHandler(
             IUnitOfWork unitOfWork,
-            IMapper mapper,
             ILogger<GetSupervisorsByClusterIdQueryHandler> logger)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
             _logger = logger;
         }        
 
@@ -39,7 +36,7 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorsByC
                     return new List<SupervisorDTO>();
                 }
 
-                var supervisorDTOs = _mapper.Map<List<SupervisorDTO>>(supervisors);
+                var supervisorDTOs = supervisors.Select(s => s.ToDto()).ToList();
 
                 _logger.LogInformation(
                     "Retrieved {Count} supervisors successfully for cluster {ClusterId}",

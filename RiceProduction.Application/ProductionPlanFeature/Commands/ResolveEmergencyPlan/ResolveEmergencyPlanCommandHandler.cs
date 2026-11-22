@@ -511,7 +511,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
 
             foreach (var existingVersion in existingVersionsForPlot)
             {
-                existingVersion.IsActive = false;
+                existingVersion.Deactivate();
             }
 
             if (existingVersionsForPlot.Any())
@@ -523,15 +523,11 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 ? existingVersionsForPlot.Max(v => v.VersionOrder)
                 : 0;
 
-            var newVersion = new CultivationVersion
-            {
-                PlotCultivationId = plotCultivation.Id,
-                VersionName = newVersionName.Trim(),
-                VersionOrder = maxVersionOrder + 1,
-                IsActive = true,
-                Reason = resolutionReason?.Trim() ?? "Emergency resolution",
-                ActivatedAt = DateTime.UtcNow
-            };
+            var newVersion = CultivationVersion.CreateNext(
+                plotCultivation.Id,
+                maxVersionOrder,
+                newVersionName.Trim(),
+                reason: resolutionReason?.Trim() ?? "Emergency resolution");
 
             await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
             newVersions.Add(newVersion);

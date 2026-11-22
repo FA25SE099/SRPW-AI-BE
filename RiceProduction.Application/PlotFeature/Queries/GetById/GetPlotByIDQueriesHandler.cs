@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Application.PlotFeature.Queries.GetById
@@ -13,12 +14,10 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetById
     {
         private readonly ILogger<GetPlotByIDQueriesHandler> _logger;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
 
-        public GetPlotByIDQueriesHandler (IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetPlotByIDQueriesHandler> logger)
+        public GetPlotByIDQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetPlotByIDQueriesHandler> logger)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
             _logger = logger;
         }
 
@@ -33,7 +32,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetById
                     _logger.LogWarning("Farmer with Id:{PlotId} not found", request.PlotId);
                     return null;
                 }
-                var plotDTOs = _mapper.Map<PlotDTO>(plot);
+                var plotDTOs = plot.ToDto();
                 _logger.LogInformation(
                     "Successfully retrieve plo with ID: {PlotId})",
                     plot.Id

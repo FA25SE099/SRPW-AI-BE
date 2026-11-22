@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using AutoMapper;
 using MediatR;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -11,16 +10,13 @@ public class GetAllRiceVarietiesQueryHandler :
     IRequestHandler<GetAllRiceVarietiesQuery, Result<List<RiceVarietyResponse>>>
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
     private readonly ILogger<GetAllRiceVarietiesQueryHandler> _logger;
 
     public GetAllRiceVarietiesQueryHandler(
         IUnitOfWork unitOfWork,
-        IMapper mapper,
         ILogger<GetAllRiceVarietiesQueryHandler> logger)
     {
         _unitOfWork = unitOfWork;
-        _mapper = mapper;
         _logger = logger;
     }
 

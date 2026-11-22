@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForAdmin;
 using RiceProduction.Domain.Entities;
@@ -14,13 +15,11 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisor
     public class GetAllSupervisorQueryHandlers : IRequestHandler<GetAllSupervisorQueries, List<SupervisorDTO>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
         private readonly ILogger<GetAllSupervisorQueryHandlers> _logger;
 
-        public GetAllSupervisorQueryHandlers(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetAllSupervisorQueryHandlers> logger)
+        public GetAllSupervisorQueryHandlers(IUnitOfWork unitOfWork, ILogger<GetAllSupervisorQueryHandlers> logger)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
             _logger = logger;
         }
         
@@ -34,7 +33,7 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisor
                 {
                     _logger.LogInformation("There is no supervisor found");
                 }
-                var supDTO = _mapper.Map<List<SupervisorDTO>>(sup);
+                var supDTO = sup?.Where(s => s != null).Select(s => s!.ToDto()).ToList() ?? new List<SupervisorDTO>();
                 _logger.LogInformation($"{supDTO}");
                 return supDTO;
             }

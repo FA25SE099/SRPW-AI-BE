@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailById;
 using RiceProduction.Domain.Entities;
@@ -14,13 +15,11 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetDetail
     public class GetPlotDetailQueriesHandler : IRequestHandler<GetPlotDetailQueries, Result<PlotDetailDTO>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
         private readonly ILogger<GetPlotDetailQueriesHandler> _logger;
 
-        public GetPlotDetailQueriesHandler (IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetPlotDetailQueriesHandler> logger)
+        public GetPlotDetailQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetPlotDetailQueriesHandler> logger)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
             _logger = logger;
         }
         async Task<Result<PlotDetailDTO>> IRequestHandler<GetPlotDetailQueries, Result<PlotDetailDTO>>.Handle(GetPlotDetailQueries request, CancellationToken cancellationToken)
@@ -61,7 +60,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetDetail
                 _logger.LogInformation("Successfully retrieved plot with ID: {PlotId}", plot.Id);
 
                 // Map to DTO
-                var plotDTO = _mapper.Map<PlotDetailDTO>(plot);
+                var plotDTO = plot.ToDetailDto();
 
                 return Result<PlotDetailDTO>.Success(
                     plotDTO,
