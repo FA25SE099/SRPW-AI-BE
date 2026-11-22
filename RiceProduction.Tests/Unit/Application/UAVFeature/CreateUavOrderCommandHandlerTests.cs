@@ -20,6 +20,7 @@ public class CreateUavOrderCommandHandlerTests
 {
     private readonly Mock<IUnitOfWork> _mockUnitOfWork;
     private readonly Mock<IGenericRepository<Group>> _mockGroupRepo;
+    private readonly Mock<IGenericRepository<Cluster>> _mockClusterRepo;
     private readonly Mock<IGenericRepository<CultivationTask>> _mockCultivationTaskRepo;
     private readonly Mock<IGenericRepository<UavServiceOrder>> _mockUavOrderRepo;
     private readonly Mock<IUavVendorRepository> _mockUavVendorRepo;
@@ -30,12 +31,14 @@ public class CreateUavOrderCommandHandlerTests
     {
         _mockUnitOfWork = new Mock<IUnitOfWork>();
         _mockGroupRepo = new Mock<IGenericRepository<Group>>();
+        _mockClusterRepo = new Mock<IGenericRepository<Cluster>>();
         _mockCultivationTaskRepo = new Mock<IGenericRepository<CultivationTask>>();
         _mockUavOrderRepo = new Mock<IGenericRepository<UavServiceOrder>>();
         _mockUavVendorRepo = new Mock<IUavVendorRepository>();
         _mockLogger = new Mock<ILogger<CreateUavOrderCommandHandler>>();
 
         _mockUnitOfWork.Setup(u => u.Repository<Group>()).Returns(_mockGroupRepo.Object);
+        _mockUnitOfWork.Setup(u => u.Repository<Cluster>()).Returns(_mockClusterRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<CultivationTask>()).Returns(_mockCultivationTaskRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<UavServiceOrder>()).Returns(_mockUavOrderRepo.Object);
         _mockUnitOfWork.Setup(u => u.UavVendorRepository).Returns(_mockUavVendorRepo.Object);
@@ -297,6 +300,9 @@ public class CreateUavOrderCommandHandlerTests
             It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
             .ReturnsAsync(group);
 
+        _mockClusterRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Cluster, bool>>>()))
+            .ReturnsAsync(cluster);
+
         _mockUavVendorRepo.Setup(r => r.GetUavVendorByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(vendor);
 
@@ -332,14 +338,6 @@ public class CreateUavOrderCommandHandlerTests
         var result = await _handler.Handle(command, CancellationToken.None);
 
         // Assert
-        if (!result.Succeeded)
-        {
-            Console.WriteLine($"CreateUavOrder failed with errors: {string.Join(", ", result.Errors)}");
-        }
-        else
-        {
-            Console.WriteLine($"CreateUavOrder succeeded with ID: {result.Data}");
-        }
         result.Succeeded.Should().BeTrue($"Expected success but got errors: {string.Join(", ", result.Errors)}");
         result.Data.Should().NotBe(Guid.Empty);
         

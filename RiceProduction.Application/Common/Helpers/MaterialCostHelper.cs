@@ -94,6 +94,7 @@ public static class MaterialCostHelper
             return;
         }
 
+        existing.QuantityPerHa += materialCost.QuantityPerHa;
         existing.TotalQuantityNeeded += materialCost.TotalQuantityNeeded;
         existing.PackagesNeeded += materialCost.PackagesNeeded;
         existing.ActualQuantity += materialCost.ActualQuantity;

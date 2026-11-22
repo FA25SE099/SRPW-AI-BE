@@ -20,6 +20,7 @@ public class FormGroupsCommandHandlerTests
     private readonly Mock<IUnitOfWork> _mockUnitOfWork;
     private readonly Mock<IGenericRepository<Cluster>> _mockClusterRepo;
     private readonly Mock<IGenericRepository<Season>> _mockSeasonRepo;
+    private readonly Mock<IGenericRepository<YearSeason>> _mockYearSeasonRepo;
     private readonly Mock<IGenericRepository<Group>> _mockGroupRepo;
     private readonly Mock<IGenericRepository<Plot>> _mockPlotRepo;
     private readonly Mock<IGenericRepository<PlotCultivation>> _mockPlotCultivationRepo;
@@ -35,6 +36,7 @@ public class FormGroupsCommandHandlerTests
         _mockUnitOfWork = new Mock<IUnitOfWork>();
         _mockClusterRepo = new Mock<IGenericRepository<Cluster>>();
         _mockSeasonRepo = new Mock<IGenericRepository<Season>>();
+        _mockYearSeasonRepo = new Mock<IGenericRepository<YearSeason>>();
         _mockGroupRepo = new Mock<IGenericRepository<Group>>();
         _mockPlotRepo = new Mock<IGenericRepository<Plot>>();
         _mockPlotCultivationRepo = new Mock<IGenericRepository<PlotCultivation>>();
@@ -46,6 +48,7 @@ public class FormGroupsCommandHandlerTests
 
         _mockUnitOfWork.Setup(u => u.Repository<Cluster>()).Returns(_mockClusterRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<Season>()).Returns(_mockSeasonRepo.Object);
+        _mockUnitOfWork.Setup(u => u.Repository<YearSeason>()).Returns(_mockYearSeasonRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<Group>()).Returns(_mockGroupRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<Plot>()).Returns(_mockPlotRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<PlotCultivation>()).Returns(_mockPlotCultivationRepo.Object);
@@ -134,11 +137,19 @@ public class FormGroupsCommandHandlerTests
             CreatedAt = DateTimeOffset.UtcNow
         };
 
+        var yearSeason = new YearSeason
+        {
+            Id = Guid.NewGuid(),
+            ClusterId = clusterId,
+            SeasonId = seasonId,
+            Year = 2025
+        };
+
         var existingGroup = new Group
         {
             Id = Guid.NewGuid(),
             ClusterId = clusterId,
-            YearSeasonId = null, // Changed from SeasonId to YearSeasonId
+            YearSeasonId = yearSeason.Id,
             Year = 2025,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -148,6 +159,9 @@ public class FormGroupsCommandHandlerTests
 
         _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
             .ReturnsAsync(season);
+
+        _mockYearSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<YearSeason, bool>>>()))
+            .ReturnsAsync(yearSeason);
 
         _mockGroupRepo.Setup(r => r.ListAsync(
             It.IsAny<Expression<Func<Group, bool>>>(),
@@ -180,10 +194,12 @@ public class FormGroupsCommandHandlerTests
 
         var cluster = new Cluster { Id = clusterId, ClusterName = "Test Cluster" };
         var season = new Season { Id = seasonId, SeasonName = "Spring 2025", StartDate = "01/15", EndDate = "05/30" };
+        var yearSeason = new YearSeason { Id = Guid.NewGuid(), ClusterId = clusterId, SeasonId = seasonId, Year = 2025 };
         var farmer = new Farmer { Id = farmerId, ClusterId = clusterId };
 
         _mockClusterRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Cluster, bool>>>())).ReturnsAsync(cluster);
         _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>())).ReturnsAsync(season);
+        _mockYearSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<YearSeason, bool>>>())).ReturnsAsync(yearSeason);
         _mockGroupRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Group, bool>>>(), null, null)).ReturnsAsync(new List<Group>());
         _mockFarmerRepo.Setup(r => r.ListAsync(
             It.IsAny<Expression<Func<Farmer, bool>>>(),
@@ -219,12 +235,14 @@ public class FormGroupsCommandHandlerTests
 
         var cluster = new Cluster { Id = clusterId, ClusterName = "Test Cluster" };
         var season = new Season { Id = seasonId, SeasonName = "Spring 2025", StartDate = "01/15", EndDate = "05/30" };
+        var yearSeason = new YearSeason { Id = Guid.NewGuid(), ClusterId = clusterId, SeasonId = seasonId, Year = 2025 };
         var farmer = new Farmer { Id = farmerId, ClusterId = clusterId };
         var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: farmerId, area: 1000m, status: PlotStatus.Active);
         var plotCultivation = MockDataBuilder.CreatePlotCultivation(plotId: plotId, id: Guid.NewGuid(), seasonId: seasonId, riceVarietyId: Guid.NewGuid(), status: CultivationStatus.Planned);
 
         _mockClusterRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Cluster, bool>>>())).ReturnsAsync(cluster);
         _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>())).ReturnsAsync(season);
+        _mockYearSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<YearSeason, bool>>>())).ReturnsAsync(yearSeason);
         _mockGroupRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Group, bool>>>(), null, null)).ReturnsAsync(new List<Group>());
         _mockFarmerRepo.Setup(r => r.ListAsync(
             It.IsAny<Expression<Func<Farmer, bool>>>(),
@@ -262,9 +280,11 @@ public class FormGroupsCommandHandlerTests
 
         var cluster = new Cluster { Id = clusterId, ClusterName = "Test Cluster" };
         var season = new Season { Id = seasonId, SeasonName = "Spring 2025", StartDate = "01/15", EndDate = "05/30" };
+        var yearSeason = new YearSeason { Id = Guid.NewGuid(), ClusterId = clusterId, SeasonId = seasonId, Year = 2025 };
 
         _mockClusterRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Cluster, bool>>>())).ReturnsAsync(cluster);
         _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>())).ReturnsAsync(season);
+        _mockYearSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<YearSeason, bool>>>())).ReturnsAsync(yearSeason);
         _mockGroupRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Group, bool>>>(), null, null)).ReturnsAsync(new List<Group>());
         _mockFarmerRepo.Setup(r => r.ListAsync(
             It.IsAny<Expression<Func<Farmer, bool>>>(),
@@ -294,6 +314,7 @@ public class FormGroupsCommandHandlerTests
 
         // Assert
         result.Succeeded.Should().BeFalse(); // Will fail due to no plots, but command is valid
+        result.Errors.Should().Contain(e => e.Contains("No plot cultivations found"));
         // The fact it didn't fail on parameter validation means parameters were accepted
         command.ProximityThreshold.Should().Be(3000);
         command.MinGroupArea.Should().Be(20.0m);

@@ -109,6 +109,7 @@ public class CreateProductionPlanCommandHandlerTests
             .ReturnsAsync(new List<MaterialPrice>());
 
         _mockProductionPlanRepo.Setup(r => r.AddAsync(It.IsAny<ProductionPlan>()))
+            .Callback<ProductionPlan>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
             .Returns(Task.CompletedTask);
 
         _mockProductionStageRepo.Setup(r => r.AddRangeAsync(It.IsAny<List<ProductionStage>>()))
@@ -170,6 +171,7 @@ public class CreateProductionPlanCommandHandlerTests
             .ReturnsAsync(new List<MaterialPrice>());
 
         _mockProductionPlanRepo.Setup(r => r.AddAsync(It.IsAny<ProductionPlan>()))
+            .Callback<ProductionPlan>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
             .Returns(Task.CompletedTask);
 
         _mockProductionStageRepo.Setup(r => r.AddRangeAsync(It.IsAny<List<ProductionStage>>()))

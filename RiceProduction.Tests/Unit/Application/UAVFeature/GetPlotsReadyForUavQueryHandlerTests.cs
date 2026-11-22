@@ -95,6 +95,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
         var plotId = Guid.NewGuid();
         var plotCultivationId = Guid.NewGuid();
         var cultivationTaskId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
         var seasonId = Guid.NewGuid();
         var riceVarietyId = Guid.NewGuid();
 
@@ -108,6 +109,15 @@ public class GetPlotsReadyForUavQueryHandlerTests
             status: CultivationStatus.InProgress);
         plotCultivation.Area = 1000M;
         plot.PlotCultivations = new List<PlotCultivation> { plotCultivation };
+
+        var cultivationVersion = new CultivationVersion
+        {
+            Id = versionId,
+            PlotCultivationId = plotCultivationId,
+            VersionName = "v1",
+            VersionOrder = 1,
+            IsActive = true
+        };
 
         var groupPlot = new GroupPlot 
         { 
@@ -130,6 +140,8 @@ public class GetPlotsReadyForUavQueryHandlerTests
             taskType: TaskType.PestControl,
             scheduledEndDate: scheduledDate);
         cultivationTask.PlotCultivation = plotCultivation;
+        cultivationTask.VersionId = versionId;
+        cultivationTask.Version = cultivationVersion;
         cultivationTask.ProductionPlanTask = new ProductionPlanTask
         {
             Id = Guid.NewGuid(),
@@ -146,6 +158,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
         };
 
         // Setup mocks
+        var mockCultivationVersionRepo = new Mock<IGenericRepository<CultivationVersion>>();
         var mockCultivationTaskRepo = new Mock<IGenericRepository<CultivationTask>>();
         var mockUavAssignmentRepo = new Mock<IGenericRepository<UavOrderPlotAssignment>>();
 
@@ -153,6 +166,12 @@ public class GetPlotsReadyForUavQueryHandlerTests
             It.IsAny<Expression<Func<Group, bool>>>(),
             It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
             .ReturnsAsync(group);
+
+        mockCultivationVersionRepo.Setup(r => r.ListAsync(
+            It.IsAny<Expression<Func<CultivationVersion, bool>>>(),
+            It.IsAny<Func<IQueryable<CultivationVersion>, IOrderedQueryable<CultivationVersion>>>(),
+            null))
+            .ReturnsAsync(new List<CultivationVersion> { cultivationVersion });
 
         mockUavAssignmentRepo.Setup(r => r.ListAsync(
             It.IsAny<Expression<Func<UavOrderPlotAssignment, bool>>>(),
@@ -166,6 +185,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
             It.IsAny<Func<IQueryable<CultivationTask>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<CultivationTask, object>>>()))
             .ReturnsAsync(new List<CultivationTask> { cultivationTask });
 
+        _mockUnitOfWork.Setup(u => u.Repository<CultivationVersion>()).Returns(mockCultivationVersionRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<CultivationTask>()).Returns(mockCultivationTaskRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<UavOrderPlotAssignment>()).Returns(mockUavAssignmentRepo.Object);
 

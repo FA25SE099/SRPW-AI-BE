@@ -73,6 +73,7 @@ public class CreateEmergencyReportCommandHandlerTests
             .ReturnsAsync(true);
 
         _mockEmergencyReportRepo.Setup(r => r.AddAsync(It.IsAny<EmergencyReport>()))
+            .Callback<EmergencyReport>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
             .Returns(Task.CompletedTask);
 
         _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))

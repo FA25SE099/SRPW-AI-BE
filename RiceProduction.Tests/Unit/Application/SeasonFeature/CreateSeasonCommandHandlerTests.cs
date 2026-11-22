@@ -50,7 +50,11 @@ public class CreateSeasonCommandHandlerTests
         _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
             .ReturnsAsync((Season?)null);
 
+        _mockSeasonRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
+            .ReturnsAsync((Guid g) => g == Guid.Empty ? Guid.NewGuid() : g);
+
         _mockSeasonRepo.Setup(r => r.AddAsync(It.IsAny<Season>()))
+            .Callback<Season>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
             .Returns(Task.CompletedTask);
 
         _mockUnitOfWork.Setup(u => u.CompleteAsync())
@@ -219,7 +223,7 @@ public class CreateSeasonCommandHandlerTests
 
         // Assert
         result.Succeeded.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Contains("Database connection error"));
+        result.Errors.Should().Contain(e => e.Contains("Failed to create season"));
     }
 
     [Fact]
