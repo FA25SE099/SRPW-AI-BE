@@ -8,14 +8,14 @@ namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivati
 
 public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivationPlanByIdQuery, Result<CultivationPlanDetailResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetCultivationPlanByIdQueryHandler> _logger;
 
     public GetCultivationPlanByIdQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetCultivationPlanByIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,18 +26,18 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
         try
         {
             // Get plot cultivation with related data
-            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>()
-                .FindAsync(
-                    match: pc => pc.Id == request.PlanId,
-                    includeProperties: query => query
-                        .Include(pc => pc.Plot)
-                            .ThenInclude(p => p!.Farmer)
-                        .Include(pc => pc.Plot)
-                            .ThenInclude(p => p!.GroupPlots)
-                                .ThenInclude(gp => gp.Group)
-                                    .ThenInclude(g => g!.Cluster)
-                        .Include(pc => pc.RiceVariety)
-                        .Include(pc => pc.CultivationVersions));
+            var plotCultivation = await _context.PlotCultivations
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(pc => pc.Plot)
+                    .ThenInclude(p => p!.Farmer)
+                .Include(pc => pc.Plot)
+                    .ThenInclude(p => p!.GroupPlots)
+                        .ThenInclude(gp => gp.Group)
+                            .ThenInclude(g => g!.Cluster)
+                .Include(pc => pc.RiceVariety)
+                .Include(pc => pc.CultivationVersions)
+                .FirstOrDefaultAsync(pc => pc.Id == request.PlanId, cancellationToken);
 
             if (plotCultivation == null)
             {
@@ -63,20 +63,21 @@ public class GetCultivationPlanByIdQueryHandler : IRequestHandler<GetCultivation
                 request.PlanId, latestVersion.VersionName, latestVersion.VersionOrder);
 
             // Get tasks for the latest version
-            var tasks = await _unitOfWork.Repository<CultivationTask>()
-                .ListAsync(
-                    filter: ct => ct.PlotCultivationId == plotCultivation.Id && 
-                                  ct.VersionId == latestVersion.Id,
+            var tasks = await _context.CultivationTasks
+                .AsNoTracking()
+                .AsSplitQuery()
 #pragma warning disable CS8602 // Dereference of a possibly null reference
-                    includeProperties: query => query
-                        .Include(ct => ct.ProductionPlanTask)
-                            .ThenInclude(ppt => ppt!.ProductionStage)
-                        .Include(ct => ct.ProductionPlanTask)
-                            .ThenInclude(ppt => ppt!.ProductionPlanTaskMaterials)
-                                .ThenInclude(pptm => pptm.Material)
-                        .Include(ct => ct.CultivationTaskMaterials)
-                            .ThenInclude(ctm => ctm.Material));
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt!.ProductionStage)
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt!.ProductionPlanTaskMaterials)
+                        .ThenInclude(pptm => pptm.Material)
+                .Include(ct => ct.CultivationTaskMaterials)
+                    .ThenInclude(ctm => ctm.Material)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
+                .Where(ct => ct.PlotCultivationId == plotCultivation.Id &&
+                             ct.VersionId == latestVersion.Id)
+                .ToListAsync(cancellationToken);
 
             if (!tasks.Any())
             {

@@ -11,14 +11,14 @@ namespace RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonDash
 public class GetYearSeasonDashboardQueryHandler 
     : IRequestHandler<GetYearSeasonDashboardQuery, Result<YearSeasonDashboardDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetYearSeasonDashboardQueryHandler> _logger;
 
     public GetYearSeasonDashboardQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetYearSeasonDashboardQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -28,9 +28,7 @@ public class GetYearSeasonDashboardQueryHandler
     {
         try
         {
-            // Load YearSeason with all necessary relationships
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
                 .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.Cluster)
@@ -48,8 +46,7 @@ public class GetYearSeasonDashboardQueryHandler
 
             dashboard.Season = BuildSeasonInfo(yearSeason);
 
-            var groups = await _unitOfWork.Repository<Group>()
-                .GetQueryable()
+            var groups = await _context.Groups
                 .AsNoTracking()
                 .Where(g => g.YearSeasonId == yearSeason.Id)
                 .Select(g => new GroupDashboardItem(
@@ -69,8 +66,7 @@ public class GetYearSeasonDashboardQueryHandler
 
             var groupIds = groups.Select(g => g.Id).ToList();
             var productionPlans = groupIds.Count > 0
-                ? await _unitOfWork.Repository<ProductionPlan>()
-                    .GetQueryable()
+                ? await _context.ProductionPlans
                     .AsNoTracking()
                     .Where(pp => pp.GroupId.HasValue && groupIds.Contains(pp.GroupId.Value))
                     .ToListAsync(cancellationToken)
@@ -79,8 +75,7 @@ public class GetYearSeasonDashboardQueryHandler
             dashboard.PlanningStatus = BuildProductionPlanningStatus(groups.Count, productionPlans);
 
             var plotCultivationIds = plotIds.Count > 0
-                ? await _unitOfWork.Repository<PlotCultivation>()
-                    .GetQueryable()
+                ? await _context.PlotCultivations
                     .AsNoTracking()
                     .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
                     .Select(pc => pc.Id)
@@ -88,8 +83,7 @@ public class GetYearSeasonDashboardQueryHandler
                 : new List<Guid>();
 
             var materialDistributions = plotCultivationIds.Count > 0
-                ? await _unitOfWork.Repository<MaterialDistribution>()
-                    .GetQueryable()
+                ? await _context.MaterialDistributions
                     .AsNoTracking()
                     .Where(md => plotCultivationIds.Contains(md.PlotCultivationId))
                     .ToListAsync(cancellationToken)
@@ -154,8 +148,7 @@ public class GetYearSeasonDashboardQueryHandler
 
         if (plotIds.Any())
         {
-            status.TotalFarmersInGroups = await _unitOfWork.Repository<Plot>()
-                .GetQueryable()
+            status.TotalFarmersInGroups = await _context.Plots
                 .AsNoTracking()
                 .Where(p => plotIds.Contains(p.Id))
                 .Select(p => p.FarmerId)

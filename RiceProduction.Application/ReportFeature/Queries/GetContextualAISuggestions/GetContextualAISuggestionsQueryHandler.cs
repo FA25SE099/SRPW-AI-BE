@@ -4,27 +4,22 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.ReportFeature.Queries.GetContextualAISuggestions;
 
-public class GetContextualAISuggestionsQueryHandler 
+public class GetContextualAISuggestionsQueryHandler
     : IRequestHandler<GetContextualAISuggestionsQuery, Result<ContextualPlanSuggestions>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IContextualAIService _contextualAIService;
     private readonly ILogger<GetContextualAISuggestionsQueryHandler> _logger;
 
     public GetContextualAISuggestionsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IContextualAIService contextualAIService,
         ILogger<GetContextualAISuggestionsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _contextualAIService = contextualAIService;
         _logger = logger;
     }
@@ -35,9 +30,7 @@ public class GetContextualAISuggestionsQueryHandler
     {
         try
         {
-            // 1. Load the emergency report
-            var report = await _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            var report = await _context.EmergencyReports
                 .AsNoTracking()
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
@@ -54,9 +47,7 @@ public class GetContextualAISuggestionsQueryHandler
                     "NotFound");
             }
 
-            // 2. Load the plot cultivation with current active version and tasks
-            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
+            var plotCultivation = await _context.PlotCultivations
                 .AsNoTracking()
                 .Include(pc => pc.Plot)
                 .Include(pc => pc.RiceVariety)
@@ -75,7 +66,6 @@ public class GetContextualAISuggestionsQueryHandler
                     "NotFound");
             }
 
-            // 3. Get current active version and its tasks
             var activeVersion = plotCultivation.CultivationVersions
                 .FirstOrDefault(v => v.IsActive);
 
@@ -99,9 +89,7 @@ public class GetContextualAISuggestionsQueryHandler
                 })
                 .ToList();
 
-            // 4. Load available materials from database
-            var availableMaterials = await _unitOfWork.Repository<Material>()
-                .GetQueryable()
+            var availableMaterials = await _context.Materials
                 .AsNoTracking()
                 .Where(m => m.IsActive)
                 .Select(m => new AvailableMaterialContext

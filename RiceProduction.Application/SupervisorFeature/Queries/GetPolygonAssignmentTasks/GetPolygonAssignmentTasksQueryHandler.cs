@@ -3,21 +3,20 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 
 public class GetPolygonAssignmentTasksQueryHandler 
     : IRequestHandler<GetPolygonAssignmentTasksQuery, Result<List<PlotPolygonTaskDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPolygonAssignmentTasksQueryHandler> _logger;
 
     public GetPolygonAssignmentTasksQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPolygonAssignmentTasksQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,8 +26,7 @@ public class GetPolygonAssignmentTasksQueryHandler
     {
         try
         {
-            var query = _unitOfWork.Repository<PlotPolygonTask>()
-                .GetQueryable()
+            var query = _context.PlotPolygonTasks
                 .AsNoTracking()
                 .Where(t => t.AssignedToSupervisorId == request.SupervisorId);
 

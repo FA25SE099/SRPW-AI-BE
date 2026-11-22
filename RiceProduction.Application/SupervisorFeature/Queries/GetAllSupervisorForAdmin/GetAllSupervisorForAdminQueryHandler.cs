@@ -6,7 +6,6 @@ using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
 using RiceProduction.Application.Common.Models.Response.UavVendorResponses;
 using RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForClusterManager;
 using RiceProduction.Application.UavVendorFeature.Queries.GetUavVendorList;
-using RiceProduction.Infrastructure.Repository;
 using System;
 using System.Collections.Generic;
 using System.Linq;

@@ -9,14 +9,14 @@ namespace RiceProduction.Application.EmergencyProtocolFeature.Queries.GetEmergen
 
 public class GetEmergencyProtocolDetailQueryHandler : IRequestHandler<GetEmergencyProtocolDetailQuery, Result<EmergencyProtocolDetailDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetEmergencyProtocolDetailQueryHandler> _logger;
 
     public GetEmergencyProtocolDetailQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetEmergencyProtocolDetailQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -30,8 +30,7 @@ public class GetEmergencyProtocolDetailQueryHandler : IRequestHandler<GetEmergen
                 "Getting emergency protocol detail for ID: {ProtocolId}",
                 request.EmergencyProtocolId);
 
-            var emergencyProtocol = await _unitOfWork.Repository<EmergencyProtocol>()
-                .GetQueryable()
+            var emergencyProtocol = await _context.EmergencyProtocols
                 .AsNoTracking()
                 .Include(ep => ep.Category)
                 .Include(ep => ep.Creator)
@@ -56,7 +55,10 @@ public class GetEmergencyProtocolDetailQueryHandler : IRequestHandler<GetEmergen
             }
 
             var currentDate = DateTime.Now;
-            var materialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync();
+            var materialPrices = await _context.MaterialPrices
+                .AsNoTracking()
+                .Include(p => p.Material)
+                .ToListAsync(cancellationToken);
 
             var detailDto = MapToDetailDto(emergencyProtocol, materialPrices, currentDate);
 

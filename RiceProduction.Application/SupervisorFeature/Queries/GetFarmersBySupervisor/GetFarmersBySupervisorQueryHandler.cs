@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetFarmersBySupervisor;
 

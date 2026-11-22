@@ -4,7 +4,6 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Application.FarmerFeature.Commands.ChangeFarmerStatus;
 

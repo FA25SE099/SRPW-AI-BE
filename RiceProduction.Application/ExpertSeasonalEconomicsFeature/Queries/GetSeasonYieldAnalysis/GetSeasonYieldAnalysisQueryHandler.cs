@@ -11,14 +11,14 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
     public class GetSeasonYieldAnalysisQueryHandler :
         IRequestHandler<GetSeasonYieldAnalysisQuery, Result<SeasonYieldAnalysisResponse>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetSeasonYieldAnalysisQueryHandler> _logger;
 
         public GetSeasonYieldAnalysisQueryHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<GetSeasonYieldAnalysisQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -28,31 +28,40 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
         {
             try
             {
-                var season = await _unitOfWork.Repository<Season>().FindAsync(s => s.Id == request.SeasonId);
+                var season = await _context.Seasons
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == request.SeasonId, cancellationToken);
                 if (season == null)
                 {
                     return Result<SeasonYieldAnalysisResponse>.Failure("Season not found");
                 }
 
                 var plotIds = request.GroupId.HasValue
-                    ? (await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken))
+                    ? await _context.Plots
+                        .AsNoTracking()
+                        .Where(p => p.GroupPlots.Any(gp => gp.GroupId == request.GroupId.Value) &&
+                                    p.Status == PlotStatus.Active)
                         .Select(p => p.Id)
-                        .ToList()
+                        .ToListAsync(cancellationToken)
                     : new List<Guid>();
 
-                var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
-                    filter: pc => pc.SeasonId == request.SeasonId &&
-                                  (request.GroupId == null || plotIds.Contains(pc.PlotId)) &&
-                                  (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)),
-                    includeProperties: q => q
-                        .Include(pc => pc.Plot)
-                            .ThenInclude(p => p.GroupPlots)
-                                .ThenInclude(gp => gp.Group)
-                        .Include(pc => pc.RiceVariety)
-                        .Include(pc => pc.CultivationTasks));
+                var plotCultivations = await _context.PlotCultivations
+                    .AsNoTracking()
+                    .AsSplitQuery()
+                    .Include(pc => pc.Plot)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+                    .Include(pc => pc.RiceVariety)
+                    .Include(pc => pc.CultivationTasks)
+                    .Where(pc => pc.SeasonId == request.SeasonId &&
+                                 (request.GroupId == null || plotIds.Contains(pc.PlotId)) &&
+                                 (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)))
+                    .ToListAsync(cancellationToken);
 
-                var riceVarietySeasons = await _unitOfWork.Repository<RiceVarietySeason>().ListAsync(
-                    filter: rvs => rvs.SeasonId == request.SeasonId);
+                var riceVarietySeasons = await _context.RiceVarietySeasons
+                    .AsNoTracking()
+                    .Where(rvs => rvs.SeasonId == request.SeasonId)
+                    .ToListAsync(cancellationToken);
 
                 var varietySeasonsByVarietyId = riceVarietySeasons
                     .GroupBy(rvs => rvs.RiceVarietyId)

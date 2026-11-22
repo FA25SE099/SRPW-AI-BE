@@ -42,6 +42,7 @@ public static class DependencyInjection
             });
         });
 
+        builder.Services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
         builder.Services.AddMemoryCache();
         builder.Services.AddSingleton(TimeProvider.System);

@@ -5,7 +5,6 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.GroupFeature.Commands.FormGroups;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using RiceProduction.Infrastructure.Repository;
 using RiceProduction.Tests.Fixtures;
 using System.Linq.Expressions;
 using Xunit;

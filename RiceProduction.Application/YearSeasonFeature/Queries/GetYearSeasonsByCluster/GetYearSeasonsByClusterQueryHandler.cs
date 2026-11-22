@@ -3,20 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonsByCluster;
 
 public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeasonsByClusterQuery, Result<YearSeasonsByClusterResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetYearSeasonsByClusterQueryHandler> _logger;
 
     public GetYearSeasonsByClusterQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetYearSeasonsByClusterQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -24,9 +23,11 @@ public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeason
     {
         try
         {
-            // Get cluster
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
+            var cluster = await _context.Clusters
+                .AsNoTracking()
+                .Where(c => c.Id == request.ClusterId)
+                .Select(c => new { c.Id, c.ClusterName })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (cluster == null)
             {
@@ -34,8 +35,7 @@ public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeason
                     $"Cluster with ID {request.ClusterId} not found");
             }
 
-            var query = _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var query = _context.YearSeasons
                 .AsNoTracking()
                 .Where(ys => ys.ClusterId == request.ClusterId);
 

@@ -1,7 +1,7 @@
 ﻿using RiceProduction.Domain.Entities;
 using System.Linq.Expressions;
 
-namespace RiceProduction.Infrastructure.Repository
+namespace RiceProduction.Application.Common.Interfaces
 {
     public interface IAgronomyExpertRepository
     {

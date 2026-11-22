@@ -2,7 +2,6 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterIdByManagerId
 {

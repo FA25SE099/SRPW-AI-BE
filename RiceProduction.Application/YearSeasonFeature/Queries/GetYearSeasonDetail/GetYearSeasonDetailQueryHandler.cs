@@ -3,20 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonDetail;
 
 public class GetYearSeasonDetailQueryHandler : IRequestHandler<GetYearSeasonDetailQuery, Result<YearSeasonDetailDTO>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetYearSeasonDetailQueryHandler> _logger;
 
     public GetYearSeasonDetailQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetYearSeasonDetailQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -24,8 +23,7 @@ public class GetYearSeasonDetailQueryHandler : IRequestHandler<GetYearSeasonDeta
     {
         try
         {
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
                 .AsNoTracking()
                 .AsSplitQuery()
                 .Where(ys => ys.Id == request.Id)

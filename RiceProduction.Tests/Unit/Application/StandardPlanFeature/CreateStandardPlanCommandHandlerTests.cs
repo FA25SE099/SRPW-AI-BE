@@ -9,7 +9,6 @@ using RiceProduction.Domain.Enums;
 using System.Linq.Expressions;
 using Xunit;
 using MediatR;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Tests.Unit.Application.StandardPlanFeature;
 

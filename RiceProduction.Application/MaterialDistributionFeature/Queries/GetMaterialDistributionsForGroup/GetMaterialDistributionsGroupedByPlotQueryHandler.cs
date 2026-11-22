@@ -2,22 +2,21 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.MaterialDistributionFeature.Queries.GetMaterialDistributionsForGroup;
 
-public class GetMaterialDistributionsGroupedByPlotQueryHandler 
+public class GetMaterialDistributionsGroupedByPlotQueryHandler
     : IRequestHandler<GetMaterialDistributionsGroupedByPlotQuery, Result<GroupedMaterialDistributionsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetMaterialDistributionsGroupedByPlotQueryHandler> _logger;
 
     public GetMaterialDistributionsGroupedByPlotQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetMaterialDistributionsGroupedByPlotQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,30 +26,28 @@ public class GetMaterialDistributionsGroupedByPlotQueryHandler
     {
         try
         {
-            var group = await _unitOfWork.Repository<Group>()
-                .FindAsync(g => g.Id == request.GroupId);
+            var groupExists = await _context.Groups
+                .AsNoTracking()
+                .AnyAsync(g => g.Id == request.GroupId, cancellationToken);
 
-            if (group == null)
+            if (!groupExists)
                 return Result<GroupedMaterialDistributionsResponse>.Failure("Group not found");
 
-            // Get all plots in the group
-            var groupPlots = await _unitOfWork.Repository<GroupPlot>()
-                .ListAsync(gp => gp.GroupId == request.GroupId);
-            var plotIds = groupPlots.Select(gp => gp.PlotId).ToList();
+            var plotIds = await _context.GroupPlots
+                .AsNoTracking()
+                .Where(gp => gp.GroupId == request.GroupId)
+                .Select(gp => gp.PlotId)
+                .ToListAsync(cancellationToken);
 
-            // Get plot cultivations
-            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
+            var plotCultivations = await _context.PlotCultivations
                 .AsNoTracking()
                 .Where(pc => plotIds.Contains(pc.PlotId))
-                .Include(pc => pc.Plot)
+                .Select(pc => new { pc.Id, pc.Plot.FarmerId })
                 .ToListAsync(cancellationToken);
 
             var cultivationIds = plotCultivations.Select(pc => pc.Id).ToList();
 
-            // Get all distributions
-            var distributions = await _unitOfWork.Repository<MaterialDistribution>()
-                .GetQueryable()
+            var distributions = await _context.MaterialDistributions
                 .AsNoTracking()
                 .Where(md => cultivationIds.Contains(md.PlotCultivationId))
                 .Include(md => md.Material)
@@ -59,11 +56,11 @@ public class GetMaterialDistributionsGroupedByPlotQueryHandler
                 .Include(md => md.ConfirmedBy)
                 .ToListAsync(cancellationToken);
 
-            // Get farmers
-            var farmerIds = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().ToList();
-            var farmers = await _unitOfWork.FarmerRepository
-                .ListAsync(f => farmerIds.Contains(f.Id));
-            var farmerDict = farmers.ToDictionary(f => f.Id);
+            var farmerIds = plotCultivations.Select(pc => pc.FarmerId).Distinct().ToList();
+            var farmerDict = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => farmerIds.Contains(f.Id))
+                .ToDictionaryAsync(f => f.Id, cancellationToken);
 
             var now = DateTime.UtcNow;
 

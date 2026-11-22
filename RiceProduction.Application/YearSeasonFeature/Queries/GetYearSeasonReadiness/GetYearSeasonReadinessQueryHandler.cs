@@ -10,14 +10,14 @@ namespace RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonRead
 public class GetYearSeasonReadinessQueryHandler 
     : IRequestHandler<GetYearSeasonReadinessQuery, Result<YearSeasonReadinessDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetYearSeasonReadinessQueryHandler> _logger;
 
     public GetYearSeasonReadinessQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetYearSeasonReadinessQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,8 +27,7 @@ public class GetYearSeasonReadinessQueryHandler
     {
         try
         {
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
                 .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.Cluster)
@@ -40,8 +39,7 @@ public class GetYearSeasonReadinessQueryHandler
                     $"YearSeason with ID {request.YearSeasonId} not found");
             }
 
-            var groups = await _unitOfWork.Repository<Group>()
-                .GetQueryable()
+            var groups = await _context.Groups
                 .AsNoTracking()
                 .Where(g => g.YearSeasonId == yearSeason.Id)
                 .Select(g => new GroupReadinessSummary(g.Id, g.SupervisorId, g.Status))
@@ -79,15 +77,20 @@ public class GetYearSeasonReadinessQueryHandler
         YearSeason yearSeason,
         CancellationToken cancellationToken)
     {
-        var farmersList = (await _unitOfWork.FarmerRepository
-            .ListAsync(f => f.ClusterId == yearSeason.ClusterId)).ToList();
-        var farmerIds = farmersList.Select(f => f.Id).ToList();
+        var farmerIds = await _context.Farmers
+            .AsNoTracking()
+            .Where(f => f.ClusterId == yearSeason.ClusterId)
+            .Select(f => f.Id)
+            .ToListAsync(cancellationToken);
 
-        var plotsList = (await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => farmerIds.Contains(p.FarmerId))).ToList();
+        var plotsList = await _context.Plots
+            .AsNoTracking()
+            .Where(p => farmerIds.Contains(p.FarmerId))
+            .ToListAsync(cancellationToken);
 
-        var supervisorsList = (await _unitOfWork.SupervisorRepository
-            .ListAsync(s => s.IsActive && s.ClusterId == yearSeason.ClusterId)).ToList();
+        var availableSupervisors = await _context.Supervisors
+            .AsNoTracking()
+            .CountAsync(s => s.IsActive && s.ClusterId == yearSeason.ClusterId, cancellationToken);
 
         var farmersWithSelection = await CountFarmersWithSelectionAsync(
             plotsList, yearSeason.SeasonId, cancellationToken);
@@ -106,15 +109,15 @@ public class GetYearSeasonReadinessQueryHandler
             recommendations.Add("Assign polygon drawing tasks to supervisors");
         }
 
-        if (!supervisorsList.Any())
+        if (availableSupervisors == 0)
         {
             blockingIssues.Add("No active supervisors available");
             recommendations.Add("Add supervisors to the cluster or activate existing ones");
         }
 
-        if (farmersList.Count < 5)
+        if (farmerIds.Count < 5)
         {
-            blockingIssues.Add($"Insufficient farmers (need at least 5, have {farmersList.Count})");
+            blockingIssues.Add($"Insufficient farmers (need at least 5, have {farmerIds.Count})");
             recommendations.Add("Import more farmers to the cluster");
         }
 
@@ -125,7 +128,7 @@ public class GetYearSeasonReadinessQueryHandler
         }
 
         EvaluateVarietySelectionReadiness(
-            yearSeason, farmersList.Count, farmersWithSelection, blockingIssues, recommendations);
+            yearSeason, farmerIds.Count, farmersWithSelection, blockingIssues, recommendations);
 
         if (yearSeason.Status == SeasonStatus.Draft)
         {
@@ -134,7 +137,7 @@ public class GetYearSeasonReadinessQueryHandler
         }
 
         var readinessScore = CalculatePreGroupReadinessScore(
-            yearSeason, plotsWithPolygon, supervisorsList.Any(), farmersList.Count, farmersWithSelection);
+            yearSeason, plotsWithPolygon, availableSupervisors > 0, farmerIds.Count, farmersWithSelection);
 
         return new ClusterReadinessInfo
         {
@@ -142,8 +145,8 @@ public class GetYearSeasonReadinessQueryHandler
             AvailablePlots = plotsList.Count,
             PlotsWithPolygon = plotsWithPolygon,
             PlotsWithoutPolygon = plotsWithoutPolygon,
-            AvailableSupervisors = supervisorsList.Count,
-            AvailableFarmers = farmersList.Count,
+            AvailableSupervisors = availableSupervisors,
+            AvailableFarmers = farmerIds.Count,
             FarmersWithSelection = farmersWithSelection,
             ReadinessScore = readinessScore,
             BlockingIssues = blockingIssues,
@@ -159,22 +162,26 @@ public class GetYearSeasonReadinessQueryHandler
         CancellationToken cancellationToken)
     {
         var groupIds = groups.Select(g => g.Id).ToList();
-        var groupPlots = await _unitOfWork.Repository<GroupPlot>()
-            .ListAsync(gp => groupIds.Contains(gp.GroupId),
-                includeProperties: q => q.Include(gp => gp.Plot));
+        var groupPlots = await _context.GroupPlots
+            .AsNoTracking()
+            .Include(gp => gp.Plot)
+            .Where(gp => groupIds.Contains(gp.GroupId))
+            .ToListAsync(cancellationToken);
         var plotsInGroups = groupPlots.Select(gp => gp.Plot).ToList();
 
         var farmerIds = plotsInGroups.Select(p => p.FarmerId).Distinct().ToList();
-        var farmers = await _unitOfWork.FarmerRepository
-            .ListAsync(f => farmerIds.Contains(f.Id));
+        var availableFarmers = await _context.Farmers
+            .AsNoTracking()
+            .CountAsync(f => farmerIds.Contains(f.Id), cancellationToken);
 
         var supervisorIds = groups
             .Where(g => g.SupervisorId.HasValue)
             .Select(g => g.SupervisorId!.Value)
             .Distinct()
             .ToList();
-        var supervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => supervisorIds.Contains(s.Id));
+        var availableSupervisors = await _context.Supervisors
+            .AsNoTracking()
+            .CountAsync(s => supervisorIds.Contains(s.Id), cancellationToken);
 
         var farmersWithSelection = await CountFarmersWithSelectionAsync(
             plotsInGroups, yearSeason.SeasonId, cancellationToken);
@@ -207,8 +214,8 @@ public class GetYearSeasonReadinessQueryHandler
             AvailablePlots = plotsInGroups.Count,
             PlotsWithPolygon = plotsInGroups.Count(p => p.Boundary != null),
             PlotsWithoutPolygon = plotsInGroups.Count(p => p.Boundary == null),
-            AvailableSupervisors = supervisors.Count(),
-            AvailableFarmers = farmers.Count(),
+            AvailableSupervisors = availableSupervisors,
+            AvailableFarmers = availableFarmers,
             FarmersWithSelection = farmersWithSelection,
             ReadinessScore = readinessScore,
             BlockingIssues = blockingIssues,
@@ -227,8 +234,7 @@ public class GetYearSeasonReadinessQueryHandler
         }
 
         var plotIds = plots.Select(p => p.Id).ToList();
-        var cultivationPlotIds = await _unitOfWork.Repository<PlotCultivation>()
-            .GetQueryable()
+        var cultivationPlotIds = await _context.PlotCultivations
             .AsNoTracking()
             .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == seasonId)
             .Select(pc => pc.PlotId)

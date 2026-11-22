@@ -12,14 +12,14 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
     public class GetHistoricalSeasonComparisonQueryHandler :
         IRequestHandler<GetHistoricalSeasonComparisonQuery, Result<HistoricalSeasonComparisonResponse>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetHistoricalSeasonComparisonQueryHandler> _logger;
 
         public GetHistoricalSeasonComparisonQueryHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<GetHistoricalSeasonComparisonQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -29,7 +29,7 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
         {
             try
             {
-                var seasons = await GetSeasonsAsync(request);
+                var seasons = await GetSeasonsAsync(request, cancellationToken);
                 if (!seasons.Any())
                 {
                     return Result<HistoricalSeasonComparisonResponse>.Failure("No seasons found for comparison");
@@ -38,7 +38,8 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
                 var seasonComparisonData = new List<SeasonComparisonData>(seasons.Count);
                 foreach (var season in seasons)
                 {
-                    seasonComparisonData.Add(await BuildSeasonComparisonDataAsync(season, request.ClusterId));
+                    seasonComparisonData.Add(
+                        await BuildSeasonComparisonDataAsync(season, request.ClusterId, cancellationToken));
                 }
 
                 var response = new HistoricalSeasonComparisonResponse
@@ -63,39 +64,51 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetH
             }
         }
 
-        private async Task<IReadOnlyList<Season>> GetSeasonsAsync(GetHistoricalSeasonComparisonQuery request)
+        private async Task<List<Season>> GetSeasonsAsync(
+            GetHistoricalSeasonComparisonQuery request,
+            CancellationToken cancellationToken)
         {
-            var seasonRepo = _unitOfWork.Repository<Season>();
+            IQueryable<Season> query = _context.Seasons.AsNoTracking();
 
             if (request.SeasonIds != null && request.SeasonIds.Any())
             {
-                return await seasonRepo.ListAsync(
-                    filter: s => request.SeasonIds.Contains(s.Id),
-                    orderBy: q => q.OrderByDescending(s => s.CreatedAt));
+                return await query
+                    .Where(s => request.SeasonIds.Contains(s.Id))
+                    .OrderByDescending(s => s.CreatedAt)
+                    .ToListAsync(cancellationToken);
             }
 
-            var seasons = await seasonRepo.ListAsync(
-                orderBy: q => q.OrderByDescending(s => s.CreatedAt));
+            query = query.OrderByDescending(s => s.CreatedAt);
 
-            return request.Limit is > 0
-                ? seasons.Take(request.Limit.Value).ToList()
-                : seasons;
+            if (request.Limit is > 0)
+            {
+                query = query.Take(request.Limit.Value);
+            }
+
+            return await query.ToListAsync(cancellationToken);
         }
 
-        private async Task<SeasonComparisonData> BuildSeasonComparisonDataAsync(Season season, Guid? clusterId)
+        private async Task<SeasonComparisonData> BuildSeasonComparisonDataAsync(
+            Season season,
+            Guid? clusterId,
+            CancellationToken cancellationToken)
         {
-            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
-                filter: pc => pc.SeasonId == season.Id &&
-                              (clusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == clusterId)),
-                includeProperties: q => q
-                    .Include(pc => pc.Plot)
-                        .ThenInclude(p => p.GroupPlots)
-                            .ThenInclude(gp => gp.Group)
-                    .Include(pc => pc.RiceVariety)
-                    .Include(pc => pc.CultivationTasks));
+            var plotCultivations = await _context.PlotCultivations
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(pc => pc.Plot)
+                    .ThenInclude(p => p.GroupPlots)
+                        .ThenInclude(gp => gp.Group)
+                .Include(pc => pc.RiceVariety)
+                .Include(pc => pc.CultivationTasks)
+                .Where(pc => pc.SeasonId == season.Id &&
+                             (clusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == clusterId)))
+                .ToListAsync(cancellationToken);
 
-            var riceVarietySeasons = await _unitOfWork.Repository<RiceVarietySeason>().ListAsync(
-                filter: rvs => rvs.SeasonId == season.Id);
+            var riceVarietySeasons = await _context.RiceVarietySeasons
+                .AsNoTracking()
+                .Where(rvs => rvs.SeasonId == season.Id)
+                .ToListAsync(cancellationToken);
 
             var totalArea = plotCultivations.Sum(pc => pc.Area ?? pc.Plot.Area);
             var uniqueFarmers = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().Count();

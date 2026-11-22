@@ -1,4 +1,5 @@
-﻿using RiceProduction.Infrastructure.Data;
+﻿using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;

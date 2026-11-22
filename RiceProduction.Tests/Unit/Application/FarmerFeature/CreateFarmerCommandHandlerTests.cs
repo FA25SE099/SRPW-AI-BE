@@ -8,7 +8,6 @@ using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using Xunit;
 using MediatR;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Tests.Unit.Application.FarmerFeature;
 

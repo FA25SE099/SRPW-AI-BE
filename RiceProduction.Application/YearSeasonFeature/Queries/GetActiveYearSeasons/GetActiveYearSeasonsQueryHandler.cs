@@ -3,21 +3,20 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.YearSeasonFeature.Queries.GetActiveYearSeasons;
 
 public class GetActiveYearSeasonsQueryHandler : IRequestHandler<GetActiveYearSeasonsQuery, Result<ActiveYearSeasonsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetActiveYearSeasonsQueryHandler> _logger;
 
     public GetActiveYearSeasonsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetActiveYearSeasonsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -31,8 +30,7 @@ public class GetActiveYearSeasonsQueryHandler : IRequestHandler<GetActiveYearSea
 
             // Active means: Status = PlanningOpen AND AllowFarmerSelection = true 
             // AND current date is within FarmerSelectionWindow
-            var query = _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var query = _context.YearSeasons
                 .AsNoTracking()
                 .Where(ys => ys.Status == SeasonStatus.PlanningOpen
                     && ys.AllowFarmerSelection

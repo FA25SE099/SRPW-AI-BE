@@ -5,7 +5,6 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Application.PlotFeature.Queries.GetPlotsByFarmer;
 

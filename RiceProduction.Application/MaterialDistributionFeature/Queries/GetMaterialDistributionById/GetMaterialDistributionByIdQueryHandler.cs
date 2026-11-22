@@ -2,26 +2,24 @@ using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.MaterialDistributionFeature.Queries.GetMaterialDistributionsForGroup;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.MaterialDistributionFeature.Queries.GetMaterialDistributionById;
 
-public class GetMaterialDistributionByIdQueryHandler 
+public class GetMaterialDistributionByIdQueryHandler
     : IRequestHandler<GetMaterialDistributionByIdQuery, Result<MaterialDistributionDetailDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
 
-    public GetMaterialDistributionByIdQueryHandler(IUnitOfWork unitOfWork)
+    public GetMaterialDistributionByIdQueryHandler(IApplicationDbContext context)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
     }
 
     public async Task<Result<MaterialDistributionDetailDto>> Handle(
-        GetMaterialDistributionByIdQuery request, 
+        GetMaterialDistributionByIdQuery request,
         CancellationToken cancellationToken)
     {
-        var distribution = await _unitOfWork.Repository<MaterialDistribution>()
-            .GetQueryable()
+        var distribution = await _context.MaterialDistributions
             .AsNoTracking()
             .Where(md => md.Id == request.DistributionId)
             .Include(md => md.Material)
@@ -36,9 +34,10 @@ public class GetMaterialDistributionByIdQueryHandler
         }
 
         var plot = distribution.PlotCultivation.Plot;
-        
-        // Get farmer info
-        var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(plot.FarmerId);
+
+        var farmer = await _context.Farmers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == plot.FarmerId, cancellationToken);
 
         var now = DateTime.UtcNow;
 

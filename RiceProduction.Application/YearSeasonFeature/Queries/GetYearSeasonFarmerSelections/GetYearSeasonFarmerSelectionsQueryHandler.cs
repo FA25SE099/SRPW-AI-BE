@@ -9,14 +9,14 @@ namespace RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonFarm
 public class GetYearSeasonFarmerSelectionsQueryHandler 
     : IRequestHandler<GetYearSeasonFarmerSelectionsQuery, Result<YearSeasonFarmerSelectionsDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetYearSeasonFarmerSelectionsQueryHandler> _logger;
 
     public GetYearSeasonFarmerSelectionsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetYearSeasonFarmerSelectionsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,8 +26,7 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
     {
         try
         {
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
                 .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.Cluster)
@@ -45,18 +44,21 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
                 (!yearSeason.FarmerSelectionWindowStart.HasValue || now >= yearSeason.FarmerSelectionWindowStart.Value) &&
                 (!yearSeason.FarmerSelectionWindowEnd.HasValue || now <= yearSeason.FarmerSelectionWindowEnd.Value);
 
-            var farmersList = (await _unitOfWork.FarmerRepository
-                .ListAsync(f => f.ClusterId == yearSeason.ClusterId)).ToList();
+            var farmersList = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => f.ClusterId == yearSeason.ClusterId)
+                .ToListAsync(cancellationToken);
             var farmerIds = farmersList.Select(f => f.Id).ToList();
             var totalFarmers = farmersList.Count;
 
-            var plotsList = (await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => farmerIds.Contains(p.FarmerId))).ToList();
+            var plotsList = await _context.Plots
+                .AsNoTracking()
+                .Where(p => farmerIds.Contains(p.FarmerId))
+                .ToListAsync(cancellationToken);
             var plotById = plotsList.ToDictionary(p => p.Id);
             var plotIds = plotById.Keys.ToList();
 
-            var cultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
+            var cultivations = await _context.PlotCultivations
                 .AsNoTracking()
                 .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == yearSeason.SeasonId)
                 .ToListAsync(cancellationToken);
@@ -67,9 +69,10 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
                 .ToList();
 
             var varietyIds = cultivations.Select(pc => pc.RiceVarietyId).Distinct().ToList();
-            var varietyDict = (await _unitOfWork.Repository<RiceVariety>()
-                .ListAsync(rv => varietyIds.Contains(rv.Id)))
-                .ToDictionary(rv => rv.Id);
+            var varietyDict = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => varietyIds.Contains(rv.Id))
+                .ToDictionaryAsync(rv => rv.Id, cancellationToken);
 
             var previousCultivations = await GetPreviousSeasonCultivationsAsync(
                 yearSeason, plotIds, cancellationToken);
@@ -199,8 +202,7 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
         {
             var previousYear = currentYearSeason.Year - 1;
 
-            var hasPreviousYearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var hasPreviousYearSeason = await _context.YearSeasons
                 .AsNoTracking()
                 .AnyAsync(ys =>
                     ys.ClusterId == currentYearSeason.ClusterId &&
@@ -213,8 +215,7 @@ public class GetYearSeasonFarmerSelectionsQueryHandler
                 return new List<PlotCultivation>();
             }
 
-            return await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
+            return await _context.PlotCultivations
                 .AsNoTracking()
                 .Where(pc => plotIds.Contains(pc.PlotId) &&
                              pc.SeasonId == currentYearSeason.SeasonId)

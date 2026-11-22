@@ -9,7 +9,6 @@ using RiceProduction.Tests.Fixtures;
 using System.Linq.Expressions;
 using Xunit;
 using Microsoft.EntityFrameworkCore.Query;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Tests.Unit.Application.UAVFeature;
 
