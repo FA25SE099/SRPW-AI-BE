@@ -215,7 +215,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
     }
 
     [Fact]
-    public async Task Constructor_InitializesAllDependencies()
+    public void Constructor_InitializesAllDependencies()
     {
         // Arrange & Act
         var handler = new GetPlotsReadyForUavQueryHandler(_mockUnitOfWork.Object, _mockLogger.Object);

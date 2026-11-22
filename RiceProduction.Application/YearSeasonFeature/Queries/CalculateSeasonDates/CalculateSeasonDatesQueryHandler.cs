@@ -1,21 +1,19 @@
-using MediatR;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.YearSeasonFeature.Queries.CalculateSeasonDates;
 
 public class CalculateSeasonDatesQueryHandler : IRequestHandler<CalculateSeasonDatesQuery, Result<SeasonDatesDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CalculateSeasonDatesQueryHandler> _logger;
 
     public CalculateSeasonDatesQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<CalculateSeasonDatesQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -25,24 +23,22 @@ public class CalculateSeasonDatesQueryHandler : IRequestHandler<CalculateSeasonD
     {
         try
         {
-            // Get season
-            var season = await _unitOfWork.Repository<Season>().GetEntityByIdAsync(request.SeasonId);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == request.SeasonId, cancellationToken);
             if (season == null)
             {
                 return Result<SeasonDatesDto>.Failure("Season not found");
             }
 
-            // Validate year
             if (request.Year < 2000 || request.Year > 2100)
             {
                 return Result<SeasonDatesDto>.Failure("Year must be between 2000 and 2100");
             }
 
-            // Parse season dates (DD/MM format)
             var startDate = ParseSeasonDate(season.StartDate, request.Year);
             var endDate = ParseSeasonDate(season.EndDate, request.Year);
-            
-            // Check if season crosses years
+
             bool crossesYears = false;
             if (endDate < startDate)
             {
@@ -50,20 +46,16 @@ public class CalculateSeasonDatesQueryHandler : IRequestHandler<CalculateSeasonD
                 crossesYears = true;
             }
 
-            // Calculate duration
             var durationDays = (int)(endDate - startDate).TotalDays;
 
-            // Calculate suggested windows
-            var now = DateTime.UtcNow;
-            
             // Suggested farmer selection window (30 days before season, ends 7 days before)
             var suggestedFarmerSelectionStart = startDate.AddDays(-30);
             var suggestedFarmerSelectionEnd = startDate.AddDays(-7);
-            
+
             // Suggested planning window (for BOTH group formation + production planning)
             // Starts right after farmer selection ends, ends 3 days before season
-            var suggestedPlanningStart = startDate.AddDays(-6); // Day after selection ends
-            var suggestedPlanningEnd = startDate.AddDays(-3);   // 3 days before season
+            var suggestedPlanningStart = startDate.AddDays(-6);
+            var suggestedPlanningEnd = startDate.AddDays(-3);
 
             var dto = new SeasonDatesDto
             {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
@@ -16,16 +17,16 @@ namespace RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTempl
 public class DownloadPlotImportTemplateQueryHandler
     : IRequestHandler<DownloadPlotImportTemplateQuery, Result<FileExportResult>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IGenericExcel _genericExcel;
     private readonly ILogger<DownloadPlotImportTemplateQueryHandler> _logger;
 
     public DownloadPlotImportTemplateQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IGenericExcel genericExcel,
         ILogger<DownloadPlotImportTemplateQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _genericExcel = genericExcel;
         _logger = logger;
     }
@@ -39,19 +40,25 @@ public class DownloadPlotImportTemplateQueryHandler
             Guid? clusterId = null;
             if (request.ClusterManagerId.HasValue)
             {
-                var clusterManager = await _unitOfWork.ClusterManagerRepository
-                    .GetClusterManagerByIdAsync(request.ClusterManagerId.Value, cancellationToken);
-                clusterId = clusterManager?.ClusterId;
+                clusterId = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(cm => cm.Id == request.ClusterManagerId.Value)
+                    .Select(cm => cm.ClusterId)
+                    .FirstOrDefaultAsync(cancellationToken);
             }
 
-            var farmers = clusterId.HasValue
-                ? await _unitOfWork.FarmerRepository.ListAsync(f => f.ClusterId == clusterId.Value)
-                : await _unitOfWork.FarmerRepository.ListAsync(f => true);
+            var farmersQuery = _context.Farmers
+                .AsNoTracking()
+                .Where(f => !string.IsNullOrEmpty(f.FarmCode));
 
-            var farmersList = farmers
-                .Where(f => !string.IsNullOrEmpty(f.FarmCode))
+            if (clusterId.HasValue)
+            {
+                farmersQuery = farmersQuery.Where(f => f.ClusterId == clusterId.Value);
+            }
+
+            var farmersList = await farmersQuery
                 .OrderBy(f => f.FarmCode)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
             if (!farmersList.Any())
             {
@@ -60,11 +67,15 @@ public class DownloadPlotImportTemplateQueryHandler
                     "No farmers found. Please import farmers first using the farmer import template.");
             }
 
-            var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-                .ListAsync(rv => rv.IsActive);
-            var riceVarietiesList = riceVarieties.OrderBy(rv => rv.VarietyName).ToList();
+            var riceVarietiesList = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => rv.IsActive)
+                .OrderBy(rv => rv.VarietyName)
+                .ToListAsync(cancellationToken);
 
-            var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
+            var allSeasons = await _context.Seasons
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
             var currentSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now)?.Season;
 
             var templateRows = BuildTemplateRows(farmersList);

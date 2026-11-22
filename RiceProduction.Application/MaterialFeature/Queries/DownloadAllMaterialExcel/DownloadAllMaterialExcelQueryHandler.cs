@@ -60,7 +60,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                 return Result<FileExportResult>.Success(result,"File created successfully");
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return Result<FileExportResult>.Failure("File created fail");
             }

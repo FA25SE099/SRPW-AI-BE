@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NetTopologySuite.IO;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -11,17 +12,17 @@ namespace RiceProduction.Application.GroupFeature.Queries.PreviewGroups;
 
 public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Result<PreviewGroupsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<PreviewGroupsQueryHandler> _logger;
     private readonly GroupFormationService _groupFormationService;
     private readonly GroupNameGenerationService _groupNameService;
     private readonly GeoJsonWriter _geoJsonWriter;
 
     public PreviewGroupsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<PreviewGroupsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
         _groupFormationService = new GroupFormationService();
         _groupNameService = new GroupNameGenerationService();
@@ -34,25 +35,24 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
     {
         try
         {
-            // Verify cluster exists
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
+            var cluster = await _context.Clusters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == request.ClusterId, cancellationToken);
 
             if (cluster == null)
             {
                 return Result<PreviewGroupsResponse>.Failure($"Không tìm thấy cụm {request.ClusterId}");
             }
 
-            // Verify season exists
-            var season = await _unitOfWork.Repository<Season>()
-                .FindAsync(s => s.Id == request.SeasonId);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == request.SeasonId, cancellationToken);
 
             if (season == null)
             {
                 return Result<PreviewGroupsResponse>.Failure($"Không tìm thấy vụ mùa {request.SeasonId}");
             }
 
-            // Build grouping parameters
             var parameters = new GroupingParameters
             {
                 ProximityThreshold = request.ProximityThreshold ?? 100,
@@ -63,23 +63,23 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                 MaxPlotsPerGroup = request.MaxPlotsPerGroup ?? 10
             };
 
-            // Get all farmers in cluster
-            var farmers = await _unitOfWork.FarmerRepository
-                .ListAsync(f => f.ClusterId == request.ClusterId);
-            var farmersList = farmers.ToList();
+            var farmersList = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => f.ClusterId == request.ClusterId)
+                .ToListAsync(cancellationToken);
             var farmerIds = farmersList.Select(f => f.Id).ToList();
 
-            // Get all plots for these farmers
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => farmerIds.Contains(p.FarmerId));
-            var plotsList = plots.ToList();
+            var plotsList = await _context.Plots
+                .AsNoTracking()
+                .Where(p => farmerIds.Contains(p.FarmerId))
+                .ToListAsync(cancellationToken);
             var plotIds = plotsList.Select(p => p.Id).ToList();
 
-            // Get plot cultivations for this season
-            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .ListAsync(pc => plotIds.Contains(pc.PlotId) &&
-                                pc.SeasonId == request.SeasonId);
-            var cultivationsList = plotCultivations.ToList();
+            var cultivationsList = await _context.PlotCultivations
+                .AsNoTracking()
+                .Where(pc => plotIds.Contains(pc.PlotId) &&
+                             pc.SeasonId == request.SeasonId)
+                .ToListAsync(cancellationToken);
 
             if (!cultivationsList.Any())
             {
@@ -88,19 +88,17 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                     "Nông dân phải chọn giống lúa trước khi thành lập nhóm.");
             }
 
-            // Check for plots that are already grouped for THIS SEASON
             // Business rule: A plot can belong to multiple groups, but only one group per season
-            var alreadyGroupedPlots = new HashSet<Guid>();
-            foreach (var plot in plotsList)
-            {
-                var isGroupedForSeason = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
-                if (isGroupedForSeason)
-                {
-                    alreadyGroupedPlots.Add(plot.Id);
-                }
-            }
+            var alreadyGroupedPlots = (await _context.GroupPlots
+                .AsNoTracking()
+                .Where(gp => plotIds.Contains(gp.PlotId) &&
+                             gp.Group.YearSeason != null &&
+                             gp.Group.YearSeason.SeasonId == request.SeasonId)
+                .Select(gp => gp.PlotId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+                .ToHashSet();
 
-            // Build PlotClusterInfo list
             var plotDict = plotsList.ToDictionary(p => p.Id);
             var plotClusterInfos = new List<PlotClusterInfo>();
 
@@ -109,7 +107,6 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                 if (!plotDict.TryGetValue(cultivation.PlotId, out var plot))
                     continue;
 
-                // Skip plots already grouped for THIS SEASON
                 if (alreadyGroupedPlots.Contains(plot.Id))
                     continue;
 
@@ -133,20 +130,20 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
                     "Đảm bảo các thửa đất có tọa độ/ranh giới và chưa được nhóm.");
             }
 
-            // Run grouping algorithm
             var (proposedGroups, ungroupedPlots) = _groupFormationService.FormGroups(
                 plotClusterInfos,
                 parameters);
 
-            // Get rice varieties and farmers for display
             var varietyIds = plotClusterInfos.Select(p => p.RiceVarietyId).Distinct().ToList();
-            var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-                .ListAsync(rv => varietyIds.Contains(rv.Id));
+            var riceVarieties = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => varietyIds.Contains(rv.Id))
+                .ToListAsync(cancellationToken);
             var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
             var farmerDict = farmersList.ToDictionary(f => f.Id);
 
             var (availableSupervisors, supervisorsForAssignment) =
-                await GetAvailableSupervisorsAsync(request.ClusterId, request.SeasonId, request.Year);
+                await GetAvailableSupervisorsAsync(request.ClusterId, request.SeasonId, request.Year, cancellationToken);
 
             var response = new PreviewGroupsResponse
             {
@@ -209,26 +206,33 @@ public class PreviewGroupsQueryHandler : IRequestHandler<PreviewGroupsQuery, Res
     }
 
     private async Task<(List<SupervisorForAssignmentDto> AvailableSupervisors, List<Supervisor> SupervisorsForAssignment)>
-        GetAvailableSupervisorsAsync(Guid clusterId, Guid seasonId, int year)
+        GetAvailableSupervisorsAsync(Guid clusterId, Guid seasonId, int year, CancellationToken cancellationToken)
     {
-        var supervisorAreaCapacitySetting = await _unitOfWork.Repository<SystemSetting>()
-            .FindAsync(s => s.SettingKey == "SupervisorMaxAreaCapacity");
+        var supervisorAreaCapacitySetting = await _context.SystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SettingKey == "SupervisorMaxAreaCapacity", cancellationToken);
 
         decimal? supervisorMaxArea = supervisorAreaCapacitySetting != null &&
             decimal.TryParse(supervisorAreaCapacitySetting.SettingValue, out var areaCapacity)
                 ? areaCapacity
                 : null;
 
-        var activeSupervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => s.IsActive && s.ClusterId == clusterId);
+        var supervisorsList = await _context.Supervisors
+            .AsNoTracking()
+            .Include(s => s.ManagedCluster)
+            .Where(s => s.IsActive && s.ClusterId == clusterId)
+            .ToListAsync(cancellationToken);
 
-        var supervisorsList = activeSupervisors.ToList();
         var supervisorIds = supervisorsList.Select(s => s.Id).ToList();
 
-        var existingGroups = await _unitOfWork.Repository<Group>()
-            .ListAsync(g => supervisorIds.Contains(g.SupervisorId!.Value) &&
-                           g.YearSeason!.Year == year &&
-                           g.YearSeason.SeasonId == seasonId);
+        var existingGroups = await _context.Groups
+            .AsNoTracking()
+            .Where(g => g.SupervisorId.HasValue &&
+                        supervisorIds.Contains(g.SupervisorId.Value) &&
+                        g.YearSeason != null &&
+                        g.YearSeason.Year == year &&
+                        g.YearSeason.SeasonId == seasonId)
+            .ToListAsync(cancellationToken);
 
         var supervisorWorkload = existingGroups
             .GroupBy(g => g.SupervisorId!.Value)

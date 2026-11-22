@@ -10,14 +10,14 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.ReviewStandardP
 public class ReviewStandardPlanQueryHandler : 
     IRequestHandler<ReviewStandardPlanQuery, Result<StandardPlanReviewDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ReviewStandardPlanQueryHandler> _logger;
 
     public ReviewStandardPlanQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ReviewStandardPlanQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -31,15 +31,15 @@ public class ReviewStandardPlanQueryHandler :
                 "Reviewing standard plan ID: {StandardPlanId} with SowDate: {SowDate}, Area: {Area} ha",
                 request.StandardPlanId, request.SowDate, request.AreaInHectares);
 
-            var standardPlan = await _unitOfWork.Repository<StandardPlan>().FindAsync(
-                match: sp => sp.Id == request.StandardPlanId && sp.IsActive,
-                includeProperties: q => q
-                    .Include(sp => sp.Category)
-                    .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
-                        .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
-                            .ThenInclude(task => task.StandardPlanTaskMaterials)
-                                .ThenInclude(material => material.Material)
-            );
+            var standardPlan = await _context.StandardPlans
+                .AsNoTracking()
+                .Include(sp => sp.Category)
+                .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
+                    .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
+                        .ThenInclude(task => task.StandardPlanTaskMaterials)
+                            .ThenInclude(material => material.Material)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(sp => sp.Id == request.StandardPlanId && sp.IsActive, cancellationToken);
 
             if (standardPlan == null)
             {
@@ -57,7 +57,7 @@ public class ReviewStandardPlanQueryHandler :
                 .ToList();
 
             var priceReferenceDate = DateTime.SpecifyKind(request.SowDate.Date, DateTimeKind.Utc);
-            var materialPriceMap = await GetLatestMaterialPricesAsync(materialIds, priceReferenceDate);
+            var materialPriceMap = await GetLatestMaterialPricesAsync(materialIds, priceReferenceDate, cancellationToken);
 
             var stagesReview = standardPlan.StandardPlanStages
                 .OrderBy(s => s.SequenceOrder)
@@ -112,15 +112,18 @@ public class ReviewStandardPlanQueryHandler :
 
     private async Task<Dictionary<Guid, MaterialPrice>> GetLatestMaterialPricesAsync(
         List<Guid> materialIds,
-        DateTime priceReferenceDate)
+        DateTime priceReferenceDate,
+        CancellationToken cancellationToken)
     {
         if (materialIds.Count == 0)
         {
             return new Dictionary<Guid, MaterialPrice>();
         }
 
-        var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-            filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate);
+        var potentialPrices = await _context.MaterialPrices
+            .AsNoTracking()
+            .Where(p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate)
+            .ToListAsync(cancellationToken);
 
         return potentialPrices
             .GroupBy(p => p.MaterialId)

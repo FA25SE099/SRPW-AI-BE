@@ -1,24 +1,21 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
-using RiceProduction.Domain.Entities;
+
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanDetail;
 
-public class GetPlanDetailsForExpertQueryHandler : 
+public class GetPlanDetailsForExpertQueryHandler :
     IRequestHandler<GetPlanDetailsForExpertQuery, Result<ExpertPlanDetailResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlanDetailsForExpertQueryHandler> _logger;
 
-    public GetPlanDetailsForExpertQueryHandler(IUnitOfWork unitOfWork, ILogger<GetPlanDetailsForExpertQueryHandler> logger)
+    public GetPlanDetailsForExpertQueryHandler(IApplicationDbContext context, ILogger<GetPlanDetailsForExpertQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,17 +23,19 @@ public class GetPlanDetailsForExpertQueryHandler :
     {
         try
         {
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
-                match: p => p.Id == request.PlanId,
-                includeProperties: q => q
-                    .Include(p => p.Group).ThenInclude(g => g!.Cluster)
-                    .Include(p => p.Group).ThenInclude(g => g!.GroupPlots).ThenInclude(gp => gp.Plot)
-                        .ThenInclude(plot => plot.Farmer)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
-                            .ThenInclude(t => t.ProductionPlanTaskMaterials)
-                                .ThenInclude(m => m.Material)
-            );
+            var plan = await _context.ProductionPlans
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.Cluster)
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.GroupPlots)
+                        .ThenInclude(gp => gp.Plot)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
+                        .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                            .ThenInclude(m => m.Material)
+                .FirstOrDefaultAsync(p => p.Id == request.PlanId, cancellationToken);
 
             if (plan == null)
             {

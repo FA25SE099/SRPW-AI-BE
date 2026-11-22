@@ -4,21 +4,21 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.GroupResponse;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Application.Common.Interfaces;
+
 namespace RiceProduction.Application.GroupFeature.Queries.GetGroupDetail;
 
 public class GetGroupDetailQueryHandler :
     IRequestHandler<GetGroupDetailQuery, Result<GroupDetailResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetGroupDetailQueryHandler> _logger;
 
-    public GetGroupDetailQueryHandler(IUnitOfWork unitOfWork, ILogger<GetGroupDetailQueryHandler> logger)
+    public GetGroupDetailQueryHandler(IApplicationDbContext context, ILogger<GetGroupDetailQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,19 +26,22 @@ public class GetGroupDetailQueryHandler :
     {
         try
         {
-            // Tải Group cùng tất cả các mối quan hệ lồng nhau
-            var group = await _unitOfWork.Repository<Group>().FindAsync(
-                match: g => g.Id == request.GroupId,
-                includeProperties: q => q
-                    .Include(g => g.Cluster)
-                    .Include(g => g.Supervisor)
-                    .Include(g => g.YearSeason)
-                        .ThenInclude(ys => ys.RiceVariety)
-                    .Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.Farmer) // Plots và Farmer
-                    .Include(g => g.ProductionPlans).ThenInclude(pp => pp.StandardPlan) // Plans và Standard Plan
-                    .Include(g => g.UavServiceOrders).ThenInclude(uav => uav.UavVendor) // UAV Orders và Vendor
-                    .Include(g => g.Alerts)
-            );
+            var group = await _context.Groups
+                .AsNoTracking()
+                .Include(g => g.Cluster)
+                .Include(g => g.Supervisor)
+                .Include(g => g.YearSeason)
+                    .ThenInclude(ys => ys.RiceVariety)
+                .Include(g => g.GroupPlots)
+                    .ThenInclude(gp => gp.Plot)
+                        .ThenInclude(p => p.Farmer)
+                .Include(g => g.ProductionPlans)
+                    .ThenInclude(pp => pp.StandardPlan)
+                .Include(g => g.UavServiceOrders)
+                    .ThenInclude(uav => uav.UavVendor)
+                .Include(g => g.Alerts)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(g => g.Id == request.GroupId, cancellationToken);
 
             if (group == null)
             {

@@ -4,23 +4,20 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.UAVFeature.Queries.GeUAVOrderDetail;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
-using System.Linq.Expressions;
 
 namespace RiceProduction.Application.UAVFeature.Queries.GetClusterServiceOrdersByManager;
 
 public class GetClusterServiceOrdersByManagerQueryHandler
     : IRequestHandler<GetClusterServiceOrdersByManagerQuery, PagedResult<List<UavServiceOrderResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetClusterServiceOrdersByManagerQueryHandler> _logger;
 
     public GetClusterServiceOrdersByManagerQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetClusterServiceOrdersByManagerQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -30,8 +27,11 @@ public class GetClusterServiceOrdersByManagerQueryHandler
     {
         try
         {
-            var clusterManager = await _unitOfWork.ClusterManagerRepository
-                .GetClusterManagerByIdAsync(request.ClusterManagerId, cancellationToken);
+            var clusterManager = await _context.ClusterManagers
+                .AsNoTracking()
+                .Where(cm => cm.Id == request.ClusterManagerId)
+                .Select(cm => new { cm.ClusterId })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (clusterManager == null)
             {
@@ -64,23 +64,22 @@ public class GetClusterServiceOrdersByManagerQueryHandler
                 ? defaultStatuses
                 : request.StatusFilter;
 
-            Expression<Func<UavServiceOrder, bool>> filter = order =>
-                order.Group.ClusterId == clusterId &&
-                statusesToFilter.Contains(order.Status);
+            var query = _context.UavServiceOrders
+                .AsNoTracking()
+                .Where(order => order.Group.ClusterId == clusterId &&
+                                statusesToFilter.Contains(order.Status));
 
-            var allOrders = await _unitOfWork.Repository<UavServiceOrder>().ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderByDescending(o => o.ScheduledDate),
-                includeProperties: q => q
-                    .Include(o => o.Group).ThenInclude(g => g.Cluster)
-                    .Include(o => o.Creator)
-                    .Include(o => o.UavVendor));
+            var totalCount = await query.CountAsync(cancellationToken);
 
-            var totalCount = allOrders.Count;
-            var pagedOrders = allOrders
+            var pagedOrders = await query
+                .Include(o => o.Group)
+                    .ThenInclude(g => g.Cluster)
+                .Include(o => o.Creator)
+                .Include(o => o.UavVendor)
+                .OrderByDescending(o => o.ScheduledDate)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
             var responseData = pagedOrders.Select(o => new UavServiceOrderResponse
             {

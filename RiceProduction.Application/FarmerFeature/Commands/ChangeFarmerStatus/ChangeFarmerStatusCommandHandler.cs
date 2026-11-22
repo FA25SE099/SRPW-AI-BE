@@ -51,7 +51,7 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
 
             // Log the status change
             _logger.LogInformation(
-                "Changing farmer {FarmerId} status from {OldStatus} to {NewStatus}. Reason: {Reason}",
+                "Changing farmer {FarmerId} status from {OldStatus} to {NewStatus}",
                 request.FarmerId,
                 oldStatus,
                 request.NewStatus);

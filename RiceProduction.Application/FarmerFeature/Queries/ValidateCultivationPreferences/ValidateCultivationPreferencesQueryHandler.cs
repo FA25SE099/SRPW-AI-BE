@@ -127,7 +127,7 @@ public class ValidateCultivationPreferencesQueryHandler
             validation.EstimatedHarvestDate = request.PreferredPlantingDate
                 .AddDays(validation.GrowthDurationDays.Value);
 
-            if (plot.Area != null && riceVarietySeason.ExpectedYieldPerHectare.HasValue)
+            if (riceVarietySeason.ExpectedYieldPerHectare.HasValue)
             {
                 validation.ExpectedYield = plot.Area * riceVarietySeason.ExpectedYieldPerHectare.Value;
             }

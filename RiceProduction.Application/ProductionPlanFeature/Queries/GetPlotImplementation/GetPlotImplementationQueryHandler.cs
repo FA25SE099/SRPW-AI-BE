@@ -4,22 +4,20 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPlotImplementation;
 
 public class GetPlotImplementationQueryHandler : IRequestHandler<GetPlotImplementationQuery, Result<PlotImplementationResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlotImplementationQueryHandler> _logger;
 
     public GetPlotImplementationQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPlotImplementationQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,46 +25,42 @@ public class GetPlotImplementationQueryHandler : IRequestHandler<GetPlotImplemen
     {
         try
         {
-            var plot = await _unitOfWork.Repository<Plot>().FindAsync(
-                match: p => p.Id == request.PlotId,
-                includeProperties: q => q
-                    .Include(p => p.Farmer)
-                    .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.Season)
-                    .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.RiceVariety)
-            );
+            var plot = await _context.Plots
+                .AsNoTracking()
+                .Include(p => p.Farmer)
+                .FirstOrDefaultAsync(p => p.Id == request.PlotId, cancellationToken);
 
             if (plot == null)
             {
                 return Result<PlotImplementationResponse>.Failure($"Plot with ID {request.PlotId} not found.", "PlotNotFound");
             }
 
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(p => p.Id == request.ProductionPlanId);
-            
+            var plan = await _context.ProductionPlans
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == request.ProductionPlanId, cancellationToken);
+
             if (plan == null)
             {
                 return Result<PlotImplementationResponse>.Failure($"Production Plan with ID {request.ProductionPlanId} not found.", "PlanNotFound");
             }
 
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.PlotCultivation.PlotId == request.PlotId
-                           && ct.ProductionPlanTask.ProductionStage.ProductionPlanId == request.ProductionPlanId,
-                orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
-                includeProperties: q => q
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
-                            .ThenInclude(pptm => pptm.Material)
-                    .Include(ct => ct.CultivationTaskMaterials)
-                        .ThenInclude(ctm => ctm.Material)
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Season)
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.RiceVariety)
-            );
+            var tasksList = await _context.CultivationTasks
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
+                        .ThenInclude(pptm => pptm.Material)
+                .Include(ct => ct.CultivationTaskMaterials)
+                    .ThenInclude(ctm => ctm.Material)
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Season)
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.RiceVariety)
+                .Where(ct => ct.PlotCultivation.PlotId == request.PlotId
+                          && ct.ProductionPlanTask.ProductionStage.ProductionPlanId == request.ProductionPlanId)
+                .OrderBy(ct => ct.ExecutionOrder)
+                .ToListAsync(cancellationToken);
 
-            var tasksList = tasks.ToList();
-            
             var plotCultivation = tasksList.FirstOrDefault()?.PlotCultivation;
             
             var totalTasks = tasksList.Count;

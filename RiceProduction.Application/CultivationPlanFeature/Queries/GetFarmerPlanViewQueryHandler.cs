@@ -1,20 +1,20 @@
-
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.CultivationPlanFeature.Queries;
+
 public class GetFarmerPlanViewQueryHandler :
     IRequestHandler<GetFarmerPlanViewQuery, Result<FarmerPlanViewResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetFarmerPlanViewQueryHandler> _logger;
 
-    public GetFarmerPlanViewQueryHandler(IUnitOfWork unitOfWork, ILogger<GetFarmerPlanViewQueryHandler> logger)
+    public GetFarmerPlanViewQueryHandler(IApplicationDbContext context, ILogger<GetFarmerPlanViewQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -22,13 +22,11 @@ public class GetFarmerPlanViewQueryHandler :
     {
         try
         {
-            // 1. Load PlotCultivation with CultivationVersions
-            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
-                pc => pc.Id == request.PlotCultivationId,
-                includeProperties: q => q
-                    .Include(pc => pc.CultivationVersions)
-                    .Include(pc => pc.Plot)
-            );
+            var plotCultivation = await _context.PlotCultivations
+                .AsNoTracking()
+                .Include(pc => pc.CultivationVersions)
+                .Include(pc => pc.Plot)
+                .FirstOrDefaultAsync(pc => pc.Id == request.PlotCultivationId, cancellationToken);
 
             if (plotCultivation == null)
             {
@@ -45,26 +43,30 @@ public class GetFarmerPlanViewQueryHandler :
 
             if (!latestVersionId.HasValue)
             {
-                // Handle case where no version exists
                 _logger.LogWarning("No version found for PlotCultivation {PCId}", request.PlotCultivationId);
             }
             
-            // 2. Load CultivationTasks for the latest version
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => 
-                    ct.PlotCultivationId == request.PlotCultivationId && 
-                    ct.VersionId == latestVersionId,
-                orderBy: q => q.OrderBy(ct => ct.ProductionPlanTask!.ProductionStage!.SequenceOrder)
-                              .ThenBy(ct => ct.ExecutionOrder),
+            var tasks = await _context.CultivationTasks
+                .AsNoTracking()
+                .Where(ct =>
+                    ct.PlotCultivationId == request.PlotCultivationId &&
+                    ct.VersionId == latestVersionId)
 #pragma warning disable CS8602 // Dereference of a possibly null reference
-                includeProperties: q => q
-                    .Include(ct => ct.CultivationTaskMaterials).ThenInclude(ctm => ctm.Material) 
-                    .Include(ct => ct.ProductionPlanTask).ThenInclude(ppt => ppt.ProductionStage).ThenInclude(ps => ps.ProductionPlan)
-                    .Include(ct => ct.ProductionPlanTask).ThenInclude(ppt => ppt.ProductionPlanTaskMaterials).ThenInclude(pptm => pptm.Material)
+                .Include(ct => ct.CultivationTaskMaterials)
+                    .ThenInclude(ctm => ctm.Material)
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionStage)
+                        .ThenInclude(ps => ps.ProductionPlan)
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
+                        .ThenInclude(pptm => pptm.Material)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
-            );
+                .AsSplitQuery()
+                .OrderBy(ct => ct.ProductionPlanTask!.ProductionStage!.SequenceOrder)
+                .ThenBy(ct => ct.ExecutionOrder)
+                .ToListAsync(cancellationToken);
 
-            if (!tasks.Any())
+            if (tasks.Count == 0)
             {
                 return Result<FarmerPlanViewResponse>.Failure($"No tasks found for Plot Cultivation ID {request.PlotCultivationId}.", "TasksNotFound");
             }
@@ -119,41 +121,25 @@ public class GetFarmerPlanViewQueryHandler :
                     VersionName = latestVersionName
                 };
 
-                // Ánh xạ và So sánh Vật tư
                 var materialsMap = new Dictionary<Guid, FarmerMaterialComparisonResponse>();
 
-                // 1. Thêm vật tư Kế hoạch (Planned)
-                foreach (var plannedMat in task.CultivationTaskMaterials)
+                foreach (var taskMaterial in task.CultivationTaskMaterials)
                 {
-                    if (!materialsMap.ContainsKey(plannedMat.MaterialId))
+                    if (!materialsMap.TryGetValue(taskMaterial.MaterialId, out var comparison))
                     {
-                        materialsMap[plannedMat.MaterialId] = new FarmerMaterialComparisonResponse
+                        comparison = new FarmerMaterialComparisonResponse
                         {
-                            MaterialId = plannedMat.MaterialId,
-                            MaterialName = plannedMat.Material.Name,
-                            MaterialUnit = plannedMat.Material.Unit
+                            MaterialId = taskMaterial.MaterialId,
+                            MaterialName = taskMaterial.Material.Name,
+                            MaterialUnit = taskMaterial.Material.Unit
                         };
+                        materialsMap[taskMaterial.MaterialId] = comparison;
                     }
-                    //materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = plannedMat.QuantityPerHa;
-                    //materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.EstimatedAmount.GetValueOrDefault(0);
-                    materialsMap[plannedMat.MaterialId].PlannedQuantityPerHa = Math.Ceiling(plannedMat.ActualQuantity/plotCultivation.Plot.Area);
-                    materialsMap[plannedMat.MaterialId].PlannedEstimatedAmount = plannedMat.ActualCost;
-                }
 
-                // 2. Thêm vật tư Thực tế (Actual)
-                foreach (var actualMat in task.CultivationTaskMaterials)
-                {
-                    if (!materialsMap.ContainsKey(actualMat.MaterialId))
-                    {
-                        materialsMap[actualMat.MaterialId] = new FarmerMaterialComparisonResponse
-                        {
-                            MaterialId = actualMat.MaterialId,
-                            MaterialName = actualMat.Material.Name,
-                            MaterialUnit = actualMat.Material.Unit
-                        };
-                    }
-                    materialsMap[actualMat.MaterialId].ActualQuantity = actualMat.ActualQuantity;
-                    materialsMap[actualMat.MaterialId].ActualCost = actualMat.ActualCost;
+                    comparison.PlannedQuantityPerHa = Math.Ceiling(taskMaterial.ActualQuantity / plotCultivation.Plot.Area);
+                    comparison.PlannedEstimatedAmount = taskMaterial.ActualCost;
+                    comparison.ActualQuantity = taskMaterial.ActualQuantity;
+                    comparison.ActualCost = taskMaterial.ActualCost;
                 }
 
                 taskResponse.Materials = materialsMap.Values.ToList();

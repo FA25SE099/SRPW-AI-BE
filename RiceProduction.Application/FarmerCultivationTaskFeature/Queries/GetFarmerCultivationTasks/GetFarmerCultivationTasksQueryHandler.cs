@@ -11,14 +11,14 @@ namespace RiceProduction.Application.FarmerCultivationTaskFeature.Queries.GetFar
     public class GetFarmerCultivationTasksQueryHandler :
         IRequestHandler<GetFarmerCultivationTasksQuery, Result<List<FarmerCultivationTaskResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetFarmerCultivationTasksQueryHandler> _logger;
 
         public GetFarmerCultivationTasksQueryHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<GetFarmerCultivationTasksQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -28,62 +28,36 @@ namespace RiceProduction.Application.FarmerCultivationTaskFeature.Queries.GetFar
         {
             try
             {
-                var currentDate = DateTime.UtcNow.Date; 
+                var currentDate = DateTime.UtcNow.Date;
 
-                var cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                    filter: ct =>
+                var cultivationTasks = await _context.CultivationTasks
+                    .AsNoTracking()
+                    .Where(ct =>
                         ct.PlotCultivation.Plot.FarmerId == request.FarmerId &&
                         (request.PlotId == null || ct.PlotCultivation.PlotId == request.PlotId) &&
                         (request.SeasonId == null || ct.PlotCultivation.SeasonId == request.SeasonId) &&
                         (request.Status == null || ct.Status == request.Status) &&
-                        (request.IncludeCompleted == true || ct.Status != TaskStatus.Completed),
-                    // Date filter removed here; applied client-side below for proper parsing
-                    orderBy: q => q.OrderBy(ct => ct.ScheduledEndDate),
-                    includeProperties: q => q
-                        .Include(ct => ct.PlotCultivation)
-                            .ThenInclude(pc => pc.Plot)
-                        .Include(ct => ct.PlotCultivation)
-                            .ThenInclude(pc => pc.Season)
-                        .Include(ct => ct.PlotCultivation)
-                            .ThenInclude(pc => pc.RiceVariety)
-                        .Include(ct => ct.ProductionPlanTask)
-                            .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
-                                .ThenInclude(pptm => pptm.Material)
-                        .Include(ct => ct.CultivationTaskMaterials)
-                            .ThenInclude(ctm => ctm.Material));
+                        (request.IncludeCompleted == true || ct.Status != TaskStatus.Completed))
+                    // Date filter applied client-side below because Season dates are stored as MM/dd strings
+                    .Include(ct => ct.PlotCultivation)
+                        .ThenInclude(pc => pc.Plot)
+                    .Include(ct => ct.PlotCultivation)
+                        .ThenInclude(pc => pc.Season)
+                    .Include(ct => ct.PlotCultivation)
+                        .ThenInclude(pc => pc.RiceVariety)
+                    .Include(ct => ct.ProductionPlanTask)
+                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
+                            .ThenInclude(pptm => pptm.Material)
+                    .Include(ct => ct.CultivationTaskMaterials)
+                        .ThenInclude(ctm => ctm.Material)
+                    .AsSplitQuery()
+                    .OrderBy(ct => ct.ScheduledEndDate)
+                    .ToListAsync(cancellationToken);
 
                 var filteredTasks = cultivationTasks
-                    .Where(ct =>
-                    {
-                        if ((bool)request.IncludePastSeasons || ct.PlotCultivation?.Season == null)
-                        {
-                            return true;
-                        }
-
-                        var endDateStr = ct.PlotCultivation.Season.EndDate;
-                        if (string.IsNullOrWhiteSpace(endDateStr) ||
-                            !DateTime.TryParseExact(endDateStr, "MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endDtParsed))
-                        {
-                            _logger.LogWarning("Invalid EndDate format in Season {SeasonId}: {EndDate}", ct.PlotCultivation.SeasonId, endDateStr);
-                            return false; // Exclude invalid dates
-                        }
-
-                        // Set to current year (ParseExact defaults to year=1)
-                        var endDt = endDtParsed.AddYears(currentDate.Year - 1).Date;
-
-                        // Handle potential year wrap-around: if End < Start, assume end is next year
-                        var startDateStr = ct.PlotCultivation.Season.StartDate;
-                        if (DateTime.TryParseExact(startDateStr, "MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startDtParsed))
-                        {
-                            var startDt = startDtParsed.AddYears(currentDate.Year - 1).Date;
-                            if (endDt < startDt)
-                            {
-                                endDt = endDt.AddYears(1);
-                            }
-                        }
-
-                        return endDt >= currentDate;
-                    })
+                    .Where(ct => (bool)request.IncludePastSeasons
+                        || ct.PlotCultivation?.Season == null
+                        || IsSeasonCurrent(ct.PlotCultivation.Season, ct.PlotCultivation.SeasonId, currentDate))
                     .ToList();
 
                 var response = filteredTasks.Select(ct => new FarmerCultivationTaskResponse
@@ -157,17 +131,20 @@ namespace RiceProduction.Application.FarmerCultivationTaskFeature.Queries.GetFar
             }
         }
 
-        private bool IsSeasonCurrent(Season season, DateTime currentDate)
+        private bool IsSeasonCurrent(Season season, Guid seasonId, DateTime currentDate)
         {
             var endDateStr = season.EndDate;
             if (string.IsNullOrWhiteSpace(endDateStr) ||
                 !DateTime.TryParseExact(endDateStr, "MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endDtParsed))
             {
+                _logger.LogWarning("Invalid EndDate format in Season {SeasonId}: {EndDate}", seasonId, endDateStr);
                 return false;
             }
 
+            // Set to current year (ParseExact defaults to year=1)
             var endDt = endDtParsed.AddYears(currentDate.Year - 1).Date;
 
+            // Handle potential year wrap-around: if End < Start, assume end is next year
             var startDateStr = season.StartDate;
             if (DateTime.TryParseExact(startDateStr, "MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startDtParsed))
             {

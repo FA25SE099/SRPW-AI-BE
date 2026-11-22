@@ -21,7 +21,7 @@ namespace RiceProduction.Application.NotificationFeature.Command.GetPushToken
             _cache = cache;
         }
 
-        public async Task<Result<string>> Handle(RegisterPushTokenCommand request, CancellationToken cancellationToken)
+        public Task<Result<string>> Handle(RegisterPushTokenCommand request, CancellationToken cancellationToken)
         {
             try
             {
@@ -74,14 +74,14 @@ namespace RiceProduction.Application.NotificationFeature.Command.GetPushToken
                     userDevices.Count,
                     userDevices.Count(d => d.IsActive));
 
-                return Result<string>.Success(
+                return Task.FromResult(Result<string>.Success(
                     "Push token registered successfully",
-                    $"Registered {request.DeviceType} device for user {request.UserId}");
+                    $"Registered {request.DeviceType} device for user {request.UserId}"));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error registering push token for user {UserId}", request.UserId);
-                return Result<string>.Failure($"Failed to register push token: {ex.Message}");
+                return Task.FromResult(Result<string>.Failure($"Failed to register push token: {ex.Message}"));
             }
         }
 

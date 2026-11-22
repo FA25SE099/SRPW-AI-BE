@@ -3,20 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.CultivationVersionFeature.Queries.GetVersionsByPlotCultivation;
 
 public class GetVersionsByPlotCultivationQueryHandler : IRequestHandler<GetVersionsByPlotCultivationQuery, Result<List<CultivationVersionResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetVersionsByPlotCultivationQueryHandler> _logger;
 
     public GetVersionsByPlotCultivationQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetVersionsByPlotCultivationQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,34 +25,32 @@ public class GetVersionsByPlotCultivationQueryHandler : IRequestHandler<GetVersi
     {
         try
         {
-            // Verify PlotCultivation exists
-            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>()
-                .FindAsync(pc => pc.Id == request.PlotCultivationId);
+            var plotCultivationExists = await _context.PlotCultivations
+                .AsNoTracking()
+                .AnyAsync(pc => pc.Id == request.PlotCultivationId, cancellationToken);
 
-            if (plotCultivation == null)
+            if (!plotCultivationExists)
             {
                 return Result<List<CultivationVersionResponse>>.Failure(
                     "Plot Cultivation not found.",
                     "NotFound");
             }
 
-            // Get all versions for this plot cultivation
-            var versions = await _unitOfWork.Repository<CultivationVersion>().ListAsync(
-                filter: v => v.PlotCultivationId == request.PlotCultivationId,
-                orderBy: q => q.OrderByDescending(v => v.VersionOrder)
-            );
+            var versions = await _context.CultivationVersions
+                .AsNoTracking()
+                .Where(v => v.PlotCultivationId == request.PlotCultivationId)
+                .OrderByDescending(v => v.VersionOrder)
+                .ToListAsync(cancellationToken);
 
-            // Get task counts for each version
             var versionIds = versions.Select(v => v.Id).ToList();
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.PlotCultivationId == request.PlotCultivationId 
-                    && ct.VersionId.HasValue 
-                    && versionIds.Contains(ct.VersionId.Value)
-            );
-
-            var taskCountByVersion = tasks
-                .GroupBy(t => t.VersionId!.Value)
-                .ToDictionary(g => g.Key, g => g.Count());
+            var taskCountByVersion = await _context.CultivationTasks
+                .AsNoTracking()
+                .Where(ct => ct.PlotCultivationId == request.PlotCultivationId
+                    && ct.VersionId.HasValue
+                    && versionIds.Contains(ct.VersionId.Value))
+                .GroupBy(ct => ct.VersionId!.Value)
+                .Select(g => new { VersionId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.VersionId, x => x.Count, cancellationToken);
 
             // Map to response
             var response = versions.Select(v => new CultivationVersionResponse

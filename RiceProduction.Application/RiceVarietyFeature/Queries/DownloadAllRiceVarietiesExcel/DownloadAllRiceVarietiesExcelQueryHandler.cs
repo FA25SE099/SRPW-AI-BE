@@ -2,23 +2,21 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
-using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
 
 namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceVarietiesExcel
 {
     public class DownloadAllRiceVarietiesExcelQueryHandler : IRequestHandler<DownloadAllRiceVarietiesExcelQuery, Result<FileExportResult>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IGenericExcel _genericExcel;
         private readonly ILogger<DownloadAllRiceVarietiesExcelQueryHandler> _logger;
 
         public DownloadAllRiceVarietiesExcelQueryHandler(
-            IUnitOfWork unitOfWork, 
+            IApplicationDbContext context,
             IGenericExcel genericExcel,
             ILogger<DownloadAllRiceVarietiesExcelQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _genericExcel = genericExcel;
             _logger = logger;
         }
@@ -29,40 +27,46 @@ namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadAllRiceV
             {
                 _logger.LogInformation("Starting rice varieties Excel export for date: {InputDate}", request.InputDate);
 
-                Expression<Func<RiceVariety, bool>> filter = v =>
-                    (request.CategoryId == null || v.CategoryId == request.CategoryId.Value) &&
-                    (request.IsActive == null || v.IsActive == request.IsActive.Value);
+                var query = _context.RiceVarieties.AsNoTracking();
 
-                var riceVarieties = await _unitOfWork.Repository<RiceVariety>().ListAsync(
-                    filter: filter,
-                    orderBy: q => q.OrderBy(v => v.Category.CategoryName).ThenBy(v => v.VarietyName),
-                    includeProperties: q => q.Include(v => v.Category));
+                if (request.CategoryId.HasValue)
+                {
+                    query = query.Where(v => v.CategoryId == request.CategoryId.Value);
+                }
 
-                if (riceVarieties == null || !riceVarieties.Any())
+                if (request.IsActive.HasValue)
+                {
+                    query = query.Where(v => v.IsActive == request.IsActive.Value);
+                }
+
+                var riceVarietyResponses = await query
+                    .OrderBy(v => v.Category.CategoryName)
+                    .ThenBy(v => v.VarietyName)
+                    .Select(v => new RiceVarietyResponse
+                    {
+                        Id = v.Id,
+                        VarietyName = v.VarietyName,
+                        CategoryId = v.CategoryId,
+                        CategoryName = v.Category.CategoryName,
+                        BaseGrowthDurationDays = v.BaseGrowthDurationDays,
+                        BaseYieldPerHectare = v.BaseYieldPerHectare,
+                        Description = v.Description,
+                        Characteristics = v.Characteristics,
+                        IsActive = v.IsActive
+                    })
+                    .ToListAsync(cancellationToken);
+
+                if (riceVarietyResponses.Count == 0)
                 {
                     _logger.LogWarning("No rice varieties found for export");
                     return Result<FileExportResult>.Failure("No rice varieties found to export");
                 }
 
-                var riceVarietyResponses = riceVarieties.Select(v => new RiceVarietyResponse
-                {
-                    Id = v.Id,
-                    VarietyName = v.VarietyName,
-                    CategoryId = v.CategoryId,
-                    CategoryName = v.Category.CategoryName,
-                    BaseGrowthDurationDays = v.BaseGrowthDurationDays,
-                    BaseYieldPerHectare = v.BaseYieldPerHectare,
-                    Description = v.Description,
-                    Characteristics = v.Characteristics,
-                    IsActive = v.IsActive
-                }).ToList();
-
-                var sheetName = $"RiceVarieties_{request.InputDate:yyyyMMdd}";
                 var fileName = $"Danh_sach_giong_lua_{request.InputDate:yyyyMMdd}.xlsx";
-                
+
                 var result = await _genericExcel.DownloadGenericExcelFile(
-                    riceVarietyResponses, 
-                    request.InputDate.ToString("yyyy-MM-dd"), 
+                    riceVarietyResponses,
+                    request.InputDate.ToString("yyyy-MM-dd"),
                     fileName);
 
                 _logger.LogInformation("Successfully exported {Count} rice varieties to Excel", riceVarietyResponses.Count);

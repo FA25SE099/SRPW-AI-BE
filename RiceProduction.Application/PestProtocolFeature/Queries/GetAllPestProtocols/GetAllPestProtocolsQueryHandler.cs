@@ -2,26 +2,19 @@
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.PestProtocolResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.PestProtocolFeature.Queries.GetAllPestProtocols;
 
 public class GetAllPestProtocolsQueryHandler : IRequestHandler<GetAllPestProtocolsQuery, PagedResult<List<PestProtocolResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetAllPestProtocolsQueryHandler> _logger;
 
     public GetAllPestProtocolsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetAllPestProtocolsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -35,39 +28,27 @@ public class GetAllPestProtocolsQueryHandler : IRequestHandler<GetAllPestProtoco
                 "Getting pest protocols - Page: {Page}, PageSize: {PageSize}, Search: {Search}, IsActive: {IsActive}",
                 request.CurrentPage, request.PageSize, request.SearchName, request.IsActive);
 
-            // Build filter expression
-            Expression<Func<PestProtocol, bool>>? filter = null;
+            var query = _context.PestProtocols.AsNoTracking();
 
-            if (!string.IsNullOrWhiteSpace(request.SearchName) && request.IsActive.HasValue)
+            if (!string.IsNullOrWhiteSpace(request.SearchName))
             {
                 var searchTerm = request.SearchName.ToLower().Trim();
-                filter = p => p.Name.ToLower().Contains(searchTerm) && p.IsActive == request.IsActive.Value;
+                query = query.Where(p => p.Name.ToLower().Contains(searchTerm));
             }
-            else if (!string.IsNullOrWhiteSpace(request.SearchName))
+
+            if (request.IsActive.HasValue)
             {
-                var searchTerm = request.SearchName.ToLower().Trim();
-                filter = p => p.Name.ToLower().Contains(searchTerm);
-            }
-            else if (request.IsActive.HasValue)
-            {
-                filter = p => p.IsActive == request.IsActive.Value;
+                query = query.Where(p => p.IsActive == request.IsActive.Value);
             }
 
-            // Get pest protocols with filter and ordering
-            var pestProtocols = await _unitOfWork.Repository<PestProtocol>().ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderByDescending(p => p.CreatedAt));
+            var totalCount = await query.CountAsync(cancellationToken);
 
-            // Get total count
-            var totalCount = pestProtocols.Count();
-
-            // Apply pagination
-            var pagedPestProtocols = pestProtocols
+            var pagedPestProtocols = await query
+                .OrderByDescending(p => p.CreatedAt)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
-            // Manual mapping
             var pestProtocolResponses = pagedPestProtocols
                 .Select(p => new PestProtocolResponse
                 {
@@ -83,7 +64,7 @@ public class GetAllPestProtocolsQueryHandler : IRequestHandler<GetAllPestProtoco
                 })
                 .ToList();
 
-            if (!pestProtocolResponses.Any())
+            if (pestProtocolResponses.Count == 0)
             {
                 return PagedResult<List<PestProtocolResponse>>.Success(
                     new List<PestProtocolResponse>(),

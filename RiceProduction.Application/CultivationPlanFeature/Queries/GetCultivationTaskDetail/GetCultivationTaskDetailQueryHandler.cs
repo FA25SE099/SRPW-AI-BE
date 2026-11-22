@@ -3,22 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using System.Linq;
-using System;
 
 namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetCultivationTaskDetail;
 
 public class GetCultivationTaskDetailQueryHandler : 
     IRequestHandler<GetCultivationTaskDetailQuery, Result<CultivationTaskDetailResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetCultivationTaskDetailQueryHandler> _logger;
 
-    public GetCultivationTaskDetailQueryHandler(IUnitOfWork unitOfWork, ILogger<GetCultivationTaskDetailQueryHandler> logger)
+    public GetCultivationTaskDetailQueryHandler(IApplicationDbContext context, ILogger<GetCultivationTaskDetailQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,20 +23,19 @@ public class GetCultivationTaskDetailQueryHandler :
     {
         try
         {
-            // 1. Truy vấn sâu Cultivation Task và các mối quan hệ liên quan
-            var task = await _unitOfWork.Repository<CultivationTask>().FindAsync(
-                match: ct => ct.Id == request.CultivationTaskId,
-                includeProperties: q => q
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Plot) 
-                    .Include(ct => ct.Version) // Thêm Version
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
-                            .ThenInclude(pptm => pptm.Material)
-                    .Include(ct => ct.CultivationTaskMaterials)
-                        .ThenInclude(ctm => ctm.Material)
-                    .Include(ct => ct.FarmLogs.OrderByDescending(fl => fl.LoggedDate))
-            );
+            var task = await _context.CultivationTasks
+                .AsNoTracking()
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                .Include(ct => ct.Version)
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
+                        .ThenInclude(pptm => pptm.Material)
+                .Include(ct => ct.CultivationTaskMaterials)
+                    .ThenInclude(ctm => ctm.Material)
+                .Include(ct => ct.FarmLogs.OrderByDescending(fl => fl.LoggedDate))
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(ct => ct.Id == request.CultivationTaskId, cancellationToken);
 
             if (task == null)
             {

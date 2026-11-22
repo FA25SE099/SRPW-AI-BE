@@ -43,7 +43,7 @@ namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
                 fileName);
                 return Result<FileExportResult>.Success(result, "Farmer download successfully");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return Result<FileExportResult>.Failure("File created fail");
             }

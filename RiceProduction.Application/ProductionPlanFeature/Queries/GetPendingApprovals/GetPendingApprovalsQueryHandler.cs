@@ -4,19 +4,19 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
+using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
+
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPendingApprovals;
 
-public class GetPendingApprovalsQueryHandler : 
+public class GetPendingApprovalsQueryHandler :
     IRequestHandler<GetPendingApprovalsQuery, PagedResult<List<ExpertPendingPlanItemResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPendingApprovalsQueryHandler> _logger;
 
-    public GetPendingApprovalsQueryHandler(IUnitOfWork unitOfWork, ILogger<GetPendingApprovalsQueryHandler> logger)
+    public GetPendingApprovalsQueryHandler(IApplicationDbContext context, ILogger<GetPendingApprovalsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -24,27 +24,19 @@ public class GetPendingApprovalsQueryHandler :
     {
         try
         {
-            var planRepo = _unitOfWork.Repository<ProductionPlan>();
+            var query = _context.ProductionPlans
+                .AsNoTracking()
+                .Where(p => p.Status == TaskStatus.PendingApproval);
 
-            // 1. Tải toàn bộ Plans phù hợp với filter
-            var allPlans = await planRepo.ListAsync(
-                filter: p => p.Status == RiceProduction.Domain.Enums.TaskStatus.PendingApproval,
-                orderBy: q => q.OrderBy(p => p.SubmittedAt),
-                includeProperties: q => q
-                    .Include(p => p.Group)
-                    .Include(p => p.Submitter)
-            );
+            var totalCount = await query.CountAsync(cancellationToken);
 
-            // 2. Lấy TotalCount
-            var totalCount = allPlans.Count;
-            
-            // 3. Áp dụng phân trang (in-memory paging)
-            var pagedPlans = allPlans
+            var pagedPlans = await query
+                .Include(p => p.Submitter)
+                .OrderBy(p => p.SubmittedAt)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
-            // 4. Ánh xạ dữ liệu
             var responseData = pagedPlans.Select(p => new ExpertPendingPlanItemResponse
             {
                 Id = p.Id,

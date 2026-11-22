@@ -10,12 +10,12 @@ namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetCurrentPl
 
 public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentPlotCultivationQuery, Result<CurrentPlotCultivationDetailResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetCurrentPlotCultivationQueryHandler> _logger;
 
-    public GetCurrentPlotCultivationQueryHandler(IUnitOfWork unitOfWork, ILogger<GetCurrentPlotCultivationQueryHandler> logger)
+    public GetCurrentPlotCultivationQueryHandler(IApplicationDbContext context, ILogger<GetCurrentPlotCultivationQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,18 +23,17 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
     {
         try
         {
-            // Load plot with current cultivation
-            var plot = await _unitOfWork.Repository<Plot>().FindAsync(
-                match: p => p.Id == request.PlotId,
-                includeProperties: q => q
-                    .Include(p => p.PlotCultivations
-                        .Where(pc => pc.Status == CultivationStatus.InProgress || pc.Status == CultivationStatus.Planned))
-                        .ThenInclude(pc => pc.Season)
-                    .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.RiceVariety)
-                    .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.CultivationVersions)
-            );
+            var plot = await _context.Plots
+                .AsNoTracking()
+                .Include(p => p.PlotCultivations
+                    .Where(pc => pc.Status == CultivationStatus.InProgress || pc.Status == CultivationStatus.Planned))
+                    .ThenInclude(pc => pc.Season)
+                .Include(p => p.PlotCultivations)
+                    .ThenInclude(pc => pc.RiceVariety)
+                .Include(p => p.PlotCultivations)
+                    .ThenInclude(pc => pc.CultivationVersions)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(p => p.Id == request.PlotId, cancellationToken);
 
             if (plot == null)
             {
@@ -59,18 +58,18 @@ public class GetCurrentPlotCultivationQueryHandler : IRequestHandler<GetCurrentP
 
             // Load cultivation tasks with related data for the latest version
             Guid? versionId = latestVersion?.Id;
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.PlotCultivationId == currentCultivation.Id && ct.VersionId == versionId,
-                orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
+            var tasks = await _context.CultivationTasks
+                .AsNoTracking()
+                .Where(ct => ct.PlotCultivationId == currentCultivation.Id && ct.VersionId == versionId)
 #pragma warning disable CS8602 // Dereference of a possibly null reference
-                includeProperties: q => q
-                    .Include(ct => ct.ProductionPlanTask)!
-                        .ThenInclude(ppt => ppt.ProductionStage)!
-                        .ThenInclude(ps => ps.ProductionPlan)
-                    .Include(ct => ct.CultivationTaskMaterials)
-                        .ThenInclude(ctm => ctm.Material)
+                .Include(ct => ct.ProductionPlanTask)!
+                    .ThenInclude(ppt => ppt.ProductionStage)!
+                    .ThenInclude(ps => ps.ProductionPlan)
+                .Include(ct => ct.CultivationTaskMaterials)
+                    .ThenInclude(ctm => ctm.Material)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
-            );
+                .OrderBy(ct => ct.ExecutionOrder)
+                .ToListAsync(cancellationToken);
 
             var uniqueTasks = tasks.DistinctBy(t => t.Id).ToList();
             var duplicateCount = tasks.Count - uniqueTasks.Count;

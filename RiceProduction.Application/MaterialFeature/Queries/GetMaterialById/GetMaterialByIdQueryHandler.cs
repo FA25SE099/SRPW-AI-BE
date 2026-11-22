@@ -1,24 +1,19 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.GetMaterialById;
 
 public class GetMaterialByIdQueryHandler : IRequestHandler<GetMaterialByIdQuery, Result<MaterialResponseForList>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetMaterialByIdQueryHandler> _logger;
 
-    public GetMaterialByIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetMaterialByIdQueryHandler> logger)
+    public GetMaterialByIdQueryHandler(IApplicationDbContext context, ILogger<GetMaterialByIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,9 +21,9 @@ public class GetMaterialByIdQueryHandler : IRequestHandler<GetMaterialByIdQuery,
     {
         try
         {
-            var material = await _unitOfWork.Repository<Material>().FindAsync(
-                match: m => m.Id == request.MaterialId && m.IsActive
-            );
+            var material = await _context.Materials
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Id == request.MaterialId && m.IsActive, cancellationToken);
 
             if (material == null)
             {
@@ -36,15 +31,14 @@ public class GetMaterialByIdQueryHandler : IRequestHandler<GetMaterialByIdQuery,
             }
 
             var currentDate = DateTime.UtcNow;
-            var materialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => p.MaterialId == request.MaterialId &&
-                           (p.ValidFrom.CompareTo(currentDate) <= 0) &&
-                           (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
-            );
-
-            var currentPrice = materialPrices
+            var currentPrice = await _context.MaterialPrices
+                .AsNoTracking()
+                .Where(p => p.MaterialId == request.MaterialId &&
+                            p.ValidFrom.CompareTo(currentDate) <= 0 &&
+                            (!p.ValidTo.HasValue || p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
                 .OrderByDescending(p => p.ValidFrom)
-                .FirstOrDefault()?.PricePerMaterial ?? 0;
+                .Select(p => (decimal?)p.PricePerMaterial)
+                .FirstOrDefaultAsync(cancellationToken) ?? 0;
 
             var response = new MaterialResponseForList
             {

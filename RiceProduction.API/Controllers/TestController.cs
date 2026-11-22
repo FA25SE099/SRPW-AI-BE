@@ -138,7 +138,7 @@ namespace RiceProduction.API.Controllers
         }
 
         [HttpPost("sms/send")]
-        public async Task<ActionResult<object>> TestSendSms([FromBody] TestSmsRequest request)
+        public Task<ActionResult<object>> TestSendSms([FromBody] TestSmsRequest request)
         {
             try
             {
@@ -146,12 +146,12 @@ namespace RiceProduction.API.Controllers
 
                 if (request.PhoneNumbers == null || request.PhoneNumbers.Length == 0)
                 {
-                    return BadRequest(new { Success = false, Error = "Phone numbers are required" });
+                    return Task.FromResult<ActionResult<object>>(BadRequest(new { Success = false, Error = "Phone numbers are required" }));
                 }
 
                 if (string.IsNullOrEmpty(request.Content))
                 {
-                    return BadRequest(new { Success = false, Error = "Content is required" });
+                    return Task.FromResult<ActionResult<object>>(BadRequest(new { Success = false, Error = "Content is required" }));
                 }
 
                 var result =  _smsService.sendSMS(
@@ -161,18 +161,18 @@ namespace RiceProduction.API.Controllers
                     request.Sender
                 );
 
-                return Ok(new
+                return Task.FromResult<ActionResult<object>>(Ok(new
                 {
                     Success = true,
                     Response = result,
                     SentTo = request.PhoneNumbers,
                     Type = request.Type ?? 2,
-                });
+                }));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending SMS");
-                return BadRequest(new { Success = false, Error = ex.Message });
+                return Task.FromResult<ActionResult<object>>(BadRequest(new { Success = false, Error = ex.Message }));
             }
         }
 

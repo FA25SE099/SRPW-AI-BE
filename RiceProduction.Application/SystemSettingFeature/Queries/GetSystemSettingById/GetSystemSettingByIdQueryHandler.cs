@@ -2,18 +2,17 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.SystemSettingFeature.Queries.GetAllSystemSettings;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SystemSettingFeature.Queries.GetSystemSettingById;
 
 public class GetSystemSettingByIdQueryHandler : IRequestHandler<GetSystemSettingByIdQuery, Result<SystemSettingResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetSystemSettingByIdQueryHandler> _logger;
 
-    public GetSystemSettingByIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetSystemSettingByIdQueryHandler> logger)
+    public GetSystemSettingByIdQueryHandler(IApplicationDbContext context, ILogger<GetSystemSettingByIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -21,8 +20,9 @@ public class GetSystemSettingByIdQueryHandler : IRequestHandler<GetSystemSetting
     {
         try
         {
-            var setting = await _unitOfWork.Repository<SystemSetting>()
-                .FindAsync(s => s.Id == request.SettingId);
+            var setting = await _context.SystemSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == request.SettingId, cancellationToken);
 
             if (setting == null)
             {

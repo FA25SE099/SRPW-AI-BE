@@ -22,7 +22,7 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
         _logger = logger;
     }
 
-    public async Task Handle(FarmerWelcomeImportedEvent notification, CancellationToken cancellationToken)
+    public Task Handle(FarmerWelcomeImportedEvent notification, CancellationToken cancellationToken)
     {
         
         try
@@ -38,7 +38,7 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
             if (!farmersWithEmail.Any())
             {
                 _logger.LogInformation("No farmers with email addresses to send welcome messages");
-                return;
+                return Task.CompletedTask;
             }
 
             var totalFarmers = notification.ImportedFarmers.Count(f => !string.IsNullOrWhiteSpace(f.Email));
@@ -112,6 +112,8 @@ public class SendFarmerWelcomeEmailsEventHandler : INotificationHandler<FarmerWe
         {
             _logger.LogError(ex, "Error queuing welcome emails for farmers");
         }
+
+        return Task.CompletedTask;
     }
 
     private string GetEmailTemplate(object templateData)

@@ -17,16 +17,16 @@ namespace RiceProduction.Application.PlotFeature.Queries.ExportPlotData;
 
 public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, Result<FileExportResult>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IGenericExcel _genericExcel;
     private readonly ILogger<ExportPlotDataQueryHandler> _logger;
 
     public ExportPlotDataQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IGenericExcel genericExcel,
         ILogger<ExportPlotDataQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _genericExcel = genericExcel;
         _logger = logger;
     }
@@ -37,7 +37,7 @@ public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, R
     {
         try
         {
-            var query = _unitOfWork.Repository<Plot>().GetQueryable()
+            var query = _context.Plots
                 .AsNoTracking()
                 .Include(p => p.Farmer)
                 .Include(p => p.GroupPlots)
@@ -48,12 +48,15 @@ public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, R
 
             if (request.ClusterManagerId.HasValue)
             {
-                var clusterManager = await _unitOfWork.ClusterManagerRepository
-                    .GetClusterManagerByIdAsync(request.ClusterManagerId.Value, cancellationToken);
+                var clusterId = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(cm => cm.Id == request.ClusterManagerId.Value)
+                    .Select(cm => cm.ClusterId)
+                    .FirstOrDefaultAsync(cancellationToken);
 
-                if (clusterManager?.ClusterId != null)
+                if (clusterId != null)
                 {
-                    query = query.Where(p => p.Farmer.ClusterId == clusterManager.ClusterId);
+                    query = query.Where(p => p.Farmer.ClusterId == clusterId);
                 }
             }
 
@@ -88,7 +91,9 @@ public class ExportPlotDataQueryHandler : IRequestHandler<ExportPlotDataQuery, R
                 return Result<FileExportResult>.Failure("No plots found to export");
             }
 
-            var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
+            var allSeasons = await _context.Seasons
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
             var currentSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now)?.Season;
 
             var exportRows = plots.Select(plot => MapToExportRow(plot, currentSeason)).ToList();

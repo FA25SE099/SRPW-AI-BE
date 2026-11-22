@@ -9,14 +9,14 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.GetAllStandardP
 
 public class GetAllStandardPlansQueryHandler : IRequestHandler<GetAllStandardPlansQuery, Result<List<StandardPlanDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetAllStandardPlansQueryHandler> _logger;
 
     public GetAllStandardPlansQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetAllStandardPlansQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -30,8 +30,7 @@ public class GetAllStandardPlansQueryHandler : IRequestHandler<GetAllStandardPla
                 "Getting all standard plans with filters: Category={CategoryId}, Search={SearchTerm}, IsActive={IsActive}",
                 request.CategoryId, request.SearchTerm, request.IsActive);
 
-            var query = _unitOfWork.Repository<StandardPlan>()
-                .GetQueryable()
+            var query = _context.StandardPlans
                 .AsNoTracking()
                 .Where(sp => sp.GetType() == typeof(StandardPlan))
                 .Include(sp => sp.Category)

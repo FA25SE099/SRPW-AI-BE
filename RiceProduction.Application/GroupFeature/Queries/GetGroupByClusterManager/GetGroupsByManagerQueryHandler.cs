@@ -3,21 +3,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
-using System.Linq;
-using System.Linq.Expressions;
 
 namespace RiceProduction.Application.GroupFeature.Queries.GetGroupByClusterManager;
 
 public class GetGroupsByManagerQueryHandler : IRequestHandler<GetGroupsByManagerQuery, PagedResult<List<ClusterManagerGroupResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetGroupsByManagerQueryHandler> _logger;
 
-    public GetGroupsByManagerQueryHandler(IUnitOfWork unitOfWork, ILogger<GetGroupsByManagerQueryHandler> logger)
+    public GetGroupsByManagerQueryHandler(IApplicationDbContext context, ILogger<GetGroupsByManagerQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -25,47 +21,40 @@ public class GetGroupsByManagerQueryHandler : IRequestHandler<GetGroupsByManager
     {
         try
         {
-            // 1. Tải Cluster ID mà Manager này quản lý
-            var managedCluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.ClusterManagerId == request.ClusterManagerId);
+            var managedCluster = await _context.Clusters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.ClusterManagerId == request.ClusterManagerId, cancellationToken);
 
             if (managedCluster == null)
             {
                 return PagedResult<List<ClusterManagerGroupResponse>>.Failure("No cluster found managed by this user.", "ClusterNotFound");
             }
-            
-            // 2. Xây dựng Filter Expression
-            Expression<Func<Group, bool>> filter = g =>
-                g.ClusterId == managedCluster.Id &&
-                (!request.StatusFilter.HasValue || g.Status == request.StatusFilter.Value);
 
-            // 3. Tải tất cả Groups phù hợp với Includes cần thiết
-            var allGroups = await _unitOfWork.Repository<Group>().ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderBy(g => g.PlantingDate),
-                includeProperties: q => q
-                    .Include(g => g.YearSeason)
-                        .ThenInclude(ys => ys.RiceVariety)
-                    .Include(g => g.Supervisor)
-                    .Include(g => g.GroupPlots) // Để đếm Plots
-                    .Include(g => g.ProductionPlans.Where(pp => pp.Status != RiceProduction.Domain.Enums.TaskStatus.Cancelled)) // Để đếm Active Plans
-            );
+            var query = _context.Groups
+                .AsNoTracking()
+                .Where(g => g.ClusterId == managedCluster.Id &&
+                            (!request.StatusFilter.HasValue || g.Status == request.StatusFilter.Value));
 
-            var totalCount = allGroups.Count;
+            var totalCount = await query.CountAsync(cancellationToken);
 
-            // 4. Áp dụng Paging và Ánh xạ
-            var pagedGroups = allGroups
+            var pagedGroups = await query
+                .Include(g => g.YearSeason)
+                    .ThenInclude(ys => ys.RiceVariety)
+                .Include(g => g.Supervisor)
+                .Include(g => g.GroupPlots)
+                .Include(g => g.ProductionPlans.Where(pp => pp.Status != RiceProduction.Domain.Enums.TaskStatus.Cancelled))
+                .AsSplitQuery()
+                .OrderBy(g => g.PlantingDate)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
             var responseData = pagedGroups.Select(g => new ClusterManagerGroupResponse
             {
                 GroupId = g.Id,
                 Status = g.Status,
                 TotalArea = g.TotalArea,
-                // Tạo tên Group mô phỏng
-                GroupName = $"{managedCluster.ClusterName} / Group {g.Id.ToString().Substring(0, 4)}", 
+                GroupName = $"{managedCluster.ClusterName} / Group {g.Id.ToString().Substring(0, 4)}",
                 PlantingDate = g.PlantingDate,
                 RiceVarietyName = g.YearSeason?.RiceVariety?.VarietyName ?? "N/A",
                 SupervisorName = g.Supervisor?.FullName ?? "Chưa phân công",

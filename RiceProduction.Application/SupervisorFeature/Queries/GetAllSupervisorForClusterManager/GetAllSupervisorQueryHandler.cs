@@ -29,12 +29,13 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorF
         {
             try 
             {
-                var userId = (Guid) _currentUser.Id;
-                if(userId == null || userId == Guid.Empty)
+                if (!_currentUser.Id.HasValue || _currentUser.Id.Value == Guid.Empty)
                 {
                     return PagedResult<List<SupervisorResponse>>.Failure(
                         "Current user ID not found");
                 }
+
+                var userId = _currentUser.Id.Value;
 
                 var supervisorResponses = new List<SupervisorResponse>();
                 var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(userId, cancellationToken);
