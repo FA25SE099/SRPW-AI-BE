@@ -3,52 +3,41 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
-using System.Linq;
-using System;
-using System.Text.Json;
-using System.Text.Json.Serialization; 
 using System.Collections.Generic;
-using NetTopologySuite.Features; 
+using System.Linq;
+using System.Text.Json;
+
 namespace RiceProduction.Application.UAVFeature.Queries.GeUAVOrderDetail;
 
 public class GetUavOrderDetailQueryHandler : IRequestHandler<GetUavOrderDetailQuery, Result<UavOrderDetailResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetUavOrderDetailQueryHandler> _logger;
 
-    public GetUavOrderDetailQueryHandler(IUnitOfWork unitOfWork, ILogger<GetUavOrderDetailQueryHandler> logger)
+    public GetUavOrderDetailQueryHandler(IApplicationDbContext context, ILogger<GetUavOrderDetailQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
-    private readonly JsonSerializerOptions _gisSerializerOptions = new JsonSerializerOptions
-    {
-        // Cho phép các giá trị số không hợp lệ (NaN, Infinity) được serialize (khắc phục lỗi)
-        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
-        // Cần thêm các tùy chọn NetTopologySuite nếu bạn sử dụng
-        // ví dụ: Converters = { new GeoJsonConverterFactory() }
-    };
 
     public async Task<Result<UavOrderDetailResponse>> Handle(GetUavOrderDetailQuery request, CancellationToken cancellationToken)
     {
         try
         {
-            // Tải Order với tất cả các mối quan hệ sâu, bao gồm các Plot Assignments
-            var order = await _unitOfWork.Repository<UavServiceOrder>().FindAsync(
-                match: o => o.Id == request.OrderId ,
-                //&& o.UavVendorId == request.VendorId,
-                includeProperties: q => q
-                    .Include(o => o.UavVendor)
-                    .Include(o => o.Creator)
-                    .Include(o => o.Group).ThenInclude(g => g.Cluster)
-                    .Include(o => o.PlotAssignments)
-                        .ThenInclude(pa => pa.Plot)
-                    .Include(o => o.PlotAssignments)
-                        .ThenInclude(pa => pa.CultivationTask)
-                            .ThenInclude(ct => ct.CultivationTaskMaterials)
-                                .ThenInclude(ctm => ctm.Material)
-            );
+            var order = await _context.UavServiceOrders
+                .AsNoTracking()
+                .Include(o => o.UavVendor)
+                .Include(o => o.Creator)
+                .Include(o => o.Group)
+                    .ThenInclude(g => g.Cluster)
+                .Include(o => o.PlotAssignments)
+                    .ThenInclude(pa => pa.Plot)
+                .Include(o => o.PlotAssignments)
+                    .ThenInclude(pa => pa.CultivationTask)
+                        .ThenInclude(ct => ct.CultivationTaskMaterials)
+                            .ThenInclude(ctm => ctm.Material)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(o => o.Id == request.OrderId, cancellationToken);
 
             if (order == null)
             {

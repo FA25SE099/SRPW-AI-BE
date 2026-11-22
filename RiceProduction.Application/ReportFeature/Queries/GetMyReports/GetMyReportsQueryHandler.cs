@@ -1,23 +1,22 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.ReportFeature.Queries.GetMyReports;
 
 public class GetMyReportsQueryHandler : IRequestHandler<GetMyReportsQuery, PagedResult<List<ReportItemResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetMyReportsQueryHandler> _logger;
 
     public GetMyReportsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetMyReportsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,8 +26,8 @@ public class GetMyReportsQueryHandler : IRequestHandler<GetMyReportsQuery, Paged
     {
         try
         {
-            var query = _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            var query = _context.EmergencyReports
+                .AsNoTracking()
                 .Where(r => r.ReportedBy == request.UserId)
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
@@ -49,20 +48,16 @@ public class GetMyReportsQueryHandler : IRequestHandler<GetMyReportsQuery, Paged
                     .ThenInclude(t => t.Version)
                 .AsQueryable();
 
-            if (!string.IsNullOrWhiteSpace(request.Status))
+            if (!string.IsNullOrWhiteSpace(request.Status) &&
+                Enum.TryParse<AlertStatus>(request.Status, true, out var statusEnum))
             {
-                if (Enum.TryParse<AlertStatus>(request.Status, true, out var statusEnum))
-                {
-                    query = query.Where(r => r.Status == statusEnum);
-                }
+                query = query.Where(r => r.Status == statusEnum);
             }
 
-            if (!string.IsNullOrWhiteSpace(request.Severity))
+            if (!string.IsNullOrWhiteSpace(request.Severity) &&
+                Enum.TryParse<AlertSeverity>(request.Severity, true, out var severityEnum))
             {
-                if (Enum.TryParse<AlertSeverity>(request.Severity, true, out var severityEnum))
-                {
-                    query = query.Where(r => r.Severity == severityEnum);
-                }
+                query = query.Where(r => r.Severity == severityEnum);
             }
 
             if (!string.IsNullOrWhiteSpace(request.ReportType))

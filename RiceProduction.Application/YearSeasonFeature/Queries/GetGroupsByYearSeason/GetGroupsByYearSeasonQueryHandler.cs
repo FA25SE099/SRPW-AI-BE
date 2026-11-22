@@ -1,4 +1,3 @@
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.IO;
@@ -11,15 +10,15 @@ namespace RiceProduction.Application.YearSeasonFeature.Queries.GetGroupsByYearSe
 
 public class GetGroupsByYearSeasonQueryHandler : IRequestHandler<GetGroupsByYearSeasonQuery, Result<GetGroupsByYearSeasonResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetGroupsByYearSeasonQueryHandler> _logger;
     private readonly WKTWriter _wktWriter;
 
     public GetGroupsByYearSeasonQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetGroupsByYearSeasonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
         _wktWriter = new WKTWriter();
     }
@@ -32,29 +31,27 @@ public class GetGroupsByYearSeasonQueryHandler : IRequestHandler<GetGroupsByYear
         {
             _logger.LogInformation("Getting groups for YearSeason {YearSeasonId}", request.YearSeasonId);
 
-            // Get YearSeason with all related information
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .FindAsync(
-                    match: ys => ys.Id == request.YearSeasonId,
-                    includeProperties: q => q
-                        .Include(ys => ys.Season)
-                        .Include(ys => ys.Cluster)
-                        .Include(ys => ys.RiceVariety)
-                        .Include(ys => ys.Groups)
-                            .ThenInclude(g => g.Supervisor)
-                        .Include(ys => ys.Groups)
-                            .ThenInclude(g => g.Cluster)
-                        .Include(ys => ys.Groups)
-                            .ThenInclude(g => g.GroupPlots)
-                                .ThenInclude(gp => gp.Plot)
-                                    .ThenInclude(p => p.Farmer)
-                        .Include(ys => ys.Groups)
-                            .ThenInclude(g => g.ProductionPlans)
-                        .Include(ys => ys.Groups)
-                            .ThenInclude(g => g.UavServiceOrders)
-                        .Include(ys => ys.Groups)
-                            .ThenInclude(g => g.Alerts)
-                );
+            var yearSeason = await _context.YearSeasons
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(ys => ys.Season)
+                .Include(ys => ys.Cluster)
+                .Include(ys => ys.RiceVariety)
+                .Include(ys => ys.Groups)
+                    .ThenInclude(g => g.Supervisor)
+                .Include(ys => ys.Groups)
+                    .ThenInclude(g => g.Cluster)
+                .Include(ys => ys.Groups)
+                    .ThenInclude(g => g.GroupPlots)
+                        .ThenInclude(gp => gp.Plot)
+                            .ThenInclude(p => p.Farmer)
+                .Include(ys => ys.Groups)
+                    .ThenInclude(g => g.ProductionPlans)
+                .Include(ys => ys.Groups)
+                    .ThenInclude(g => g.UavServiceOrders)
+                .Include(ys => ys.Groups)
+                    .ThenInclude(g => g.Alerts)
+                .FirstOrDefaultAsync(ys => ys.Id == request.YearSeasonId, cancellationToken);
 
             if (yearSeason == null)
             {
@@ -63,14 +60,12 @@ public class GetGroupsByYearSeasonQueryHandler : IRequestHandler<GetGroupsByYear
                     $"YearSeason with ID {request.YearSeasonId} not found");
             }
 
-            // Map groups to DTOs
             var groupDtos = yearSeason.Groups
                 .OrderBy(g => g.PlantingDate)
                 .ThenBy(g => g.CreatedAt)
                 .Select(g => MapToGroupDTO(g))
                 .ToList();
 
-            // Calculate status summary
             var statusSummary = new GroupStatusSummary
             {
                 DraftCount = groupDtos.Count(g => g.Status == GroupStatus.Draft),
@@ -112,7 +107,6 @@ public class GetGroupsByYearSeasonQueryHandler : IRequestHandler<GetGroupsByYear
 
     private YearSeasonGroupDTO MapToGroupDTO(Group group)
     {
-        // Get unique farmers from plots
         var uniqueFarmers = group.GroupPlots
             .Select(gp => gp.Plot?.FarmerId)
             .Where(farmerId => farmerId.HasValue)

@@ -3,23 +3,19 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetFarmersBySupervisor;
 
 public class GetFarmersBySupervisorQueryHandler : IRequestHandler<GetFarmersBySupervisorQuery, PagedResult<List<FarmerDTO>>>
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
     private readonly ILogger<GetFarmersBySupervisorQueryHandler> _logger;
 
     public GetFarmersBySupervisorQueryHandler(
         IUnitOfWork unitOfWork,
-        IMapper mapper,
         ILogger<GetFarmersBySupervisorQueryHandler> logger)
     {
         _unitOfWork = unitOfWork;
-        _mapper = mapper;
         _logger = logger;
     }
 

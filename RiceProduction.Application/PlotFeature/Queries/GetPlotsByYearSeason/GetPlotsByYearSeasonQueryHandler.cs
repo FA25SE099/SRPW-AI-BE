@@ -12,14 +12,14 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetPlotsByYearSeason;
 public class GetPlotsByYearSeasonQueryHandler 
     : IRequestHandler<GetPlotsByYearSeasonQuery, PagedResult<IEnumerable<PlotWithSeasonInfoDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlotsByYearSeasonQueryHandler> _logger;
 
     public GetPlotsByYearSeasonQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPlotsByYearSeasonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -33,9 +33,8 @@ public class GetPlotsByYearSeasonQueryHandler
                 "Fetching plots for YearSeason {YearSeasonId} - Page: {PageNumber}, PageSize: {PageSize}",
                 request.YearSeasonId, request.PageNumber, request.PageSize);
 
-            // Get YearSeason with related data
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.RiceVariety)
                 .Include(ys => ys.Cluster)
@@ -48,17 +47,17 @@ public class GetPlotsByYearSeasonQueryHandler
                     message: $"YearSeason with ID {request.YearSeasonId} not found");
             }
 
-            // Build base predicate for plots
             Expression<Func<Plot, bool>> predicate = p => p.Status == PlotStatus.Active;
 
-            // Filter by cluster (through farmer)
             var targetClusterId = yearSeason.ClusterId;
 
-            // If ClusterManagerId is provided, validate it belongs to this cluster
             if (request.ClusterManagerId.HasValue)
             {
-                var clusterManager = await _unitOfWork.ClusterManagerRepository
-                    .GetClusterManagerByIdAsync(request.ClusterManagerId.Value, cancellationToken);
+                var clusterManager = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(cm => cm.Id == request.ClusterManagerId.Value)
+                    .Select(cm => new { cm.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 if (clusterManager == null || clusterManager.ClusterId != targetClusterId)
                 {
@@ -71,10 +70,8 @@ public class GetPlotsByYearSeasonQueryHandler
                 }
             }
 
-            // Filter by cluster
             predicate = predicate.And(p => p.Farmer != null && p.Farmer.ClusterId == targetClusterId);
 
-            // Search term filter
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var search = request.SearchTerm.Trim();
@@ -85,14 +82,15 @@ public class GetPlotsByYearSeasonQueryHandler
                      p.Farmer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)));
             }
 
-            IQueryable<Plot> plotsQuery = _unitOfWork.Repository<Plot>()
-                .GetQueryable()
+            IQueryable<Plot> plotsQuery = _context.Plots
+                .AsNoTracking()
                 .Where(predicate)
                 .Include(p => p.Farmer)
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
                 .Include(p => p.PlotCultivations.Where(pc => pc.SeasonId == yearSeason.SeasonId))
-                    .ThenInclude(pc => pc.RiceVariety);
+                    .ThenInclude(pc => pc.RiceVariety)
+                .AsSplitQuery();
 
             if (request.GroupId.HasValue)
             {

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -32,6 +33,7 @@ public class ValidateCultivationPreferencesQueryHandler
         {
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .Include(ys => ys.RiceVariety)
                 .FirstOrDefaultAsync(ys => ys.Id == request.YearSeasonId, cancellationToken);
@@ -65,6 +67,7 @@ public class ValidateCultivationPreferencesQueryHandler
 
             var plot = await _unitOfWork.Repository<Plot>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(p => p.Farmer)
                 .FirstOrDefaultAsync(p => p.Id == request.PlotId, cancellationToken);
 
@@ -80,6 +83,7 @@ public class ValidateCultivationPreferencesQueryHandler
 
             var riceVarietySeason = await _unitOfWork.Repository<RiceVarietySeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(rvs => rvs.RiceVariety)
                 .FirstOrDefaultAsync(
                     rvs => rvs.RiceVarietyId == request.RiceVarietyId && rvs.SeasonId == yearSeason.SeasonId,
@@ -123,7 +127,7 @@ public class ValidateCultivationPreferencesQueryHandler
             validation.EstimatedHarvestDate = request.PreferredPlantingDate
                 .AddDays(validation.GrowthDurationDays.Value);
 
-            if (plot.Area != null && riceVarietySeason.ExpectedYieldPerHectare.HasValue)
+            if (riceVarietySeason.ExpectedYieldPerHectare.HasValue)
             {
                 validation.ExpectedYield = plot.Area * riceVarietySeason.ExpectedYieldPerHectare.Value;
             }

@@ -1,15 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace RiceProduction.Application.Common.Models.Response;
 
-namespace RiceProduction.Application.Common.Models.Response
+public class FileExportResult
 {
-    public class FileExportResult
-    {
-        public byte[]  fileContents { get; set; }
-        public string ContentType { get; set; }
-        public string FileName { get; set; }
-    }
+    public byte[] FileContents { get; set; } = Array.Empty<byte>();
+    public string ContentType { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
 }

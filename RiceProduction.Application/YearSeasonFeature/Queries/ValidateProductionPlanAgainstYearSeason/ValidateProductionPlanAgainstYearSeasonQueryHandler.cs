@@ -10,14 +10,14 @@ namespace RiceProduction.Application.YearSeasonFeature.Queries.ValidateProductio
 public class ValidateProductionPlanAgainstYearSeasonQueryHandler 
     : IRequestHandler<ValidateProductionPlanAgainstYearSeasonQuery, Result<ProductionPlanValidationDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ValidateProductionPlanAgainstYearSeasonQueryHandler> _logger;
 
     public ValidateProductionPlanAgainstYearSeasonQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ValidateProductionPlanAgainstYearSeasonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -34,8 +34,8 @@ public class ValidateProductionPlanAgainstYearSeasonQueryHandler
                 Warnings = new List<ValidationIssue>()
             };
 
-            var group = await _unitOfWork.Repository<Group>()
-                .GetQueryable()
+            var group = await _context.Groups
+                .AsNoTracking()
                 .Include(g => g.YearSeason)
                     .ThenInclude(ys => ys.Season)
                 .FirstOrDefaultAsync(g => g.Id == request.GroupId, cancellationToken);

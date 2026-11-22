@@ -10,12 +10,12 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanPlotMa
 
 public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMaterialsQuery, Result<PlanPlotMaterialsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlanPlotMaterialsQueryHandler> _logger;
 
-    public GetPlanPlotMaterialsQueryHandler(IUnitOfWork unitOfWork, ILogger<GetPlanPlotMaterialsQueryHandler> logger)
+    public GetPlanPlotMaterialsQueryHandler(IApplicationDbContext context, ILogger<GetPlanPlotMaterialsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,17 +23,19 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
     {
         try
         {
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
-                match: p => p.Id == request.PlanId,
-                includeProperties: q => q
-                    .Include(p => p.Group).ThenInclude(g => g!.GroupPlots).ThenInclude(gp => gp.Plot)
-                        .ThenInclude(plot => plot.Farmer)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks)
-                            .ThenInclude(t => t.ProductionPlanTaskMaterials)
-                                .ThenInclude(m => m.Material)
-                                    .ThenInclude(mat => mat.MaterialPrices)
-            );
+            var plan = await _context.ProductionPlans
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.GroupPlots)
+                        .ThenInclude(gp => gp.Plot)
+                            .ThenInclude(plot => plot.Farmer)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks)
+                        .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                            .ThenInclude(m => m.Material)
+                                .ThenInclude(mat => mat.MaterialPrices)
+                .FirstOrDefaultAsync(p => p.Id == request.PlanId, cancellationToken);
 
             if (plan == null)
             {
@@ -41,7 +43,7 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
             }
 
             var plots = plan.Group?.GroupPlots?.Select(gp => gp.Plot).ToList() ?? new List<Plot>();
-            if (plots == null || !plots.Any())
+            if (plots.Count == 0)
             {
                 return Result<PlanPlotMaterialsResponse>.Failure("No plots found for this plan.", "NoPlotsFound");
             }
@@ -67,7 +69,7 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
 
                             if (currentPrice == null)
                             {
-                                _logger.LogWarning("No price found for material {MaterialId} '{MaterialName}'", 
+                                _logger.LogWarning("No price found for material {MaterialId} '{MaterialName}'",
                                     material.Id, material.Name);
                                 continue;
                             }
@@ -76,9 +78,8 @@ public class GetPlanPlotMaterialsQueryHandler : IRequestHandler<GetPlanPlotMater
                             var totalQuantity = taskMaterial.QuantityPerHa * plot.Area;
                             var totalCost = totalQuantity * currentPrice.PricePerMaterial;
 
-                            if (materialDictionary.ContainsKey(material.Id))
+                            if (materialDictionary.TryGetValue(material.Id, out var existingMaterial))
                             {
-                                var existingMaterial = materialDictionary[material.Id];
                                 existingMaterial.TotalQuantity += totalQuantity;
                                 existingMaterial.TotalCost += totalCost;
                             }

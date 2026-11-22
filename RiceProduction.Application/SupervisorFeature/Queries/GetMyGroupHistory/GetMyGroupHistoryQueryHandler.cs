@@ -1,23 +1,25 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupHistory;
 
 public class GetMyGroupHistoryQueryHandler
     : IRequestHandler<GetMyGroupHistoryQuery, Result<List<GroupHistorySummary>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetMyGroupHistoryQueryHandler> _logger;
 
     public GetMyGroupHistoryQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetMyGroupHistoryQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,17 +29,18 @@ public class GetMyGroupHistoryQueryHandler
     {
         try
         {
-            var supervisor = (await _unitOfWork.SupervisorRepository
-                .ListAsync(s => s.Id == request.SupervisorId))
-                .FirstOrDefault();
+            var supervisorExists = await _context.Supervisors
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == request.SupervisorId, cancellationToken);
 
-            if (supervisor == null)
+            if (!supervisorExists)
             {
                 return Result<List<GroupHistorySummary>>.Failure("Supervisor not found");
             }
 
-            var allSeasons = (await _unitOfWork.Repository<Season>()
-                .ListAsync(_ => true)).ToList();
+            var allSeasons = await _context.Seasons
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
             var seasonDict = allSeasons.ToDictionary(s => s.Id);
 
             Season? currentSeason = null;
@@ -48,8 +51,13 @@ public class GetMyGroupHistoryQueryHandler
                     SeasonDateHelper.IsDateInSeasonRange(today.Month, today.Day, s.StartDate, s.EndDate));
             }
 
-            var groupsList = (await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.SupervisorId == request.SupervisorId)).ToList();
+            var groupsList = await _context.Groups
+                .AsNoTracking()
+                .Include(g => g.YearSeason)
+                    .ThenInclude(ys => ys!.RiceVariety)
+                .Include(g => g.Cluster)
+                .Where(g => g.SupervisorId == request.SupervisorId)
+                .ToListAsync(cancellationToken);
 
             if (!request.IncludeCurrentSeason && currentSeason != null)
             {
@@ -68,19 +76,12 @@ public class GetMyGroupHistoryQueryHandler
                     continue;
                 }
 
-                var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken);
-                var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
-                    .ListAsync(pp => pp.GroupId == group.Id);
-
-                RiceVariety? riceVariety = null;
-                if (group.YearSeason.RiceVarietyId != null)
-                {
-                    riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                        .FindAsync(rv => rv.Id == group.YearSeason.RiceVarietyId);
-                }
-
-                var cluster = await _unitOfWork.Repository<Cluster>()
-                    .FindAsync(c => c.Id == group.ClusterId);
+                var totalPlots = await _context.Plots
+                    .AsNoTracking()
+                    .CountAsync(p => p.GroupPlots.Any(gp => gp.GroupId == group.Id) && p.Status == PlotStatus.Active, cancellationToken);
+                var productionPlansCount = await _context.ProductionPlans
+                    .AsNoTracking()
+                    .CountAsync(pp => pp.GroupId == group.Id, cancellationToken);
 
                 history.Add(new GroupHistorySummary
                 {
@@ -97,11 +98,11 @@ public class GetMyGroupHistoryQueryHandler
                         IsActive = season.IsActive
                     },
                     TotalArea = group.TotalArea,
-                    TotalPlots = plots.Count(),
-                    RiceVarietyName = riceVariety?.VarietyName,
+                    TotalPlots = totalPlots,
+                    RiceVarietyName = group.YearSeason.RiceVariety?.VarietyName,
                     PlantingDate = group.PlantingDate,
-                    ProductionPlansCount = productionPlans.Count(),
-                    ClusterName = cluster?.ClusterName
+                    ProductionPlansCount = productionPlansCount,
+                    ClusterName = group.Cluster?.ClusterName
                 });
             }
 

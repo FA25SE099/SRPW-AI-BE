@@ -107,7 +107,7 @@ namespace RiceProduction.Infrastructure.Repository
             Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null) =>
             _repository.FindAsync(match, includeProperties);
 
-        public IQueryable<T?> GetQueryable() => throw new NotImplementedException();
+        public IQueryable<T> GetQueryable() => _repository.GetQueryable();
 
         public async Task<T?> GetEntityByIdAsync(Guid id)
         {

@@ -143,7 +143,7 @@ public class DeleteMaterialCommandHandlerTests
 
         // Assert
         result.Succeeded.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Contains("Database error"));
+        result.Errors.Should().Contain(e => e.Contains("Failed to delete material"));
     }
 
     [Fact]

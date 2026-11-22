@@ -3,21 +3,20 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.StandardPlanFeature.Queries.GetStandardPlanDetail;
 
 public class GetStandardPlanDetailQueryHandler : 
     IRequestHandler<GetStandardPlanDetailQuery, Result<StandardPlanDetailDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetStandardPlanDetailQueryHandler> _logger;
 
     public GetStandardPlanDetailQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetStandardPlanDetailQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -29,16 +28,16 @@ public class GetStandardPlanDetailQueryHandler :
         {
             _logger.LogInformation("Getting standard plan detail for ID: {StandardPlanId}", request.StandardPlanId);
 
-            var standardPlan = await _unitOfWork.Repository<StandardPlan>().FindAsync(
-                match: sp => sp.Id == request.StandardPlanId,
-                includeProperties: q => q
-                    .Include(sp => sp.Category)
-                    .Include(sp => sp.Creator)
-                    .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
-                        .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
-                            .ThenInclude(task => task.StandardPlanTaskMaterials)
-                                .ThenInclude(material => material.Material)
-            );
+            var standardPlan = await _context.StandardPlans
+                .AsNoTracking()
+                .Include(sp => sp.Category)
+                .Include(sp => sp.Creator)
+                .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
+                    .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
+                        .ThenInclude(task => task.StandardPlanTaskMaterials)
+                            .ThenInclude(material => material.Material)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(sp => sp.Id == request.StandardPlanId, cancellationToken);
 
             if (standardPlan == null)
             {

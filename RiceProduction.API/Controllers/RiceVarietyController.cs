@@ -1,7 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using RiceProduction.API.Common;
-using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.RiceVarietyFeature.Commands;
 using RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVariety;
 using RiceProduction.Application.RiceVarietyFeature.Commands.UpdateRiceVariety;
@@ -50,14 +49,14 @@ namespace RiceProduction.API.Controllers
         public async Task<IActionResult> DownloadRiceVarietiesExcel([FromBody] DownloadAllRiceVarietiesExcelQuery query)
         {
             var result = await _mediator.Send(query);
-            return ToFileDownloadResult(result);
+            return this.ToFileActionResult(result);
         }
 
         [HttpGet("download-sample-excel")]
         public async Task<IActionResult> DownloadSampleExcel()
         {
             var result = await _mediator.Send(new DownloadRiceVarietySampleExcelQuery());
-            return ToFileDownloadResult(result);
+            return this.ToFileActionResult(result);
         }
 
         [HttpPost("create")]
@@ -85,10 +84,5 @@ namespace RiceProduction.API.Controllers
             var result = await _mediator.Send(new DeleteRiceVarietyCommand { RiceVarietyId = id });
             return this.ToIActionResult(result);
         }
-
-        private IActionResult ToFileDownloadResult<T>(Result<T> result) where T : class, IActionResult =>
-            result.Succeeded && result.Data != null
-                ? result.Data
-                : BadRequest(new { message = result.Message });
     }
 }

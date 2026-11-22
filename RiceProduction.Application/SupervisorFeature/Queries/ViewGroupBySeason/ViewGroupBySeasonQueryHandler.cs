@@ -13,14 +13,14 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.ViewGroupBySeason
 public class ViewGroupBySeasonQueryHandler 
     : IRequestHandler<ViewGroupBySeasonQuery, Result<List<GroupBySeasonResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ViewGroupBySeasonQueryHandler> _logger;
 
     public ViewGroupBySeasonQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ViewGroupBySeasonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -30,26 +30,26 @@ public class ViewGroupBySeasonQueryHandler
     {
         try
         {
-            // 1. Verify supervisor exists
-            var supervisor = (await _unitOfWork.SupervisorRepository
-                .ListAsync(s => s.Id == request.SupervisorId))
-                .FirstOrDefault();
+            var supervisorExists = await _context.Supervisors
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == request.SupervisorId, cancellationToken);
 
-            if (supervisor == null)
+            if (!supervisorExists)
             {
                 return Result<List<GroupBySeasonResponse>>.Failure("Supervisor not found");
             }
 
-            var (targetSeason, targetYear, seasonError) = await ResolveTargetSeasonAsync(request);
+            var (targetSeason, targetYear, seasonError) = await ResolveTargetSeasonAsync(request, cancellationToken);
             if (targetSeason == null)
             {
                 return Result<List<GroupBySeasonResponse>>.Failure(seasonError!);
             }
 
-            var groups = await _unitOfWork.Repository<Group>()
-                .GetQueryable()
+            var groups = await _context.Groups
+                .AsNoTracking()
                 .Include(g => g.YearSeason)
-                    .ThenInclude(ys => ys.RiceVariety)
+                    .ThenInclude(ys => ys!.RiceVariety)
+                .Include(g => g.Cluster)
                 .Where(g =>
                     g.SupervisorId == request.SupervisorId &&
                     g.YearSeason != null && g.YearSeason.SeasonId == targetSeason.Id &&
@@ -89,19 +89,21 @@ public class ViewGroupBySeasonQueryHandler
     }
 
     private async Task<(Season? Season, int Year, string? Error)> ResolveTargetSeasonAsync(
-        ViewGroupBySeasonQuery request)
+        ViewGroupBySeasonQuery request,
+        CancellationToken cancellationToken)
     {
         if (request.SeasonId.HasValue && request.Year.HasValue)
         {
-            var season = await _unitOfWork.Repository<Season>()
-                .FindAsync(s => s.Id == request.SeasonId.Value);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == request.SeasonId.Value, cancellationToken);
 
             return season != null
                 ? (season, request.Year.Value, null)
                 : (null, 0, "Season not found");
         }
 
-        var (currentSeason, currentYear) = await GetCurrentSeasonAndYear();
+        var (currentSeason, currentYear) = await GetCurrentSeasonAndYear(cancellationToken);
         return currentSeason != null
             ? (currentSeason, currentYear, null)
             : (null, 0, "No current season could be determined");
@@ -115,24 +117,23 @@ public class ViewGroupBySeasonQueryHandler
         bool isPastSeason,
         CancellationToken cancellationToken)
     {
-        var plotsList = (await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken)).ToList();
+        var plotsList = await _context.Plots
+            .AsNoTracking()
+            .Where(p => p.GroupPlots.Any(gp => gp.GroupId == group.Id) && p.Status == PlotStatus.Active)
+            .OrderByDescending(p => p.SoThua)
+            .ToListAsync(cancellationToken);
 
         var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
-        var farmers = await _unitOfWork.FarmerRepository.ListAsync(f => farmerIds.Contains(f.Id));
+        var farmers = await _context.Farmers
+            .AsNoTracking()
+            .Where(f => farmerIds.Contains(f.Id))
+            .ToListAsync(cancellationToken);
         var farmerDict = farmers.ToDictionary(f => f.Id);
 
-        RiceVariety? riceVariety = null;
-        if (group.YearSeason?.RiceVarietyId != null)
-        {
-            riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                .FindAsync(rv => rv.Id == group.YearSeason.RiceVarietyId);
-        }
-
-        var cluster = await _unitOfWork.Repository<Cluster>()
-            .FindAsync(c => c.Id == group.ClusterId);
-
-        var plansList = (await _unitOfWork.Repository<ProductionPlan>()
-            .ListAsync(pp => pp.GroupId == group.Id)).ToList();
+        var plansList = await _context.ProductionPlans
+            .AsNoTracking()
+            .Where(pp => pp.GroupId == group.Id)
+            .ToListAsync(cancellationToken);
 
         var activePlan = plansList
             .Where(p => p.Status == TaskStatus.Approved || p.Status == TaskStatus.InProgress)
@@ -166,9 +167,9 @@ public class ViewGroupBySeasonQueryHandler
             AreaGeoJson = PlotGeometryHelper.SerializeGeometry(group.Area),
             PlantingDate = group.PlantingDate,
             RiceVarietyId = group.YearSeason?.RiceVarietyId,
-            RiceVarietyName = riceVariety?.VarietyName,
+            RiceVarietyName = group.YearSeason?.RiceVariety?.VarietyName,
             ClusterId = group.ClusterId,
-            ClusterName = cluster?.ClusterName,
+            ClusterName = group.Cluster?.ClusterName,
 
             Plots = MapPlotOverviews(plotsList, farmerDict, currentState == GroupState.PrePlanning),
 
@@ -177,22 +178,23 @@ public class ViewGroupBySeasonQueryHandler
                 : null,
 
             PlanOverview = referencePlan != null
-                ? await CalculatePlanOverview(referencePlan)
+                ? await CalculatePlanOverview(referencePlan, cancellationToken)
                 : null,
 
             Economics = (isPastSeason || currentState == GroupState.Completed) && referencePlan != null
-                ? await CalculateEconomicOverview(group.Id, referencePlan, cancellationToken)
+                ? await CalculateEconomicOverview(plotsList.Select(p => p.Id).ToList(), referencePlan, cancellationToken)
                 : null
         };
     }
 
     #region Season and State Determination
 
-    private async Task<(Season? season, int year)> GetCurrentSeasonAndYear()
+    private async Task<(Season? season, int year)> GetCurrentSeasonAndYear(CancellationToken cancellationToken)
     {
         var today = DateTime.Now;
-        var allSeasons = await _unitOfWork.Repository<Season>()
-            .ListAsync(_ => true);
+        var allSeasons = await _context.Seasons
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
 
         foreach (var season in allSeasons)
         {
@@ -395,16 +397,16 @@ public class ViewGroupBySeasonQueryHandler
 
     #region Plan Overview (Lightweight)
 
-    private async Task<ProductionPlanOverview> CalculatePlanOverview(ProductionPlan plan)
+    private async Task<ProductionPlanOverview> CalculatePlanOverview(ProductionPlan plan, CancellationToken cancellationToken)
     {
-        var stages = await _unitOfWork.Repository<ProductionStage>()
-            .ListAsync(
-                s => s.ProductionPlanId == plan.Id,
-                includeProperties: q => q
-                    .Include(s => s.ProductionPlanTasks)
-                        .ThenInclude(t => t.CultivationTasks));
-
-        var stagesList = stages.OrderBy(s => s.SequenceOrder).ToList();
+        var stagesList = await _context.ProductionStages
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(s => s.ProductionPlanTasks)
+                .ThenInclude(t => t.CultivationTasks)
+            .Where(s => s.ProductionPlanId == plan.Id)
+            .OrderBy(s => s.SequenceOrder)
+            .ToListAsync(cancellationToken);
 
         int totalTasks = 0;
         int completedTasks = 0;
@@ -487,38 +489,35 @@ public class ViewGroupBySeasonQueryHandler
 
     #region Economic Overview (Lightweight)
 
-    private async Task<EconomicOverview> CalculateEconomicOverview(Guid groupId, ProductionPlan plan, CancellationToken cancellationToken)
+    private async Task<EconomicOverview> CalculateEconomicOverview(List<Guid> plotIds, ProductionPlan plan, CancellationToken cancellationToken)
     {
-        var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(groupId, cancellationToken);
-        var plotIds = plots.Select(p => p.Id).ToList();
-        var plotCultivationsList = (await _unitOfWork.Repository<PlotCultivation>()
-            .ListAsync(
-                pc => plotIds.Contains(pc.PlotId),
-                includeProperties: q => q
-                    .Include(pc => pc.CultivationTasks)
-                    .Include(pc => pc.Plot))).ToList();
+        var plotCultivationsList = await _context.PlotCultivations
+            .AsNoTracking()
+            .Where(pc => plotIds.Contains(pc.PlotId))
+            .Select(pc => new
+            {
+                pc.ActualYield,
+                pc.ExpectedYield,
+                EffectiveArea = pc.Area ?? pc.Plot.Area,
+                ActualMaterialCost = pc.CultivationTasks.Sum(t => (decimal?)t.ActualMaterialCost) ?? 0m,
+                ActualServiceCost = pc.CultivationTasks.Sum(t => (decimal?)t.ActualServiceCost) ?? 0m
+            })
+            .ToListAsync(cancellationToken);
 
-        var allTasks = plotCultivationsList
-            .SelectMany(pc => pc.CultivationTasks)
-            .ToList();
-
-        decimal actualMaterialCost = allTasks.Sum(t => t.ActualMaterialCost);
-        decimal actualServiceCost = allTasks.Sum(t => t.ActualServiceCost);
+        decimal actualMaterialCost = plotCultivationsList.Sum(pc => pc.ActualMaterialCost);
+        decimal actualServiceCost = plotCultivationsList.Sum(pc => pc.ActualServiceCost);
         decimal totalActualCost = actualMaterialCost + actualServiceCost;
 
-        var stages = await _unitOfWork.Repository<ProductionStage>()
-            .ListAsync(
-                s => s.ProductionPlanId == plan.Id,
-                includeProperties: q => q.Include(s => s.ProductionPlanTasks));
-
-        decimal totalEstimatedCost = stages
+        decimal totalEstimatedCost = (await _context.ProductionStages
+            .AsNoTracking()
+            .Where(s => s.ProductionPlanId == plan.Id)
             .SelectMany(s => s.ProductionPlanTasks)
-            .Sum(t => t.EstimatedMaterialCost);
+            .SumAsync(t => (decimal?)t.EstimatedMaterialCost, cancellationToken)) ?? 0m;
 
         decimal totalActualYield = plotCultivationsList.Sum(pc => pc.ActualYield ?? 0);
         decimal totalExpectedYield = plotCultivationsList.Sum(pc => pc.ExpectedYield ?? 0);
 
-        decimal totalArea = plotCultivationsList.Sum(pc => pc.Area ?? pc.Plot.Area);
+        decimal totalArea = plotCultivationsList.Sum(pc => pc.EffectiveArea);
         decimal yieldPerHa = totalArea > 0 ? totalActualYield / totalArea : 0;
 
         // Placeholder rice price (VND per kg)

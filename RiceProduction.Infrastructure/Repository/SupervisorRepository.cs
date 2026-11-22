@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore.Query;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using System;

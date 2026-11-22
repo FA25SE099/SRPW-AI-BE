@@ -5,7 +5,6 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Infrastructure.Repository;
 using System;
 using System.Collections.Generic;
 using System.Linq;

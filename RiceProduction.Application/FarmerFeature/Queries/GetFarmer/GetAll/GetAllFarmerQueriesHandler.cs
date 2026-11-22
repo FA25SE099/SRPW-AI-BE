@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using System;
@@ -16,13 +16,11 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll
     public class GetAllFarmerQueriesHandler : IRequestHandler<GetAllFarmerQueries, PagedResult<IEnumerable<FarmerDTO>>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
         private readonly ILogger<GetAllFarmerQueriesHandler> _logger;
 
-        public GetAllFarmerQueriesHandler(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetAllFarmerQueriesHandler> logger)
+        public GetAllFarmerQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetAllFarmerQueriesHandler> logger)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
             _logger = logger;
         }
 
@@ -55,7 +53,7 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll
                 var (items, totalCount) = await _unitOfWork.FarmerRepository
                     .GetPagedAsync(request.PageNumber, request.PageSize, predicate, cancellationToken);
 
-                var farmerDTOs = _mapper.Map<IEnumerable<FarmerDTO>>(items);
+                var farmerDTOs = items.Select(f => f.ToDto()).ToList();
                 return PagedResult<IEnumerable<FarmerDTO>>.Success
                     (
                     data: farmerDTOs,

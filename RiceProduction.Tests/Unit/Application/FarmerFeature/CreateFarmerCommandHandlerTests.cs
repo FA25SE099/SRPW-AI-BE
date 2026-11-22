@@ -8,7 +8,6 @@ using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using Xunit;
 using MediatR;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Tests.Unit.Application.FarmerFeature;
 
@@ -70,6 +69,7 @@ public class CreateFarmerCommandHandlerTests
             .ReturnsAsync((ApplicationUser?)null);
 
         _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
+            .Callback<ApplicationUser, string>((e, _) => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
             .ReturnsAsync(IdentityResult.Success);
 
         _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))

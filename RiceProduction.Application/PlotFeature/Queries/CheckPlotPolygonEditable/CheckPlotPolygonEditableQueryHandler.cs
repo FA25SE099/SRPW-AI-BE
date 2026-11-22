@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -7,14 +8,14 @@ namespace RiceProduction.Application.PlotFeature.Queries.CheckPlotPolygonEditabl
 
 public class CheckPlotPolygonEditableQueryHandler : IRequestHandler<CheckPlotPolygonEditableQuery, Result<CheckPlotPolygonEditableResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CheckPlotPolygonEditableQueryHandler> _logger;
 
     public CheckPlotPolygonEditableQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<CheckPlotPolygonEditableQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -22,16 +23,19 @@ public class CheckPlotPolygonEditableQueryHandler : IRequestHandler<CheckPlotPol
     {
         try
         {
-            var plotExists = await _unitOfWork.PlotRepository.ExistPlotAsync(request.PlotId, cancellationToken);
+            var plotExists = await _context.Plots
+                .AsNoTracking()
+                .AnyAsync(p => p.Id == request.PlotId, cancellationToken);
             if (!plotExists)
             {
                 return Result<CheckPlotPolygonEditableResponse>.Failure("Plot not found");
             }
 
-            var isInGroup = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupForYearSeasonAsync(
-                request.PlotId, 
-                request.YearSeasonId, 
-                cancellationToken);
+            var isInGroup = await _context.GroupPlots
+                .AsNoTracking()
+                .AnyAsync(
+                    gp => gp.PlotId == request.PlotId && gp.Group.YearSeasonId == request.YearSeasonId,
+                    cancellationToken);
 
             if (isInGroup)
             {

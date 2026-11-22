@@ -7,13 +7,11 @@ namespace RiceProduction.Application.LateFarmerRecordFeature.Queries.GetLateDeta
 public class GetLateDetailByFarmerIdQueryHandler : IRequestHandler<GetLateDetailByFarmerIdQuery, Result<FarmerLateDetailDTO>>
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
     private readonly ILogger<GetLateDetailByFarmerIdQueryHandler> _logger;
 
-    public GetLateDetailByFarmerIdQueryHandler(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetLateDetailByFarmerIdQueryHandler> logger)
+    public GetLateDetailByFarmerIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetLateDetailByFarmerIdQueryHandler> logger)
     {
         _unitOfWork = unitOfWork;
-        _mapper = mapper;
         _logger = logger;
     }
 

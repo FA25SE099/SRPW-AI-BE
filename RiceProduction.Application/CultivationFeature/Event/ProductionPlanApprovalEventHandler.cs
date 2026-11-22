@@ -1,9 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.CultivationFeature.Event;
 using RiceProduction.Domain.Entities;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
+
+namespace RiceProduction.Application.CultivationFeature.Event;
 
 public class ProductionPlanApprovalEventHandler : INotificationHandler<ProductionPlanApprovalEvent>
 {
@@ -179,17 +180,16 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 continue;
             }
 
-            var newVersion = new CultivationVersion
-            {
-                Id = await _versionRepo.GenerateNewGuid(Guid.NewGuid()),
-                VersionName = "0",
-                Reason = "Version 0 created upon plan approval",
-                ActivatedAt = DateTime.UtcNow,
-                PlotCultivationId = plotCultivation.Id,
-                CreatedAt = DateTime.UtcNow,
-                IsActive = true,
-                VersionOrder = 1,
-            };
+            var now = DateTime.UtcNow;
+            var newVersion = CultivationVersion.CreateNext(
+                plotCultivation.Id,
+                currentMaxOrder: 0,
+                versionName: "0",
+                reason: "Version 0 created upon plan approval",
+                activateImmediately: true,
+                activatedAt: now);
+            newVersion.Id = await _versionRepo.GenerateNewGuid(Guid.NewGuid());
+            newVersion.CreatedAt = now;
             await _versionRepo.AddAsync(newVersion);
             versionLookup[plotCultivation.Id] = newVersion.Id;
             newVersionsCreated++;

@@ -3,22 +3,20 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Application.PlotFeature.Queries.GetPlotsByFarmer;
 
 public class GetPlotsByFarmerQueryHandler : IRequestHandler<GetPlotsByFarmerQuery, PagedResult<List<PlotListResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlotsByFarmerQueryHandler> _logger;
 
     public GetPlotsByFarmerQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPlotsByFarmerQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -28,31 +26,28 @@ public class GetPlotsByFarmerQueryHandler : IRequestHandler<GetPlotsByFarmerQuer
     {
         try
         {
-            // Verify farmer exists using FarmerRepository
-            var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.FarmerId, cancellationToken);
+            var farmerExists = await _context.Farmers
+                .AsNoTracking()
+                .AnyAsync(f => f.Id == request.FarmerId, cancellationToken);
 
-            if (farmer == null)
+            if (!farmerExists)
             {
                 return PagedResult<List<PlotListResponse>>.Failure(
                     "Farmer not found.",
                     "NotFound");
             }
 
-            // Build filter
-            var query = _unitOfWork.Repository<Plot>().GetQueryable()
-                .Where(p => p.FarmerId == request.FarmerId);
-
-
-            // Include related data
-            query = query
+            var query = _context.Plots
+                .AsNoTracking()
+                .Where(p => p.FarmerId == request.FarmerId)
                 .Include(p => p.GroupPlots)
                     .ThenInclude(gp => gp.Group)
                 .Include(p => p.PlotCultivations)
-                .Include(p => p.Alerts);
+                .Include(p => p.Alerts)
+                .AsSplitQuery();
 
             var totalCount = await query.CountAsync(cancellationToken);
 
-            // Apply pagination
             var plots = await query
                 .OrderByDescending(p => p.CreatedAt)
                 .Skip((request.CurrentPage - 1) * request.PageSize)

@@ -1,27 +1,22 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
+using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetApprovedPlan;
 
-public class GetApprovedPlansQueryHandler : 
+public class GetApprovedPlansQueryHandler :
     IRequestHandler<GetApprovedPlansQuery, PagedResult<List<ExpertPendingPlanItemResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetApprovedPlansQueryHandler> _logger;
 
-    public GetApprovedPlansQueryHandler(IUnitOfWork unitOfWork, ILogger<GetApprovedPlansQueryHandler> logger)
+    public GetApprovedPlansQueryHandler(IApplicationDbContext context, ILogger<GetApprovedPlansQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -29,34 +24,33 @@ public class GetApprovedPlansQueryHandler :
     {
         try
         {
-            var planRepo = _unitOfWork.Repository<ProductionPlan>();
+            var query = _context.ProductionPlans
+                .AsNoTracking()
+                .Where(p => p.Status == TaskStatus.Approved);
 
-            // 1. Xây dựng biểu thức lọc động (không áp dụng paging ở bước này)
-            Expression<Func<ProductionPlan, bool>> filter = p =>
-                p.Status == RiceProduction.Domain.Enums.TaskStatus.Approved &&
-                (!request.Year.HasValue || p.BasePlantingDate.Year == request.Year.Value) &&
-                (!request.SeasonId.HasValue || (p.GroupId.HasValue && p.Group != null && p.Group.YearSeason != null && p.Group.YearSeason.SeasonId == request.SeasonId.Value));
-            
-            // Tải toàn bộ Plans phù hợp với filter
-            var allPlans = await planRepo.ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderByDescending(p => p.ApprovedAt),
-                includeProperties: q => q
-                    .Include(p => p.Group)
-                        .ThenInclude(g => g.YearSeason) 
-                    .Include(p => p.Submitter)
-            );
+            if (request.Year.HasValue)
+            {
+                query = query.Where(p => p.BasePlantingDate.Year == request.Year.Value);
+            }
 
-            // 2. Lấy TotalCount
-            var totalCount = allPlans.Count;
-            
-            // 3. Áp dụng phân trang (in-memory paging)
-            var pagedPlans = allPlans
+            if (request.SeasonId.HasValue)
+            {
+                query = query.Where(p =>
+                    p.GroupId.HasValue &&
+                    p.Group != null &&
+                    p.Group.YearSeason != null &&
+                    p.Group.YearSeason.SeasonId == request.SeasonId.Value);
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            var pagedPlans = await query
+                .Include(p => p.Submitter)
+                .OrderByDescending(p => p.ApprovedAt)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
-            // 4. Ánh xạ dữ liệu
             var responseData = pagedPlans.Select(p => new ExpertPendingPlanItemResponse
             {
                 Id = p.Id,

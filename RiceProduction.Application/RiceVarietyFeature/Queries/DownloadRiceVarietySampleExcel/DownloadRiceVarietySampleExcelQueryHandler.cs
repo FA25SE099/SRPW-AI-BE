@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -6,7 +5,7 @@ using RiceProduction.Application.Common.Models.Response;
 
 namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadRiceVarietySampleExcel
 {
-    public class DownloadRiceVarietySampleExcelQueryHandler : IRequestHandler<DownloadRiceVarietySampleExcelQuery, Result<IActionResult>>
+    public class DownloadRiceVarietySampleExcelQueryHandler : IRequestHandler<DownloadRiceVarietySampleExcelQuery, Result<FileExportResult>>
     {
         private readonly IGenericExcel _genericExcel;
         private readonly ILogger<DownloadRiceVarietySampleExcelQueryHandler> _logger;
@@ -19,7 +18,7 @@ namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadRiceVari
             _logger = logger;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadRiceVarietySampleExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadRiceVarietySampleExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -57,12 +56,12 @@ namespace RiceProduction.Application.RiceVarietyFeature.Queries.DownloadRiceVari
                     DateTime.Now.ToString("yyyy-MM-dd"), 
                     fileName);
 
-                return Result<IActionResult>.Success(result, "Sample Excel template downloaded successfully");
+                return Result<FileExportResult>.Success(result, "Sample Excel template downloaded successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while creating sample Excel template");
-                return Result<IActionResult>.Failure("Failed to create sample Excel template");
+                return Result<FileExportResult>.Failure("Failed to create sample Excel template");
             }
         }
     }

@@ -52,26 +52,26 @@ namespace RiceProduction.Infrastructure.Implementation.NotificationImplementatio
             return task.Result;
         }
 
-        public async Task<string> SendSMSAsync(string[] phones, string content, int type = 3, string sender = "")
+        public Task<string> SendSMSAsync(string[] phones, string content, int type = 3, string sender = "")
         {
             try
             {
                 if (phones == null || phones.Length == 0)
                 {
-                    return JsonSerializer.Serialize(new
+                    return Task.FromResult(JsonSerializer.Serialize(new
                     {
                         status = "error",
                         message = "Phone numbers are required"
-                    });
+                    }));
                 }
 
                 if (string.IsNullOrEmpty(content))
                 {
-                    return JsonSerializer.Serialize(new
+                    return Task.FromResult(JsonSerializer.Serialize(new
                     {
                         status = "error",
                         message = "Content is required"
-                    });
+                    }));
                 }
 
                 var senderName = string.IsNullOrEmpty(sender) ? _defaultSender : sender;
@@ -92,7 +92,7 @@ namespace RiceProduction.Infrastructure.Implementation.NotificationImplementatio
 
                 var smsResponse = _smsApi.SendSmsMessages(smsRequest);
 
-                return JsonSerializer.Serialize(new
+                return Task.FromResult(JsonSerializer.Serialize(new
                 {
                     status = "success",
                     bulkId = smsResponse.BulkId,
@@ -108,25 +108,25 @@ namespace RiceProduction.Infrastructure.Implementation.NotificationImplementatio
                             description = m.Status?.Description
                         }
                     })
-                });
+                }));
             }
             catch (ApiException ex)
             {
-                return JsonSerializer.Serialize(new
+                return Task.FromResult(JsonSerializer.Serialize(new
                 {
                     status = "error",
                     errorCode = ex.ErrorCode,
                     message = ex.ErrorContent,
                     headers = ex.Headers
-                });
+                }));
             }
             catch (Exception ex)
             {
-                return JsonSerializer.Serialize(new
+                return Task.FromResult(JsonSerializer.Serialize(new
                 {
                     status = "error",
                     message = ex.Message
-                });
+                }));
             }
         }
 
@@ -135,32 +135,32 @@ namespace RiceProduction.Infrastructure.Implementation.NotificationImplementatio
             throw new NotImplementedException("MMS is not implemented for Infobip. Use advanced messaging APIs instead.");
         }
 
-        public async Task<SmsDeliveryResult> GetDeliveryReportsAsync(string bulkId = null, string messageId = null, int limit = 50)
+        public Task<SmsDeliveryResult> GetDeliveryReportsAsync(string bulkId = null, string messageId = null, int limit = 50)
         {
             try
             {
-                return _smsApi.GetOutboundSmsMessageDeliveryReports(
+                return Task.FromResult(_smsApi.GetOutboundSmsMessageDeliveryReports(
                     bulkId: bulkId,
                     messageId: messageId,
                     limit: limit
-                );
+                ));
             }
             catch (ApiException ex)
             {
-                throw new Exception($"Failed to get delivery reports: {ex.ErrorContent}", ex);
+                return Task.FromException<SmsDeliveryResult>(new Exception($"Failed to get delivery reports: {ex.ErrorContent}", ex));
             }
         }
 
-        public async Task<SmsPreviewResponse> PreviewSmsAsync(string text)
+        public Task<SmsPreviewResponse> PreviewSmsAsync(string text)
         {
             try
             {
                 var smsPreviewRequest = new SmsPreviewRequest(text: text);
-                return _smsApi.PreviewSmsMessage(smsPreviewRequest);
+                return Task.FromResult(_smsApi.PreviewSmsMessage(smsPreviewRequest));
             }
             catch (ApiException ex)
             {
-                throw new Exception($"Failed to preview SMS: {ex.ErrorContent}", ex);
+                return Task.FromException<SmsPreviewResponse>(new Exception($"Failed to preview SMS: {ex.ErrorContent}", ex));
             }
         }
     }

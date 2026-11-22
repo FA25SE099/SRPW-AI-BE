@@ -30,10 +30,6 @@ namespace RiceProduction.Application.Common.Interfaces
         Task<bool> DeleteRangeAsync(Expression<Func<T, bool>> predicate);
 
         Task<int> SaveChangesAsync();
-        //Task<IReadOnlyList<T>> ListAsync(
-        //    Expression<Func<T, bool>>? filter = null,
-        //    Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null
-        //);
         Task<IReadOnlyList<T>> ListAsync(
             Expression<Func<T, bool>>? filter = null,
             Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null,
@@ -44,7 +40,7 @@ namespace RiceProduction.Application.Common.Interfaces
             Func<IQueryable<T>, IIncludableQueryable<T, object>>? includeProperties = null
         );
 
-        IQueryable<T?> GetQueryable();
+        IQueryable<T> GetQueryable();
 
     }
 

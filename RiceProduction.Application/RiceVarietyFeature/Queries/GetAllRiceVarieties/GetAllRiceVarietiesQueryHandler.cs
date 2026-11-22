@@ -1,26 +1,21 @@
 using Microsoft.Extensions.Logging;
-using AutoMapper;
-using MediatR;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
-using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
+
 namespace RiceProduction.Application.RiceVarietyFeature.Queries.GetAllRiceVarieties;
+
 public class GetAllRiceVarietiesQueryHandler : 
     IRequestHandler<GetAllRiceVarietiesQuery, Result<List<RiceVarietyResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetAllRiceVarietiesQueryHandler> _logger;
 
     public GetAllRiceVarietiesQueryHandler(
-        IUnitOfWork unitOfWork,
-        IMapper mapper,
+        IApplicationDbContext context,
         ILogger<GetAllRiceVarietiesQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
-        _mapper = mapper;
+        _context = context;
         _logger = logger;
     }
 
@@ -28,20 +23,33 @@ public class GetAllRiceVarietiesQueryHandler :
     {
         try
         {
-            // Build the filter expression
-            Expression<Func<RiceVariety, bool>> filter = v =>
-                (string.IsNullOrEmpty(request.Search) || v.VarietyName.Contains(request.Search) || (v.Characteristics != null && v.Characteristics.Contains(request.Search))) &&
-                (request.IsActive == null || v.IsActive == request.IsActive.Value) &&
-                (request.CategoryId == null || v.CategoryId == request.CategoryId.Value);
+            var query = _context.RiceVarieties
+                .AsNoTracking()
+                .Include(v => v.Category)
+                .Include(v => v.RiceVarietySeasons)
+                    .ThenInclude(rvs => rvs.Season)
+                .AsQueryable();
 
-            // Use ListAsync to retrieve all matching records (no paging)
-            var riceVarieties = await _unitOfWork.Repository<RiceVariety>().ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderBy(v => v.VarietyName),
-                includeProperties: q => q
-                    .Include(v => v.Category)
-                    .Include(v => v.RiceVarietySeasons)
-                        .ThenInclude(rvs => rvs.Season));
+            if (!string.IsNullOrEmpty(request.Search))
+            {
+                query = query.Where(v =>
+                    v.VarietyName.Contains(request.Search) ||
+                    (v.Characteristics != null && v.Characteristics.Contains(request.Search)));
+            }
+
+            if (request.IsActive.HasValue)
+            {
+                query = query.Where(v => v.IsActive == request.IsActive.Value);
+            }
+
+            if (request.CategoryId.HasValue)
+            {
+                query = query.Where(v => v.CategoryId == request.CategoryId.Value);
+            }
+
+            var riceVarieties = await query
+                .OrderBy(v => v.VarietyName)
+                .ToListAsync(cancellationToken);
 
             var varietyResponses = riceVarieties
                 .Select(v => new RiceVarietyResponse

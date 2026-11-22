@@ -1,22 +1,22 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.ReportFeature.Queries.GetAllReports;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.ReportFeature.Queries.GetReportById;
 
 public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Result<ReportItemResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetReportByIdQueryHandler> _logger;
 
     public GetReportByIdQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetReportByIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,8 +26,8 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
     {
         try
         {
-            var report = await _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            var report = await _context.EmergencyReports
+                .AsNoTracking()
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                         .ThenInclude(p => p.Farmer)
@@ -41,7 +41,7 @@ public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, Res
                 .Include(r => r.Group)
                     .ThenInclude(g => g.Cluster)
                 .Include(r => r.Cluster)
-                     .Include(r => r.AffectedTask)
+                .Include(r => r.AffectedTask)
                     .ThenInclude(t => t.ProductionPlanTask)
                 .Include(r => r.AffectedTask)
                     .ThenInclude(t => t.Version)

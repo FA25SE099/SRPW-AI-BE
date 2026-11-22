@@ -31,9 +31,11 @@ public class CalculateStandardPlanMaterialCostQueryHandler : IRequestHandler<Cal
 
             var standardPlan = await _unitOfWork.Repository<StandardPlan>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(sp => sp.StandardPlanStages.OrderBy(stage => stage.SequenceOrder))
                     .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(task => task.SequenceOrder))
                         .ThenInclude(task => task.StandardPlanTaskMaterials)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(sp => sp.Id == request.StandardPlanId, cancellationToken);
 
             if (standardPlan == null)

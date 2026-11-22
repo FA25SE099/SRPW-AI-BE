@@ -3,21 +3,20 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetPolygonAssignmentTasks;
 
 public class GetPolygonAssignmentTasksQueryHandler 
     : IRequestHandler<GetPolygonAssignmentTasksQuery, Result<List<PlotPolygonTaskDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPolygonAssignmentTasksQueryHandler> _logger;
 
     public GetPolygonAssignmentTasksQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPolygonAssignmentTasksQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,42 +26,36 @@ public class GetPolygonAssignmentTasksQueryHandler
     {
         try
         {
-            // Build query for polygon tasks
-            var query = _unitOfWork.Repository<PlotPolygonTask>()
-                .GetQueryable()
+            var query = _context.PlotPolygonTasks
+                .AsNoTracking()
                 .Where(t => t.AssignedToSupervisorId == request.SupervisorId);
 
-            // Filter by status if provided
             if (!string.IsNullOrEmpty(request.Status))
             {
                 query = query.Where(t => t.Status == request.Status);
             }
 
-            // Get tasks with related plot and farmer data
-            var tasks = await query
-                .Include(t => t.Plot)
-                .ThenInclude(p => p.Farmer)
+            var taskDtos = await query
                 .OrderByDescending(t => t.Priority)
                 .ThenBy(t => t.AssignedAt)
+                .Select(t => new PlotPolygonTaskDto
+                {
+                    Id = t.Id,
+                    PlotId = t.PlotId,
+                    Status = t.Status,
+                    AssignedAt = t.AssignedAt,
+                    CompletedAt = t.CompletedAt,
+                    Notes = t.Notes,
+                    Priority = t.Priority,
+                    SoThua = t.Plot.SoThua,
+                    SoTo = t.Plot.SoTo,
+                    PlotArea = t.Plot.Area,
+                    SoilType = t.Plot.SoilType,
+                    FarmerId = t.Plot.FarmerId,
+                    FarmerName = t.Plot.Farmer != null ? t.Plot.Farmer.FullName : null,
+                    FarmerPhone = t.Plot.Farmer != null ? t.Plot.Farmer.PhoneNumber : null
+                })
                 .ToListAsync(cancellationToken);
-
-            var taskDtos = tasks.Select(t => new PlotPolygonTaskDto
-            {
-                Id = t.Id,
-                PlotId = t.PlotId,
-                Status = t.Status,
-                AssignedAt = t.AssignedAt,
-                CompletedAt = t.CompletedAt,
-                Notes = t.Notes,
-                Priority = t.Priority,
-                SoThua = t.Plot.SoThua,
-                SoTo = t.Plot.SoTo,
-                PlotArea = t.Plot.Area,
-                SoilType = t.Plot.SoilType,
-                FarmerId = t.Plot.FarmerId,
-                FarmerName = t.Plot.Farmer?.FullName,
-                FarmerPhone = t.Plot.Farmer?.PhoneNumber
-            }).ToList();
 
             return Result<List<PlotPolygonTaskDto>>.Success(taskDtos);
         }

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
@@ -29,6 +30,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
             // 1. Get YearSeason details
             var yearSeason = await _unitOfWork.Repository<YearSeason>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .FirstOrDefaultAsync(ys => ys.Id == request.YearSeasonId, cancellationToken);
 
@@ -59,6 +61,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
             // 3. Get all plots belonging to the farmer (no group requirement)
             var farmerPlots = await _unitOfWork.Repository<Plot>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Where(p => p.FarmerId == request.FarmerId && p.Status == PlotStatus.Active)
                 .ToListAsync(cancellationToken);
 
@@ -72,6 +75,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
             var plotIds = farmerPlots.Select(p => p.Id).ToList();
             var cultivations = await _unitOfWork.Repository<PlotCultivation>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(pc => pc.Plot)
                 .Include(pc => pc.RiceVariety)
                 .Where(pc => plotIds.Contains(pc.PlotId) && 

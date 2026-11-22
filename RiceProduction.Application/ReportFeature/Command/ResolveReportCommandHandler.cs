@@ -80,18 +80,15 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     "DuplicateVersionName");
             }
 
-            var nextOrder = existingVersions.Any() ? existingVersions.Max(v => v.VersionOrder) + 1 : 1;
+            var currentMaxOrder = existingVersions.Any() ? existingVersions.Max(v => v.VersionOrder) : 0;
 
-            var newVersion = new CultivationVersion
-            {
-                PlotCultivationId = plotCultivation.Id,
-                VersionName = request.NewVersionName.Trim(),
-                VersionOrder = nextOrder,
-                IsActive = false,
-                Reason = request.ResolutionReason?.Trim() ?? $"Emergency response: {emergencyReport.Title}",
-                ActivatedAt = null,
-                CreatedAt = DateTime.UtcNow,
-            };
+            var newVersion = CultivationVersion.CreateNext(
+                plotCultivation.Id,
+                currentMaxOrder,
+                request.NewVersionName.Trim(),
+                reason: request.ResolutionReason?.Trim() ?? $"Emergency response: {emergencyReport.Title}",
+                activateImmediately: false);
+            newVersion.CreatedAt = DateTime.UtcNow;
 
             await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -352,7 +349,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
     {
         foreach (var oldVersion in existingVersions)
         {
-            oldVersion.IsActive = false;
+            oldVersion.Deactivate();
         }
 
         if (existingVersions.Any())
@@ -360,8 +357,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             _unitOfWork.Repository<CultivationVersion>().UpdateRange(existingVersions);
         }
 
-        newVersion.IsActive = true;
-        newVersion.ActivatedAt = DateTime.UtcNow;
+        newVersion.Activate();
         _unitOfWork.Repository<CultivationVersion>().Update(newVersion);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);

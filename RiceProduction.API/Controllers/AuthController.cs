@@ -128,7 +128,7 @@ public class AuthController : ControllerBase
             ConfirmPassword = request.ConfirmPassword
         };
 
-        return ToActionResult(await _mediator.Send(command));
+        return this.ToActionResult(await _mediator.Send(command));
     }
 
     [HttpPost("reset-password")]
@@ -142,7 +142,7 @@ public class AuthController : ControllerBase
             ConfirmPassword = request.ConfirmPassword
         };
 
-        return ToActionResult(await _mediator.Send(command));
+        return this.ToActionResult(await _mediator.Send(command));
     }
 
     [HttpPost("forgot-password")]
@@ -153,9 +153,6 @@ public class AuthController : ControllerBase
             Email = request.Email
         };
 
-        return ToActionResult(await _mediator.Send(command));
+        return this.ToActionResult(await _mediator.Send(command));
     }
-
-    private ActionResult<Result> ToActionResult(Result result) =>
-        result.Succeeded ? Ok(result) : BadRequest(result);
 }

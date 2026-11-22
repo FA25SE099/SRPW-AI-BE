@@ -42,6 +42,7 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 // Get all late records in the cluster by navigating through relationships
                 // Only get records from active versions
                 var lateRecordsInCluster = await _unitOfWork.LateFarmerRecordRepository.GetQueryable()
+                    .AsNoTracking()
                     .Include(lr => lr.CultivationTask)
                         .ThenInclude(ct => ct.PlotCultivation)
                             .ThenInclude(pc => pc.Plot)
@@ -76,6 +77,7 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 // Get groups managed by this supervisor
                 var groupIds = await _unitOfWork.Repository<Domain.Entities.Group>()
                     .GetQueryable()
+                    .AsNoTracking()
                     .Where(g => g.SupervisorId == request.SupervisorId.Value)
                     .Select(g => g.Id)
                     .ToListAsync(cancellationToken);
@@ -94,6 +96,7 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 // Get plots with late records in these groups
                 // Only get records from active versions
                 plotIds = await _unitOfWork.LateFarmerRecordRepository.GetQueryable()
+                    .AsNoTracking()
                     .Include(lr => lr.CultivationTask)
                         .ThenInclude(ct => ct.PlotCultivation)
                             .ThenInclude(pc => pc.Plot)
@@ -126,6 +129,7 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
 
             // Build plot query
             var plotQuery = _unitOfWork.PlotRepository.PlotQueryable()
+                .AsNoTracking()
                 .Include(p => p.Farmer)
                 .Where(p => plotIds.Contains(p.Id));
 
@@ -158,6 +162,7 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 // Get group ID (get the most recent group assignment)
                 var groupId = await _unitOfWork.Repository<Domain.Entities.GroupPlot>()
                     .GetQueryable()
+                    .AsNoTracking()
                     .Where(gp => gp.PlotId == plot.Id)
                     .OrderByDescending(gp => gp.CreatedAt)
                     .Select(gp => (Guid?)gp.GroupId)

@@ -3,23 +3,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
-using System.Linq;
-using System.Linq.Expressions;
-using System;
 using RiceProduction.Application.UAVFeature.Queries.GeUAVOrderDetail;
 
 namespace RiceProduction.Application.UAVFeature.Queries.GetVendorServiceOrders;
 
 public class GetVendorServiceOrdersQueryHandler : IRequestHandler<GetVendorServiceOrdersQuery, PagedResult<List<UavServiceOrderResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetVendorServiceOrdersQueryHandler> _logger;
 
-    public GetVendorServiceOrdersQueryHandler(IUnitOfWork unitOfWork, ILogger<GetVendorServiceOrdersQueryHandler> logger)
+    public GetVendorServiceOrdersQueryHandler(IApplicationDbContext context, ILogger<GetVendorServiceOrdersQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -30,25 +25,21 @@ public class GetVendorServiceOrdersQueryHandler : IRequestHandler<GetVendorServi
             var defaultStatuses = new List<RiceProduction.Domain.Enums.TaskStatus> { RiceProduction.Domain.Enums.TaskStatus.PendingApproval, RiceProduction.Domain.Enums.TaskStatus.Approved, RiceProduction.Domain.Enums.TaskStatus.InProgress, RiceProduction.Domain.Enums.TaskStatus.OnHold, RiceProduction.Domain.Enums.TaskStatus.Completed };
             var statusesToFilter = request.StatusFilter == null || !request.StatusFilter.Any() ? defaultStatuses : request.StatusFilter;
 
-            Expression<Func<UavServiceOrder, bool>> filter = order =>
-                order.UavVendorId == request.VendorId &&
-                statusesToFilter.Contains(order.Status);
+            var query = _context.UavServiceOrders
+                .AsNoTracking()
+                .Where(order => order.UavVendorId == request.VendorId &&
+                                statusesToFilter.Contains(order.Status));
 
-            // 1. Tải toàn bộ dữ liệu phù hợp với filter
-            var allOrders = await _unitOfWork.Repository<UavServiceOrder>().ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderBy(o => o.ScheduledDate),
-                includeProperties: q => q
-                    .Include(o => o.Group).ThenInclude(g => g.Cluster)
-                    .Include(o => o.Creator)
-            );
+            var totalCount = await query.CountAsync(cancellationToken);
 
-            // 2. Lấy tổng số lượng và áp dụng phân trang
-            var totalCount = allOrders.Count;
-            var pagedOrders = allOrders
+            var pagedOrders = await query
+                .Include(o => o.Group)
+                    .ThenInclude(g => g.Cluster)
+                .Include(o => o.Creator)
+                .OrderBy(o => o.ScheduledDate)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
             // 3. Ánh xạ dữ liệu
             var responseData = pagedOrders.Select(o => new UavServiceOrderResponse

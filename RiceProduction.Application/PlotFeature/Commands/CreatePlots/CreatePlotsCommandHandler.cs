@@ -49,6 +49,12 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                         validationErrors.Add(
                             $"Plot #{i + 1}: Farmer with ID '{plot.FarmerId}' not found");
                     }
+
+                    if (!plot.Area.HasValue || plot.Area.Value <= 0)
+                    {
+                        validationErrors.Add(
+                            $"Plot #{i + 1}: Area is required and must be greater than 0");
+                    }
                 }
 
                 if (validationErrors.Any())

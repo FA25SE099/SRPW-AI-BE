@@ -4,20 +4,19 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.FarmLogFeature.Queries.GetByCultivationPlot;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.FarmLogFeature.Queries.GetByProductionPlanTask;
 
 public class GetFarmLogsByProductionPlanTaskQueryHandler : IRequestHandler<GetFarmLogsByProductionPlanTaskQuery, PagedResult<List<FarmLogDetailResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetFarmLogsByProductionPlanTaskQueryHandler> _logger;
 
     public GetFarmLogsByProductionPlanTaskQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetFarmLogsByProductionPlanTaskQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,9 +26,9 @@ public class GetFarmLogsByProductionPlanTaskQueryHandler : IRequestHandler<GetFa
     {
         try
         {
-            // Verify ProductionPlanTask exists
-            var productionPlanTask = await _unitOfWork.Repository<ProductionPlanTask>()
-                .FindAsync(ppt => ppt.Id == request.ProductionPlanTaskId);
+            var productionPlanTask = await _context.ProductionPlanTasks
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ppt => ppt.Id == request.ProductionPlanTaskId, cancellationToken);
 
             if (productionPlanTask == null)
             {
@@ -38,14 +37,13 @@ public class GetFarmLogsByProductionPlanTaskQueryHandler : IRequestHandler<GetFa
                     "NotFound");
             }
 
-            // Get all CultivationTask IDs for this ProductionPlanTask
-            var cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.ProductionPlanTaskId == request.ProductionPlanTaskId,
-                includeProperties: q => q.Include(ct => ct.PlotCultivation)
-                    .ThenInclude(pc => pc.Plot)
-            );
+            var cultivationTaskIds = await _context.CultivationTasks
+                .AsNoTracking()
+                .Where(ct => ct.ProductionPlanTaskId == request.ProductionPlanTaskId)
+                .Select(ct => ct.Id)
+                .ToListAsync(cancellationToken);
 
-            if (!cultivationTasks.Any())
+            if (cultivationTaskIds.Count == 0)
             {
                 return PagedResult<List<FarmLogDetailResponse>>.Success(
                     new List<FarmLogDetailResponse>(),
@@ -55,27 +53,22 @@ public class GetFarmLogsByProductionPlanTaskQueryHandler : IRequestHandler<GetFa
                     "No cultivation tasks found for this production plan task.");
             }
 
-            var cultivationTaskIds = cultivationTasks.Select(ct => ct.Id).ToList();
+            var logsQuery = _context.FarmLogs
+                .AsNoTracking()
+                .Where(fl => cultivationTaskIds.Contains(fl.CultivationTaskId));
 
-            // Get all farm logs for these cultivation tasks
-            var allLogs = await _unitOfWork.Repository<FarmLog>().ListAsync(
-                filter: fl => cultivationTaskIds.Contains(fl.CultivationTaskId),
-                orderBy: q => q.OrderByDescending(fl => fl.LoggedDate),
-                includeProperties: q => q
-                    .Include(fl => fl.CultivationTask)
-                        .ThenInclude(ct => ct.PlotCultivation)
-                            .ThenInclude(pc => pc.Plot)
-                    .Include(fl => fl.FarmLogMaterials)
-                        .ThenInclude(flm => flm.Material)
-            );
+            var totalCount = await logsQuery.CountAsync(cancellationToken);
 
-            var totalCount = allLogs.Count;
-
-            // Apply pagination
-            var pagedLogs = allLogs
+            var pagedLogs = await logsQuery
+                .Include(fl => fl.CultivationTask)
+                    .ThenInclude(ct => ct.PlotCultivation)
+                        .ThenInclude(pc => pc.Plot)
+                .Include(fl => fl.FarmLogMaterials)
+                    .ThenInclude(flm => flm.Material)
+                .OrderByDescending(fl => fl.LoggedDate)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
             // Map to response
             var responseData = pagedLogs.Select(fl =>

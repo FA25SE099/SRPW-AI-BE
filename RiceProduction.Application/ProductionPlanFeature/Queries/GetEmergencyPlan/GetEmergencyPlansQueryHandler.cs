@@ -1,26 +1,22 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ExpertPlanResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetEmergencyPlan;
 
 public class GetEmergencyPlansQueryHandler : IRequestHandler<GetEmergencyPlansQuery, PagedResult<List<ExpertPendingPlanItemResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetEmergencyPlansQueryHandler> _logger;
 
     public GetEmergencyPlansQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetEmergencyPlansQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -34,47 +30,35 @@ public class GetEmergencyPlansQueryHandler : IRequestHandler<GetEmergencyPlansQu
                 "Getting emergency plans - Page: {Page}, PageSize: {PageSize}, GroupId: {GroupId}, ClusterId: {ClusterId}, Search: {Search}",
                 request.CurrentPage, request.PageSize, request.GroupId, request.ClusterId, request.SearchTerm);
 
-            // Build the query
-            var query = _unitOfWork.Repository<ProductionPlan>()
-                .GetQueryable()
-                .Where(p => p.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
-                .Include(p => p.Group)
-                    .ThenInclude(g => g.Cluster)
-                .Include(p => p.Submitter)
-                .AsQueryable();
+            var query = _context.ProductionPlans
+                .AsNoTracking()
+                .Where(p => p.Status == TaskStatus.Emergency);
 
-            // Apply GroupId filter
             if (request.GroupId.HasValue)
             {
                 query = query.Where(p => p.GroupId == request.GroupId.Value);
             }
 
-            // Apply ClusterId filter
             if (request.ClusterId.HasValue)
             {
                 query = query.Where(p => p.Group != null && p.Group.ClusterId == request.ClusterId.Value);
             }
 
-            // Apply search term filter
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchTerm = request.SearchTerm.ToLower().Trim();
                 query = query.Where(p => p.PlanName.ToLower().Contains(searchTerm));
             }
 
-            // Apply ordering (most recent emergency first)
-            query = query.OrderByDescending(p => p.CreatedAt);
-
-            // Get total count
             var totalCount = await query.CountAsync(cancellationToken);
 
-            // Apply pagination
             var pagedPlans = await query
+                .Include(p => p.Submitter)
+                .OrderByDescending(p => p.CreatedAt)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
                 .ToListAsync(cancellationToken);
 
-            // Map to response
             var responseData = pagedPlans.Select(p => new ExpertPendingPlanItemResponse
             {
                 Id = p.Id,

@@ -1,12 +1,12 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.StandardPlanFeature.Queries.GetAllStandardPlans;
 
 namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadStandardPlanSampleExcel
 {
-    public class DownloadStandardPlanSampleExcelQueryHandler : IRequestHandler<DownloadStandardPlanSampleExcelQuery, Result<IActionResult>>
+    public class DownloadStandardPlanSampleExcelQueryHandler : IRequestHandler<DownloadStandardPlanSampleExcelQuery, Result<FileExportResult>>
     {
         private readonly IGenericExcel _genericExcel;
         private readonly ILogger<DownloadStandardPlanSampleExcelQueryHandler> _logger;
@@ -19,7 +19,7 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadStandar
             _logger = logger;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadStandardPlanSampleExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadStandardPlanSampleExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -65,12 +65,12 @@ namespace RiceProduction.Application.StandardPlanFeature.Queries.DownloadStandar
                     DateTime.Now.ToString("yyyy-MM-dd"), 
                     fileName);
 
-                return Result<IActionResult>.Success(result, "Sample Excel template downloaded successfully");
+                return Result<FileExportResult>.Success(result, "Sample Excel template downloaded successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while creating sample Excel template");
-                return Result<IActionResult>.Failure("Failed to create sample Excel template");
+                return Result<FileExportResult>.Failure("Failed to create sample Excel template");
             }
         }
     }

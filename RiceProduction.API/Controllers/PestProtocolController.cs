@@ -41,57 +41,40 @@ public class PestProtocolController : Controller
     [HttpPost]
     public async Task<ActionResult<Result<Guid>>> Create([FromBody] CreatePestProtocolCommand command)
     {
-        try
+        _logger.LogInformation(
+            "Create PestProtocol request received: {ProtocolName}, Type: {Type}",
+            command.Name,
+            command.Type);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation(
-                "Create PestProtocol request received: {ProtocolName}, Type: {Type}",
-                command.Name,
-                command.Type);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to create pest protocol: {Errors}",
-                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully created pest protocol with ID: {ProtocolId}", result.Data);
-            return Ok(result);
+            _logger.LogWarning("Failed to create pest protocol: {Errors}",
+                string.Join(", ", result.Errors ?? Array.Empty<string>()));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while creating pest protocol");
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-        }
+
+        _logger.LogInformation("Successfully created pest protocol with ID: {ProtocolId}", result.Data);
+        return Ok(result);
     }
 
     [HttpPut]
     public async Task<ActionResult<Result<Guid>>> Update([FromBody] UpdatePestProtocolCommand command)
     {
-        try
+        _logger.LogInformation("Update PestProtocol request received for ID: {ProtocolId}", command.Id);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("Update PestProtocol request received for ID: {ProtocolId}", command.Id);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Failed to update pest protocol ID {ProtocolId}: {Errors}",
-                    command.Id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
-
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully updated pest protocol with ID: {ProtocolId}", result.Data);
-            return Ok(result);
+            _logger.LogWarning(
+                "Failed to update pest protocol ID {ProtocolId}: {Errors}",
+                command.Id, string.Join(", ", result.Errors ?? Array.Empty<string>()));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error occurred while updating pest protocol ID: {ProtocolId}", command.Id);
-            return StatusCode(500, Result<Guid>.Failure("An unexpected error occurred"));
-        }
+
+        _logger.LogInformation("Successfully updated pest protocol with ID: {ProtocolId}", result.Data);
+        return Ok(result);
     }
 }

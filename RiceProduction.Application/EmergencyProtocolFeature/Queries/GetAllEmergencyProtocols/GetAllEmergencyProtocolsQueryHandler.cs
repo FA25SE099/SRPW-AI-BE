@@ -1,27 +1,21 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.EmergencyProtocolResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.EmergencyProtocolFeature.Queries.GetAllEmergencyProtocols;
 
 public class GetAllEmergencyProtocolsQueryHandler : IRequestHandler<GetAllEmergencyProtocolsQuery, PagedResult<List<EmergencyProtocolDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetAllEmergencyProtocolsQueryHandler> _logger;
 
     public GetAllEmergencyProtocolsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetAllEmergencyProtocolsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -36,8 +30,8 @@ public class GetAllEmergencyProtocolsQueryHandler : IRequestHandler<GetAllEmerge
                 request.CurrentPage, request.PageSize, request.CategoryId, request.SearchTerm, request.IsActive);
 
             // Start with base queryable
-            var query = _unitOfWork.Repository<EmergencyProtocol>()
-                .GetQueryable()
+            var query = _context.EmergencyProtocols
+                .AsNoTracking()
                 .Include(ep => ep.Category)
                 .Include(ep => ep.StandardPlanStages)
                     .ThenInclude(s => s.StandardPlanTasks)
@@ -45,7 +39,7 @@ public class GetAllEmergencyProtocolsQueryHandler : IRequestHandler<GetAllEmerge
                     .ThenInclude(t => t.PestProtocol)
                 .Include(ep => ep.Thresholds)
                     .ThenInclude(t => t.WeatherProtocol)
-                .AsQueryable();
+                .AsSplitQuery();
 
             // Apply CategoryId filter
             if (request.CategoryId.HasValue)

@@ -3,21 +3,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using System.Linq.Expressions;
-using System.Linq;
 
 namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetTodayTask;
 
 public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Result<List<TodayTaskResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetTodayTasksQueryHandler> _logger;
 
-    public GetTodayTasksQueryHandler(IUnitOfWork unitOfWork, ILogger<GetTodayTasksQueryHandler> logger)
+    public GetTodayTasksQueryHandler(IApplicationDbContext context, ILogger<GetTodayTasksQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -25,16 +22,14 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
     {
         try
         {
-            var todayUtc = DateTime.UtcNow.Date; // Ngày hôm nay (UTC Date only)
-            
-            // 1. Xác định Latest Version IDs cho từng PlotCultivation (updated to use latest version pattern)
-            
-            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .ListAsync(
-                    filter: pc => pc.Plot.FarmerId == request.FarmerId,
-                    includeProperties: q => q.Include(pc => pc.CultivationVersions)
-                ); 
-            
+            var todayUtc = DateTime.UtcNow.Date;
+
+            var plotCultivations = await _context.PlotCultivations
+                .AsNoTracking()
+                .Where(pc => pc.Plot.FarmerId == request.FarmerId)
+                .Include(pc => pc.CultivationVersions)
+                .ToListAsync(cancellationToken);
+
             // Get the latest version (highest VersionOrder) for each PlotCultivation
             var latestVersionIds = plotCultivations
                 .Select(pc => pc.CultivationVersions
@@ -44,53 +39,34 @@ public class GetTodayTasksQueryHandler : IRequestHandler<GetTodayTasksQuery, Res
                 .Select(id => id!.Value)
                 .ToList();
 
-            // Xác định các trạng thái tồn đọng mặc định
-            var defaultOutstandingStatuses = new List<RiceProduction.Domain.Enums.TaskStatus> 
-            { 
-                RiceProduction.Domain.Enums.TaskStatus.Draft, 
-                RiceProduction.Domain.Enums.TaskStatus.InProgress, 
-                RiceProduction.Domain.Enums.TaskStatus.OnHold 
+            var defaultOutstandingStatuses = new List<RiceProduction.Domain.Enums.TaskStatus>
+            {
+                RiceProduction.Domain.Enums.TaskStatus.Draft,
+                RiceProduction.Domain.Enums.TaskStatus.InProgress,
+                RiceProduction.Domain.Enums.TaskStatus.OnHold
             };
-            
-            var statusesToFilter = request.StatusFilter.HasValue 
-                ? new List<RiceProduction.Domain.Enums.TaskStatus> { request.StatusFilter.Value }
-                : defaultOutstandingStatuses;
 
-            var includesDraft = statusesToFilter.Contains(RiceProduction.Domain.Enums.TaskStatus.Draft);
-
-            
-            Expression<Func<CultivationTask, bool>> filter = ct =>
-                // Lọc theo Version mới nhất (Updated to use latest version)
-                ct.VersionId.HasValue && latestVersionIds.Contains(ct.VersionId.Value) &&
-                
-                // Lọc theo PlotCultivationId (nếu được cung cấp)
-                (!request.PlotCultivationId.HasValue || ct.PlotCultivationId == request.PlotCultivationId.Value) &&
-                
-                // Lọc theo Mùa vụ đang hoạt động
-                (ct.PlotCultivation.Status == CultivationStatus.Planned || ct.PlotCultivation.Status == CultivationStatus.InProgress) &&
-                
-                //Lọc theo StatusFilter
-                (request.StatusFilter.HasValue 
-                    ? ct.Status == request.StatusFilter.Value 
-                    : defaultOutstandingStatuses.Contains(ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft))); 
-                    
-
-            // 3. Định nghĩa các Includes sâu - Updated to match GetPlotCultivationByGroupAndPlotQueryHandler pattern
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderBy(ct => ct.ProductionPlanTask!.ScheduledDate),
+            var tasks = await _context.CultivationTasks
+                .AsNoTracking()
+                .Where(ct =>
+                    ct.VersionId.HasValue && latestVersionIds.Contains(ct.VersionId.Value) &&
+                    (!request.PlotCultivationId.HasValue || ct.PlotCultivationId == request.PlotCultivationId.Value) &&
+                    (ct.PlotCultivation.Status == CultivationStatus.Planned || ct.PlotCultivation.Status == CultivationStatus.InProgress) &&
+                    (request.StatusFilter.HasValue
+                        ? ct.Status == request.StatusFilter.Value
+                        : defaultOutstandingStatuses.Contains(ct.Status.GetValueOrDefault(RiceProduction.Domain.Enums.TaskStatus.Draft))))
 #pragma warning disable CS8602 // Dereference of a possibly null reference
-                includeProperties: q => q
-                    .Include(ct => ct.PlotCultivation) 
-                        .ThenInclude(pc => pc.Plot)
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionStage)
-                            .ThenInclude(ps => ps.ProductionPlan)
-                    .Include(ct => ct.CultivationTaskMaterials)
-                        .ThenInclude(ctm => ctm.Material)
-                    .Include(ct => ct.AssignedVendor)
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionStage)
+                        .ThenInclude(ps => ps.ProductionPlan)
+                .Include(ct => ct.CultivationTaskMaterials)
+                    .ThenInclude(ctm => ctm.Material)
+                .Include(ct => ct.AssignedVendor)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
-            );
+                .OrderBy(ct => ct.ProductionPlanTask!.ScheduledDate)
+                .ToListAsync(cancellationToken);
 
             // 4. Ánh xạ dữ liệu
             var responseData = tasks.Select(ct =>

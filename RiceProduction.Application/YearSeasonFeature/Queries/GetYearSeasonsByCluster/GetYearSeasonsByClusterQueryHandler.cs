@@ -3,20 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.YearSeasonFeature.Queries.GetYearSeasonsByCluster;
 
 public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeasonsByClusterQuery, Result<YearSeasonsByClusterResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetYearSeasonsByClusterQueryHandler> _logger;
 
     public GetYearSeasonsByClusterQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetYearSeasonsByClusterQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -24,9 +23,11 @@ public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeason
     {
         try
         {
-            // Get cluster
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
+            var cluster = await _context.Clusters
+                .AsNoTracking()
+                .Where(c => c.Id == request.ClusterId)
+                .Select(c => new { c.Id, c.ClusterName })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (cluster == null)
             {
@@ -34,8 +35,8 @@ public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeason
                     $"Cluster with ID {request.ClusterId} not found");
             }
 
-            var query = _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var query = _context.YearSeasons
+                .AsNoTracking()
                 .Where(ys => ys.ClusterId == request.ClusterId);
 
             if (request.Year.HasValue)
@@ -44,18 +45,62 @@ public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeason
             }
 
             var yearSeasons = await query
-                .Include(ys => ys.Season)
-                .Include(ys => ys.Cluster)
-                .Include(ys => ys.RiceVariety)
-                .Include(ys => ys.ManagedByExpert)
-                .Include(ys => ys.Groups)
                 .OrderByDescending(ys => ys.Year)
                 .ThenBy(ys => ys.StartDate)
+                .Select(ys => new
+                {
+                    ys.Id,
+                    ys.SeasonId,
+                    ys.Season.SeasonName,
+                    ys.Season.SeasonType,
+                    ys.ClusterId,
+                    ys.Cluster.ClusterName,
+                    ys.Year,
+                    ys.RiceVarietyId,
+                    RiceVarietyName = ys.RiceVariety != null ? ys.RiceVariety.VarietyName : null,
+                    ys.StartDate,
+                    ys.EndDate,
+                    ys.BreakStartDate,
+                    ys.BreakEndDate,
+                    ys.PlanningWindowStart,
+                    ys.PlanningWindowEnd,
+                    ys.Status,
+                    ys.Notes,
+                    ys.ManagedByExpertId,
+                    ManagedByExpertName = ys.ManagedByExpert != null ? ys.ManagedByExpert.FullName : null,
+                    GroupCount = ys.Groups.Count
+                })
                 .ToListAsync(cancellationToken);
 
             var now = DateTime.UtcNow;
 
-            var allSeasons = yearSeasons.Select(ys => MapToDTO(ys, now)).ToList();
+            var allSeasons = yearSeasons.Select(ys => new YearSeasonDTO
+            {
+                Id = ys.Id,
+                SeasonId = ys.SeasonId,
+                SeasonName = ys.SeasonName,
+                SeasonType = ys.SeasonType,
+                ClusterId = ys.ClusterId,
+                ClusterName = ys.ClusterName,
+                Year = ys.Year,
+                RiceVarietyId = ys.RiceVarietyId,
+                RiceVarietyName = ys.RiceVarietyName,
+                StartDate = ys.StartDate,
+                EndDate = ys.EndDate,
+                BreakStartDate = ys.BreakStartDate,
+                BreakEndDate = ys.BreakEndDate,
+                PlanningWindowStart = ys.PlanningWindowStart,
+                PlanningWindowEnd = ys.PlanningWindowEnd,
+                Status = ys.Status.ToString(),
+                Notes = ys.Notes,
+                ManagedByExpertId = ys.ManagedByExpertId,
+                ManagedByExpertName = ys.ManagedByExpertName,
+                GroupCount = ys.GroupCount,
+                IsCurrent = now >= ys.StartDate && now <= ys.EndDate,
+                IsPast = now > ys.EndDate,
+                IsUpcoming = now < ys.StartDate,
+                DisplayName = $"{ys.SeasonName} {ys.Year}"
+            }).ToList();
 
             var response = new YearSeasonsByClusterResponse
             {
@@ -74,41 +119,6 @@ public class GetYearSeasonsByClusterQueryHandler : IRequestHandler<GetYearSeason
             _logger.LogError(ex, "Error retrieving YearSeasons for cluster {ClusterId}", request.ClusterId);
             return Result<YearSeasonsByClusterResponse>.Failure("Failed to retrieve YearSeasons");
         }
-    }
-
-    private YearSeasonDTO MapToDTO(YearSeason ys, DateTime now)
-    {
-        var isCurrent = now >= ys.StartDate && now <= ys.EndDate;
-        var isPast = now > ys.EndDate;
-        var isUpcoming = now < ys.StartDate;
-
-        return new YearSeasonDTO
-        {
-            Id = ys.Id,
-            SeasonId = ys.SeasonId,
-            SeasonName = ys.Season.SeasonName,
-            SeasonType = ys.Season.SeasonType,
-            ClusterId = ys.ClusterId,
-            ClusterName = ys.Cluster.ClusterName,
-            Year = ys.Year,
-            RiceVarietyId = ys.RiceVarietyId,
-            RiceVarietyName = ys.RiceVariety?.VarietyName,
-            StartDate = ys.StartDate,
-            EndDate = ys.EndDate,
-            BreakStartDate = ys.BreakStartDate,
-            BreakEndDate = ys.BreakEndDate,
-            PlanningWindowStart = ys.PlanningWindowStart,
-            PlanningWindowEnd = ys.PlanningWindowEnd,
-            Status = ys.Status.ToString(),
-            Notes = ys.Notes,
-            ManagedByExpertId = ys.ManagedByExpertId,
-            ManagedByExpertName = ys.ManagedByExpert?.FullName,
-            GroupCount = ys.Groups.Count,
-            IsCurrent = isCurrent,
-            IsPast = isPast,
-            IsUpcoming = isUpcoming,
-            DisplayName = $"{ys.Season.SeasonName} {ys.Year}"
-        };
     }
 }
 

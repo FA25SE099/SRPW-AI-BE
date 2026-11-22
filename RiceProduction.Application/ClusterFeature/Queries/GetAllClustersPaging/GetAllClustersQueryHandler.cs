@@ -4,7 +4,6 @@ using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 using RiceProduction.Application.Common.Models.Response.ClusterResponses;
 using RiceProduction.Domain.Enums;
-using RiceProduction.Infrastructure.Repository;
 using System;
 using System.Collections.Generic;
 using System.Linq;

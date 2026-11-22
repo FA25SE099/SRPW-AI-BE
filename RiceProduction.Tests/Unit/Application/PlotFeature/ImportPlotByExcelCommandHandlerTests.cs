@@ -51,6 +51,13 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockUnitOfWork.Setup(u => u.Repository<PlotCultivation>()).Returns(_mockPlotCultivationRepo.Object);
         _mockUnitOfWork.Setup(u => u.Repository<CultivationVersion>()).Returns(_mockCultivationVersionRepo.Object);
 
+        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
+            .ReturnsAsync(new List<Season>());
+        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
+            .ReturnsAsync(new List<Farmer>());
+        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
+            .ReturnsAsync(new List<RiceVariety>());
+
         _handler = new ImportPlotByExcelCommandHandler(
             _mockUnitOfWork.Object,
             _mockGenericExcel.Object,
@@ -251,11 +258,11 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(farmer);
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null))
+        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
             .ReturnsAsync((Plot?)null);
 
         _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(() => Guid.NewGuid());
 
         _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
             .ReturnsAsync(new List<Season>());
@@ -318,17 +325,18 @@ public class ImportPlotByExcelCommandHandlerTests
         { 
             Id = seasonId, 
             SeasonName = "Winter-Spring",
-            StartDate = "1/1",
-            EndDate = "5/31"
+            StartDate = "01/01",
+            EndDate = "12/31",
+            IsActive = true
         };
         _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
             .ReturnsAsync(new List<Season> { season });
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null))
+        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
             .ReturnsAsync((Plot?)null);
 
         _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(() => Guid.NewGuid());
 
         var command = new ImportPlotByExcelCommand
         {
@@ -469,11 +477,11 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(farmer);
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null))
+        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
             .ReturnsAsync((Plot?)null);
 
         _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(() => Guid.NewGuid());
 
         _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
             .ReturnsAsync(new List<Season>());
@@ -538,11 +546,11 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(farmer);
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null))
+        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
             .ReturnsAsync((Plot?)null);
 
         _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(() => Guid.NewGuid());
 
         _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
             .ReturnsAsync(new List<Season>());
@@ -584,11 +592,11 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(farmer);
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null))
+        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
             .ReturnsAsync((Plot?)null);
 
         _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(() => Guid.NewGuid());
 
         _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
             .ReturnsAsync(new List<Season>());

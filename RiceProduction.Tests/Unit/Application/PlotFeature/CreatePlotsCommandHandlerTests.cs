@@ -47,6 +47,15 @@ public class CreatePlotsCommandHandlerTests
         _mockUnitOfWork.Setup(u => u.Repository<CultivationVersion>()).Returns(_mockCultivationVersionRepo.Object);
         _mockUnitOfWork.Setup(u => u.FarmerRepository).Returns(_mockFarmerRepo.Object);
 
+        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
+            .ReturnsAsync(new List<Farmer>());
+        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
+            .ReturnsAsync(new List<Plot>());
+        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
+            .ReturnsAsync(new List<Season>());
+        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
+            .ReturnsAsync(new List<RiceVariety>());
+
         _handler = new CreatePlotsCommandHandler(
             _mockUnitOfWork.Object,
             _mockMediator.Object,
@@ -110,11 +119,12 @@ public class CreatePlotsCommandHandlerTests
     public async Task Handle_FarmerNotFound_ReturnsFailure()
     {
         // Arrange
+        var farmerId = Guid.NewGuid();
         var command = new CreatePlotsCommand
         {
             Plots = new List<PlotCreationRequest>
             {
-                new PlotCreationRequest { FarmerId = Guid.NewGuid(), SoThua = 1, SoTo = 1, Area = 1000m }
+                new PlotCreationRequest { FarmerId = farmerId, SoThua = 1, SoTo = 1, Area = 1000m }
             }
         };
 
@@ -126,7 +136,7 @@ public class CreatePlotsCommandHandlerTests
 
         // Assert
         result.Succeeded.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Contains("Farmer not found"));
+        result.Errors.Should().Contain(e => e.Contains($"Farmer with ID '{farmerId}' not found"));
     }
 
     [Fact]
@@ -198,11 +208,11 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), It.IsAny<CancellationToken>()))
+        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
             .ReturnsAsync(new List<Farmer> { farmer });
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null))
-            .ReturnsAsync(existingPlot);
+        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
+            .ReturnsAsync(new List<Plot> { existingPlot });
 
         _mockUnitOfWork.Setup(u => u.CompleteAsync())
             .ReturnsAsync(1);
@@ -211,9 +221,9 @@ public class CreatePlotsCommandHandlerTests
         var result = await _handler.Handle(command, CancellationToken.None);
 
         // Assert
-        result.Succeeded.Should().BeTrue();
-        result.Data.Should().BeEmpty(); // No new plots created
-        result.Message.Should().Contain("skipped");
+        result.Succeeded.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("No plots to create") && e.Contains("All plots already exist"));
+        _mockPlotRepo.Verify(r => r.AddRangeAsync(It.IsAny<IEnumerable<Plot>>()), Times.Never);
     }
 
     [Fact]
@@ -230,7 +240,7 @@ public class CreatePlotsCommandHandlerTests
 
         // Assert
         result.Succeeded.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Contains("No plots provided") || e.Contains("empty"));
+        result.Errors.Should().Contain(e => e.Contains("No plots to create"));
     }
 
     [Fact]
@@ -248,7 +258,7 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), It.IsAny<CancellationToken>()))
+        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
             .ReturnsAsync(new List<Farmer> { farmer });
 
         // Act
@@ -274,7 +284,7 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), It.IsAny<CancellationToken>()))
+        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
             .ReturnsAsync(new List<Farmer> { farmer });
 
         // Act
@@ -282,6 +292,7 @@ public class CreatePlotsCommandHandlerTests
 
         // Assert
         result.Succeeded.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("Area") || e.Contains("must be greater than"));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RiceProduction.API.Common;
 using RiceProduction.Application.MaterialDistributionFeature.Commands.BulkConfirmMaterialDistribution;
 using RiceProduction.Application.MaterialDistributionFeature.Commands.BulkConfirmMaterialReceipt;
 using RiceProduction.Application.MaterialDistributionFeature.Commands.ConfirmMaterialDistribution;
@@ -43,25 +44,16 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetForGroupGrouped(Guid groupId)
     {
-        try
-        {
-            var query = new GetMaterialDistributionsGroupedByPlotQuery { GroupId = groupId };
-            var result = await _mediator.Send(query);
+        var query = new GetMaterialDistributionsGroupedByPlotQuery { GroupId = groupId };
+        var result = await _mediator.Send(query);
 
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to get grouped distributions for group {GroupId}: {Message}", 
-                    groupId, result.Message);
-                return BadRequest(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Error getting grouped distributions for group {GroupId}", groupId);
-            return StatusCode(500, new { message = "An error occurred while retrieving grouped distributions" });
+            _logger.LogWarning("Failed to get grouped distributions for group {GroupId}: {Message}",
+                groupId, result.Message);
         }
+
+        return this.ToIActionResult(result);
     }
 
     /// <summary>
@@ -75,25 +67,16 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetForGroup(Guid groupId)
     {
-        try
-        {
-            var query = new GetMaterialDistributionsForGroupQuery { GroupId = groupId };
-            var result = await _mediator.Send(query);
+        var query = new GetMaterialDistributionsForGroupQuery { GroupId = groupId };
+        var result = await _mediator.Send(query);
 
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to get distributions for group {GroupId}: {Message}", 
-                    groupId, result.Message);
-                return BadRequest(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Error getting distributions for group {GroupId}", groupId);
-            return StatusCode(500, new { message = "An error occurred while retrieving distributions" });
+            _logger.LogWarning("Failed to get distributions for group {GroupId}: {Message}",
+                groupId, result.Message);
         }
+
+        return this.ToIActionResult(result);
     }
 
     /// <summary>
@@ -108,27 +91,19 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> InitiateDistribution([FromBody] InitiateMaterialDistributionCommand command)
     {
-        try
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to initiate distributions for group {GroupId}: {Message}", 
-                    command.GroupId, result.Message);
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Successfully initiated {Count} distributions for group {GroupId}", 
-                result.Data?.DistributionsCreated, command.GroupId);
-
-            return Ok(result);
+            _logger.LogWarning("Failed to initiate distributions for group {GroupId}: {Message}",
+                command.GroupId, result.Message);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error initiating distributions for group {GroupId}", command.GroupId);
-            return StatusCode(500, new { message = "An error occurred while initiating distributions" });
-        }
+
+        _logger.LogInformation("Successfully initiated {Count} distributions for group {GroupId}",
+            result.Data?.DistributionsCreated, command.GroupId);
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -145,31 +120,21 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> BulkConfirmDistribution([FromBody] BulkConfirmMaterialDistributionCommand command)
     {
-        try
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Supervisor {SupervisorId} failed to bulk confirm distributions for PlotCultivation {PlotCultivationId}: {Message}",
-                    command.SupervisorId, command.PlotCultivationId, result.Message);
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation(
-                "Supervisor {SupervisorId} bulk confirmed {Count} distributions for PlotCultivation {PlotCultivationId}",
-                command.SupervisorId, result.Data?.TotalDistributionsConfirmed, command.PlotCultivationId);
-
-            return Ok(result);
+            _logger.LogWarning(
+                "Supervisor {SupervisorId} failed to bulk confirm distributions for PlotCultivation {PlotCultivationId}: {Message}",
+                command.SupervisorId, command.PlotCultivationId, result.Message);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, 
-                "Error bulk confirming distributions for PlotCultivation {PlotCultivationId} by supervisor {SupervisorId}",
-                command.PlotCultivationId, command.SupervisorId);
-            return StatusCode(500, new { message = "An error occurred while bulk confirming distributions" });
-        }
+
+        _logger.LogInformation(
+            "Supervisor {SupervisorId} bulk confirmed {Count} distributions for PlotCultivation {PlotCultivationId}",
+            command.SupervisorId, result.Data?.TotalDistributionsConfirmed, command.PlotCultivationId);
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -185,31 +150,21 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ConfirmDistribution([FromBody] ConfirmMaterialDistributionCommand command)
     {
-        try
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Supervisor {SupervisorId} failed to confirm distribution {DistributionId}: {Message}",
-                    command.SupervisorId, command.MaterialDistributionId, result.Message);
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation(
-                "Supervisor {SupervisorId} confirmed distribution {DistributionId} on {Date}",
-                command.SupervisorId, command.MaterialDistributionId, command.ActualDistributionDate);
-
-            return Ok(result);
+            _logger.LogWarning(
+                "Supervisor {SupervisorId} failed to confirm distribution {DistributionId}: {Message}",
+                command.SupervisorId, command.MaterialDistributionId, result.Message);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, 
-                "Error confirming distribution {DistributionId} by supervisor {SupervisorId}",
-                command.MaterialDistributionId, command.SupervisorId);
-            return StatusCode(500, new { message = "An error occurred while confirming distribution" });
-        }
+
+        _logger.LogInformation(
+            "Supervisor {SupervisorId} confirmed distribution {DistributionId} on {Date}",
+            command.SupervisorId, command.MaterialDistributionId, command.ActualDistributionDate);
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -224,31 +179,21 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ConfirmReceipt([FromBody] ConfirmMaterialReceiptCommand command)
     {
-        try
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Farmer {FarmerId} failed to confirm receipt for distribution {DistributionId}: {Message}",
-                    command.FarmerId, command.MaterialDistributionId, result.Message);
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation(
-                "Farmer {FarmerId} confirmed receipt for distribution {DistributionId}",
-                command.FarmerId, command.MaterialDistributionId);
-
-            return Ok(result);
+            _logger.LogWarning(
+                "Farmer {FarmerId} failed to confirm receipt for distribution {DistributionId}: {Message}",
+                command.FarmerId, command.MaterialDistributionId, result.Message);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Error confirming receipt for distribution {DistributionId} by farmer {FarmerId}",
-                command.MaterialDistributionId, command.FarmerId);
-            return StatusCode(500, new { message = "An error occurred while confirming receipt" });
-        }
+
+        _logger.LogInformation(
+            "Farmer {FarmerId} confirmed receipt for distribution {DistributionId}",
+            command.FarmerId, command.MaterialDistributionId);
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -265,31 +210,21 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> BulkConfirmReceipt([FromBody] BulkConfirmMaterialReceiptCommand command)
     {
-        try
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning(
-                    "Farmer {FarmerId} failed to bulk confirm receipts: {Message}",
-                    command.FarmerId, result.Message);
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation(
-                "Farmer {FarmerId} bulk confirmed {Count} receipts ({Failed} failed)",
-                command.FarmerId, result.Data?.TotalReceiptsConfirmed, result.Data?.FailedCount);
-
-            return Ok(result);
+            _logger.LogWarning(
+                "Farmer {FarmerId} failed to bulk confirm receipts: {Message}",
+                command.FarmerId, result.Message);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Error bulk confirming receipts for farmer {FarmerId}",
-                command.FarmerId);
-            return StatusCode(500, new { message = "An error occurred while bulk confirming receipts" });
-        }
+
+        _logger.LogInformation(
+            "Farmer {FarmerId} bulk confirmed {Count} receipts ({Failed} failed)",
+            command.FarmerId, result.Data?.TotalReceiptsConfirmed, result.Data?.FailedCount);
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -304,28 +239,20 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetPendingForFarmer(Guid farmerId)
     {
-        try
+        var query = new GetPendingReceiptsForFarmerQuery { FarmerId = farmerId };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
         {
-            var query = new GetPendingReceiptsForFarmerQuery { FarmerId = farmerId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to get pending receipts for farmer {FarmerId}: {Message}", 
-                    farmerId, result.Message);
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Farmer {FarmerId} has {Count} pending receipts", 
-                farmerId, result.Data?.TotalPending);
-
-            return Ok(result);
+            _logger.LogWarning("Failed to get pending receipts for farmer {FarmerId}: {Message}",
+                farmerId, result.Message);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting pending receipts for farmer {FarmerId}", farmerId);
-            return StatusCode(500, new { message = "An error occurred while retrieving pending receipts" });
-        }
+
+        _logger.LogInformation("Farmer {FarmerId} has {Count} pending receipts",
+            farmerId, result.Data?.TotalPending);
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -340,28 +267,20 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetPendingForSupervisor(Guid supervisorId)
     {
-        try
+        var query = new GetPendingDistributionsForSupervisorQuery { SupervisorId = supervisorId };
+        var result = await _mediator.Send(query);
+
+        if (!result.Succeeded)
         {
-            var query = new GetPendingDistributionsForSupervisorQuery { SupervisorId = supervisorId };
-            var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to get pending distributions for supervisor {SupervisorId}: {Message}", 
-                    supervisorId, result.Message);
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Supervisor {SupervisorId} has {Count} pending distributions ({Overdue} overdue)", 
-                supervisorId, result.Data?.TotalPending, result.Data?.OverdueCount);
-
-            return Ok(result);
+            _logger.LogWarning("Failed to get pending distributions for supervisor {SupervisorId}: {Message}",
+                supervisorId, result.Message);
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting pending distributions for supervisor {SupervisorId}", supervisorId);
-            return StatusCode(500, new { message = "An error occurred while retrieving pending distributions" });
-        }
+
+        _logger.LogInformation("Supervisor {SupervisorId} has {Count} pending distributions ({Overdue} overdue)",
+            supervisorId, result.Data?.TotalPending, result.Data?.OverdueCount);
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -374,25 +293,17 @@ public class MaterialDistributionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid distributionId)
     {
-        try
-        {
-            var query = new GetMaterialDistributionByIdQuery { DistributionId = distributionId };
-            var result = await _mediator.Send(query);
+        var query = new GetMaterialDistributionByIdQuery { DistributionId = distributionId };
+        var result = await _mediator.Send(query);
 
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Distribution {DistributionId} not found: {Message}", 
-                    distributionId, result.Message);
-                return NotFound(result);
-            }
-
-            return Ok(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Error getting distribution {DistributionId}", distributionId);
-            return StatusCode(500, new { message = "An error occurred while retrieving distribution" });
+            _logger.LogWarning("Distribution {DistributionId} not found: {Message}",
+                distributionId, result.Message);
+            return NotFound(result);
         }
+
+        return Ok(result);
     }
 
     /// <summary>

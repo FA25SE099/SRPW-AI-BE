@@ -30,9 +30,11 @@ public class CalculateStandardPlanProfitAnalysisQueryHandler : IRequestHandler<C
 
             var standardPlan = await _unitOfWork.Repository<StandardPlan>()
                 .GetQueryable()
+                .AsNoTracking()
                 .Include(sp => sp.StandardPlanStages)
                     .ThenInclude(stage => stage.StandardPlanTasks)
                         .ThenInclude(task => task.StandardPlanTaskMaterials)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(sp => sp.Id == request.StandardPlanId, cancellationToken);
 
             if (standardPlan == null)

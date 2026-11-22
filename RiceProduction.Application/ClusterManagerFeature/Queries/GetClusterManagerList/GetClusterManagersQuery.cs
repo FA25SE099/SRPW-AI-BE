@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc.RazorPages;
-using RiceProduction.Application.Common.Models;
+﻿using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using System;

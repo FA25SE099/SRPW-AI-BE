@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Index.HPRtree;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 
@@ -16,13 +17,11 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
     public class GetPlotOutSeasonQueriesHandler : IRequestHandler<GetPlotOutSeasonQueries, Result<IEnumerable<PlotDTO>>>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
         private readonly ILogger<GetPlotOutSeasonQueriesHandler> _logger;
 
-        public GetPlotOutSeasonQueriesHandler(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetPlotOutSeasonQueriesHandler> logger)
+        public GetPlotOutSeasonQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetPlotOutSeasonQueriesHandler> logger)
         {
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
             _logger = logger;
         }
 
@@ -80,7 +79,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
                 }
                 ).ToList();
 
-                var plotDTOs = _mapper.Map<IEnumerable<PlotDTO>>(filterdItems);
+                var plotDTOs = filterdItems.Select(p => p.ToDto()).ToList();
 
                 _logger.LogInformation("Found {Count} plots out of season", items.Count);
 

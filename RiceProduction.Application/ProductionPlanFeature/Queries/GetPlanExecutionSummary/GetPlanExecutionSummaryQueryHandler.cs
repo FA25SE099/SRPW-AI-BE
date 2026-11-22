@@ -4,22 +4,20 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
-using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetPlanExecutionSummary;
 
 public class GetPlanExecutionSummaryQueryHandler : IRequestHandler<GetPlanExecutionSummaryQuery, Result<PlanExecutionSummaryResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlanExecutionSummaryQueryHandler> _logger;
 
     public GetPlanExecutionSummaryQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPlanExecutionSummaryQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,43 +25,40 @@ public class GetPlanExecutionSummaryQueryHandler : IRequestHandler<GetPlanExecut
     {
         try
         {
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
-                match: p => p.Id == request.PlanId,
-                includeProperties: q => q
-                    .Include(p => p.Group)
-                        .ThenInclude(g => g.YearSeason)
-                            .ThenInclude(ys => ys.Season)
-                    .Include(p => p.Group)
-                        .ThenInclude(g => g.GroupPlots)
-                            .ThenInclude(gp => gp.Plot)
-                                .ThenInclude(pl => pl.Farmer)
-                    .Include(p => p.Approver)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks)
-            );
+            var plan = await _context.ProductionPlans
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.YearSeason)
+                        .ThenInclude(ys => ys!.Season)
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.GroupPlots)
+                        .ThenInclude(gp => gp.Plot)
+                .Include(p => p.Approver)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks)
+                .FirstOrDefaultAsync(p => p.Id == request.PlanId, cancellationToken);
 
             if (plan == null)
             {
                 return Result<PlanExecutionSummaryResponse>.Failure($"Production Plan with ID {request.PlanId} not found.", "PlanNotFound");
             }
 
-            var cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.ProductionPlanTask.ProductionStage.ProductionPlanId == request.PlanId,
-                includeProperties: q => q
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionStage)
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Plot)
-                            .ThenInclude(p => p.Farmer)
-            );
+            var tasksList = await _context.CultivationTasks
+                .AsNoTracking()
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionStage)
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                        .ThenInclude(p => p.Farmer)
+                .Where(ct => ct.ProductionPlanTask.ProductionStage.ProductionPlanId == request.PlanId)
+                .ToListAsync(cancellationToken);
 
-            var tasksList = cultivationTasks.ToList();
-            
             var totalTasks = tasksList.Count;
             var completedTasks = tasksList.Count(t => t.Status == TaskStatus.Completed);
             var inProgressTasks = tasksList.Count(t => t.Status == TaskStatus.InProgress);
             var pendingTasks = tasksList.Count(t => t.Status == TaskStatus.Draft || t.Status == TaskStatus.PendingApproval);
-            
+
             var completionPercentage = totalTasks > 0 ? (decimal)completedTasks / totalTasks * 100 : 0;
 
             var estimatedCost = plan.CurrentProductionStages
@@ -83,16 +78,23 @@ public class GetPlanExecutionSummaryQueryHandler : IRequestHandler<GetPlanExecut
                 .FirstOrDefault()?.ActualEndDate;
 
             var plotSummaries = tasksList
-                .GroupBy(t => new { t.PlotCultivation.PlotId, t.PlotCultivation.Plot })
-                .Select(g => new PlotExecutionSummary
+                .GroupBy(t => t.PlotCultivation.PlotId)
+                .Select(g =>
                 {
-                    PlotId = g.Key.PlotId,
-                    PlotName = $"{g.Key.Plot.SoThua}/{g.Key.Plot.SoTo}",
-                    FarmerName = g.Key.Plot.Farmer?.FullName ?? "Unknown",
-                    PlotArea = g.Key.Plot.Area,
-                    TaskCount = g.Count(),
-                    CompletedTasks = g.Count(t => t.Status == TaskStatus.Completed),
-                    CompletionRate = g.Count() > 0 ? (decimal)g.Count(t => t.Status == TaskStatus.Completed) / g.Count() * 100 : 0
+                    var plot = g.First().PlotCultivation.Plot;
+                    var taskCount = g.Count();
+                    var plotCompletedTasks = g.Count(t => t.Status == TaskStatus.Completed);
+
+                    return new PlotExecutionSummary
+                    {
+                        PlotId = g.Key,
+                        PlotName = $"{plot.SoThua}/{plot.SoTo}",
+                        FarmerName = plot.Farmer?.FullName ?? "Unknown",
+                        PlotArea = plot.Area,
+                        TaskCount = taskCount,
+                        CompletedTasks = plotCompletedTasks,
+                        CompletionRate = taskCount > 0 ? (decimal)plotCompletedTasks / taskCount * 100 : 0
+                    };
                 })
                 .OrderBy(ps => ps.PlotName)
                 .ToList();

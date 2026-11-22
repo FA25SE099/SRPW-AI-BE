@@ -28,24 +28,16 @@ public class AgronomyExpertController : Controller
     [HttpPost("get-all")]
     public async Task<ActionResult<PagedResult<List<AgronomyExpertResponse>>>> GetAgronomyExpertsPagingAndSearch([FromBody] AgronomyExpertListRequest request)
     {
-        try
+        var query = new GetAgronomyExpertsQuery
         {
-            var query = new GetAgronomyExpertsQuery
-            {
-                PageSize = request.PageSize,
-                CurrentPage = request.CurrentPage,
-                Search = request.Search,
-                PhoneNumber = request.PhoneNumber,
-                FreeOrAssigned = request.FreeOrAssigned
-            };
-            var result = await _mediator.Send(query);
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting agronomy experts");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+            PageSize = request.PageSize,
+            CurrentPage = request.CurrentPage,
+            Search = request.Search,
+            PhoneNumber = request.PhoneNumber,
+            FreeOrAssigned = request.FreeOrAssigned
+        };
+        var result = await _mediator.Send(query);
+        return this.ToActionResult(result);
     }
 
     [HttpPost]
@@ -58,31 +50,15 @@ public class AgronomyExpertController : Controller
     [HttpGet("Get-by-id")]
     public async Task<IActionResult> GetAgronomyExpertById([FromQuery] Guid agronomyExpertId)
     {
-        try
-        {
-            var result = await _mediator.Send(new GetAgronomyExpertByIdQuery { AgronomyExpertId = agronomyExpertId });
-            return this.ToIActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting agronomy expert by id");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(new GetAgronomyExpertByIdQuery { AgronomyExpertId = agronomyExpertId });
+        return this.ToIActionResult(result);
     }
 
     [HttpGet("me")]
     [Authorize(Roles = "AgronomyExpert")]
     public async Task<IActionResult> GetCurrentAgronomyExpert()
     {
-        try
-        {
-            var result = await _mediator.Send(new GetCurrentAgronomyExpertQuery());
-            return this.ToIActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting current agronomy expert");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(new GetCurrentAgronomyExpertQuery());
+        return this.ToIActionResult(result);
     }
 }

@@ -12,14 +12,14 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
     public class GetSeasonalEconomicOverviewQueryHandler :
         IRequestHandler<GetSeasonalEconomicOverviewQuery, Result<SeasonalEconomicOverviewResponse>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetSeasonalEconomicOverviewQueryHandler> _logger;
 
         public GetSeasonalEconomicOverviewQueryHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<GetSeasonalEconomicOverviewQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -29,47 +29,57 @@ namespace RiceProduction.Application.ExpertSeasonalEconomicsFeature.Queries.GetS
         {
             try
             {
-                var season = await _unitOfWork.Repository<Season>().FindAsync(s => s.Id == request.SeasonId);
+                var season = await _context.Seasons
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == request.SeasonId, cancellationToken);
                 if (season == null)
                 {
                     return Result<SeasonalEconomicOverviewResponse>.Failure("Season not found");
                 }
 
                 var plotIds = request.GroupId.HasValue
-                    ? (await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(request.GroupId.Value, cancellationToken))
+                    ? await _context.Plots
+                        .AsNoTracking()
+                        .Where(p => p.GroupPlots.Any(gp => gp.GroupId == request.GroupId.Value) &&
+                                    p.Status == PlotStatus.Active)
                         .Select(p => p.Id)
-                        .ToList()
+                        .ToListAsync(cancellationToken)
                     : new List<Guid>();
 
-                var plotCultivations = await _unitOfWork.Repository<PlotCultivation>().ListAsync(
-                    filter: pc => pc.SeasonId == request.SeasonId &&
-                                  (request.GroupId == null || plotIds.Contains(pc.PlotId)) &&
-                                  (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)),
-                    includeProperties: q => q
-                        .Include(pc => pc.Plot)
-                            .ThenInclude(p => p.Farmer)
-                        .Include(pc => pc.Plot)
-                            .ThenInclude(p => p.GroupPlots)
-                                .ThenInclude(gp => gp.Group)
-                                    .ThenInclude(g => g.Cluster)
-                        .Include(pc => pc.RiceVariety)
-                        .Include(pc => pc.CultivationTasks)
-                            .ThenInclude(ct => ct.CultivationTaskMaterials)
-                                .ThenInclude(ctm => ctm.Material));
+                var plotCultivations = await _context.PlotCultivations
+                    .AsNoTracking()
+                    .AsSplitQuery()
+                    .Include(pc => pc.Plot)
+                        .ThenInclude(p => p.Farmer)
+                    .Include(pc => pc.Plot)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+                                .ThenInclude(g => g.Cluster)
+                    .Include(pc => pc.RiceVariety)
+                    .Include(pc => pc.CultivationTasks)
+                        .ThenInclude(ct => ct.CultivationTaskMaterials)
+                            .ThenInclude(ctm => ctm.Material)
+                    .Where(pc => pc.SeasonId == request.SeasonId &&
+                                 (request.GroupId == null || plotIds.Contains(pc.PlotId)) &&
+                                 (request.ClusterId == null || pc.Plot.GroupPlots.Any(gp => gp.Group.ClusterId == request.ClusterId)))
+                    .ToListAsync(cancellationToken);
 
-                var riceVarietySeasons = await _unitOfWork.Repository<RiceVarietySeason>().ListAsync(
-                    filter: rvs => rvs.SeasonId == request.SeasonId);
+                var riceVarietySeasons = await _context.RiceVarietySeasons
+                    .AsNoTracking()
+                    .Where(rvs => rvs.SeasonId == request.SeasonId)
+                    .ToListAsync(cancellationToken);
 
-                var uavInvoices = await _unitOfWork.Repository<UavInvoice>().ListAsync(
-                    filter: inv => inv.UavServiceOrder != null &&
-                                   inv.UavServiceOrder.Group!.YearSeason != null &&
-                                   inv.UavServiceOrder.Group.YearSeason.SeasonId == request.SeasonId &&
-                                   (request.GroupId == null || inv.UavServiceOrder.GroupId == request.GroupId) &&
-                                   (request.ClusterId == null || inv.UavServiceOrder.Group.ClusterId == request.ClusterId),
-                    includeProperties: q => q
-                        .Include(inv => inv.UavServiceOrder!)
-                            .ThenInclude(uso => uso.Group)
-                                .ThenInclude(g => g.YearSeason));
+                var uavInvoices = await _context.UavInvoices
+                    .AsNoTracking()
+                    .Include(inv => inv.UavServiceOrder!)
+                        .ThenInclude(uso => uso.Group)
+                            .ThenInclude(g => g.YearSeason)
+                    .Where(inv => inv.UavServiceOrder != null &&
+                                  inv.UavServiceOrder.Group!.YearSeason != null &&
+                                  inv.UavServiceOrder.Group.YearSeason.SeasonId == request.SeasonId &&
+                                  (request.GroupId == null || inv.UavServiceOrder.GroupId == request.GroupId) &&
+                                  (request.ClusterId == null || inv.UavServiceOrder.Group.ClusterId == request.ClusterId))
+                    .ToListAsync(cancellationToken);
 
                 var totalArea = plotCultivations.Sum(GetArea);
                 var uniqueFarmers = plotCultivations.Select(pc => pc.Plot.FarmerId).Distinct().Count();

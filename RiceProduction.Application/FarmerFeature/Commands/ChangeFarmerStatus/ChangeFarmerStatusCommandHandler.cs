@@ -4,7 +4,6 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Application.FarmerFeature.Commands.ChangeFarmerStatus;
 
@@ -52,7 +51,7 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
 
             // Log the status change
             _logger.LogInformation(
-                "Changing farmer {FarmerId} status from {OldStatus} to {NewStatus}. Reason: {Reason}",
+                "Changing farmer {FarmerId} status from {OldStatus} to {NewStatus}",
                 request.FarmerId,
                 oldStatus,
                 request.NewStatus);

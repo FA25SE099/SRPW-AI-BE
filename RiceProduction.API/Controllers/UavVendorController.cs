@@ -65,16 +65,8 @@ public class UavVendorController : Controller
     [HttpPost("get-by-id")]
     public async Task<ActionResult<PagedResult<List<UavVendorResponse>>>> GetUavVendorById([FromForm] GetUavVendorByIdQuery query)
     {
-        try
-        {
-            var result = await _mediator.Send(query);
-            return result.Succeeded ? Ok(result) : BadRequest(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting free cluster managers");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(query);
+        return result.Succeeded ? Ok(result) : BadRequest(result);
     }
 
     [HttpGet("profile")]
@@ -93,15 +85,7 @@ public class UavVendorController : Controller
     [HttpPost("get-all")]
     public async Task<ActionResult<PagedResult<List<UavVendorResponse>>>> GetUavVendorsPagingAndSearch([FromBody] GetUavVendorQuery query)
     {
-        try
-        {
-            var result = await _mediator.Send(query);
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting free cluster managers");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(query);
+        return this.ToActionResult(result);
     }
 }

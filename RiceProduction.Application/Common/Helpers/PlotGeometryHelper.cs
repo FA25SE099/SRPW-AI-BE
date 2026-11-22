@@ -1,25 +1,19 @@
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
+using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.Common.Helpers;
 
 public static class PlotGeometryHelper
 {
-    public const double MetersPerDegree = 111319.9;
-    public const int Wgs84Srid = 4326;
+    public const double MetersPerDegree = Plot.MetersPerDegree;
+    public const int Wgs84Srid = Plot.Wgs84Srid;
 
     /// <summary>
     /// Approximates polygon area in hectares from WGS84 square degrees (1 degree ≈ 111,319.9 m at equator, 1 ha = 10,000 m²).
     /// </summary>
-    public static decimal CalculateAreaInHectares(Polygon polygon, int? decimalPlaces = null)
-    {
-        var areaInSquareMeters = polygon.Area * MetersPerDegree * MetersPerDegree;
-        var hectares = (decimal)(areaInSquareMeters / 10000.0);
-
-        return decimalPlaces.HasValue
-            ? Math.Round(hectares, decimalPlaces.Value)
-            : hectares;
-    }
+    public static decimal CalculateAreaInHectares(Polygon polygon, int? decimalPlaces = null) =>
+        Plot.CalculatePolygonAreaInHectares(polygon, decimalPlaces);
 
     /// <summary>
     /// Creates a placeholder polygon boundary for plots awaiting field polygon assignment.

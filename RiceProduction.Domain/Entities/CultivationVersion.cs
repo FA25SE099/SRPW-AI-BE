@@ -1,11 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace RiceProduction.Domain.Entities;
 
-namespace RiceProduction.Domain.Entities;
-//status: Is Active: true false
 public class CultivationVersion : BaseAuditableEntity
 {
     [Required]
@@ -32,4 +26,29 @@ public class CultivationVersion : BaseAuditableEntity
     public PlotCultivation PlotCultivation { get; set; } = null!;
 
     public ICollection<CultivationTask> CultivationTasks { get; set; } = new List<CultivationTask>();
+
+    public void Deactivate() => IsActive = false;
+
+    public void Activate(DateTime? activatedAt = null)
+    {
+        IsActive = true;
+        ActivatedAt = activatedAt ?? DateTime.UtcNow;
+    }
+
+    public static CultivationVersion CreateNext(
+        Guid plotCultivationId,
+        int currentMaxOrder,
+        string versionName,
+        string? reason = null,
+        bool activateImmediately = true,
+        DateTime? activatedAt = null) =>
+        new()
+        {
+            PlotCultivationId = plotCultivationId,
+            VersionOrder = currentMaxOrder + 1,
+            VersionName = versionName,
+            Reason = reason,
+            IsActive = activateImmediately,
+            ActivatedAt = activateImmediately ? activatedAt ?? DateTime.UtcNow : null
+        };
 }

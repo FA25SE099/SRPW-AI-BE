@@ -1,23 +1,25 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
+using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorAvailableSeasons;
 
 public class GetSupervisorAvailableSeasonsQueryHandler
     : IRequestHandler<GetSupervisorAvailableSeasonsQuery, Result<List<AvailableSeasonYearDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetSupervisorAvailableSeasonsQueryHandler> _logger;
 
     public GetSupervisorAvailableSeasonsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetSupervisorAvailableSeasonsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,19 +29,24 @@ public class GetSupervisorAvailableSeasonsQueryHandler
     {
         try
         {
-            var supervisor = (await _unitOfWork.SupervisorRepository
-                .ListAsync(s => s.Id == request.SupervisorId))
-                .FirstOrDefault();
+            var supervisorExists = await _context.Supervisors
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == request.SupervisorId, cancellationToken);
 
-            if (supervisor == null)
+            if (!supervisorExists)
             {
                 return Result<List<AvailableSeasonYearDto>>.Failure("Supervisor not found");
             }
 
-            var supervisorGroups = (await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.SupervisorId == request.SupervisorId)).ToList();
+            var supervisorGroups = await _context.Groups
+                .AsNoTracking()
+                .Include(g => g.YearSeason)
+                .Where(g => g.SupervisorId == request.SupervisorId)
+                .ToListAsync(cancellationToken);
 
-            var allSeasons = (await _unitOfWork.Repository<Season>().ListAsync()).ToList();
+            var allSeasons = await _context.Seasons
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
             var seasonDict = allSeasons.ToDictionary(s => s.Id);
             var currentYear = DateTime.Now.Year;
 
@@ -117,18 +124,20 @@ public class GetSupervisorAvailableSeasonsQueryHandler
             .ToList();
 
         var groupIds = supervisorGroups.Select(g => g.Id).ToList();
-        var productionPlans = await _unitOfWork.Repository<ProductionPlan>()
-            .ListAsync(pp => groupIds.Contains(pp.GroupId!.Value));
-        var groupIdsWithPlans = productionPlans
-            .Where(pp => pp.GroupId.HasValue)
+        var groupIdsWithPlans = (await _context.ProductionPlans
+            .AsNoTracking()
+            .Where(pp => pp.GroupId.HasValue && groupIds.Contains(pp.GroupId.Value))
             .Select(pp => pp.GroupId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken))
             .ToHashSet();
 
         var plotCountDict = new Dictionary<Guid, int>();
         foreach (var groupId in groupIds)
         {
-            var plots = await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(groupId, cancellationToken);
-            plotCountDict[groupId] = plots.Count();
+            plotCountDict[groupId] = await _context.Plots
+                .AsNoTracking()
+                .CountAsync(p => p.GroupPlots.Any(gp => gp.GroupId == groupId) && p.Status == PlotStatus.Active, cancellationToken);
         }
 
         var dtos = new List<AvailableSeasonYearDto>();

@@ -2,21 +2,20 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SeasonFeature.Queries.GetCurrentSeason;
 
 public class GetCurrentSeasonQueryHandler
     : IRequestHandler<GetCurrentSeasonQuery, Result<CurrentSeasonInfo>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetCurrentSeasonQueryHandler> _logger;
 
     public GetCurrentSeasonQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetCurrentSeasonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,8 +26,9 @@ public class GetCurrentSeasonQueryHandler
         try
         {
             var today = DateTime.Now;
-            var allSeasons = await _unitOfWork.Repository<Season>()
-                .ListAsync(_ => true);
+            var allSeasons = await _context.Seasons
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
 
             foreach (var season in allSeasons)
             {

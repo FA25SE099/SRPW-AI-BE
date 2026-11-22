@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 
 namespace RiceProduction.Application.PlotFeature.Queries.ExportPlotData;
 
-public class ExportPlotDataQuery : IRequest<Result<IActionResult>>
+public class ExportPlotDataQuery : IRequest<Result<FileExportResult>>
 {
     /// <summary>
     /// Optional: Filter by cluster manager ID

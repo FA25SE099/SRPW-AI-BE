@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using RiceProduction.Application.Common.Interfaces;
+﻿using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.MaterialRequests;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Domain.Enums;
@@ -13,14 +13,14 @@ using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampleMaterialExcel
 {
-    public class DownloadCreateSampleMaterialExcelQueryHandler : IRequestHandler<DownloadCreateSampleMaterialExcelQuery, Result<IActionResult>>
+    public class DownloadCreateSampleMaterialExcelQueryHandler : IRequestHandler<DownloadCreateSampleMaterialExcelQuery, Result<FileExportResult>>
     {
         private readonly IGenericExcel _genericExcel;
         public DownloadCreateSampleMaterialExcelQueryHandler(IGenericExcel genericExcel)
         {
             _genericExcel = genericExcel;
         }
-        public async Task<Result<IActionResult>> Handle(DownloadCreateSampleMaterialExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadCreateSampleMaterialExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -50,11 +50,11 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadCreateSampl
                     }
                 };
                 var result = await _genericExcel.DownloadGenericExcelFile(materialCreateResponses, DateTime.UtcNow.ToString(), "Mẫu tạo sản phẩm ngày" + DateTime.UtcNow);
-                return Result<IActionResult>.Success(result, "File created successfully");
+                return Result<FileExportResult>.Success(result, "File created successfully");
             }
             catch (Exception ex)
             {
-                return Result<IActionResult>.Failure($"Error generating Excel file: {ex.Message}");
+                return Result<FileExportResult>.Failure($"Error generating Excel file: {ex.Message}");
             }
         }
     }

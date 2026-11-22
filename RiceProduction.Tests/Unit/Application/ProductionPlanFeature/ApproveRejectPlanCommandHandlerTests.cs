@@ -266,7 +266,7 @@ public class ApproveRejectPlanCommandHandlerTests
 
         // Assert
         result.Succeeded.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Contains("Database connection failed"));
+        result.Errors.Should().Contain(e => e.Contains("An error occurred during approval/rejection process."));
     }
 
     [Fact]

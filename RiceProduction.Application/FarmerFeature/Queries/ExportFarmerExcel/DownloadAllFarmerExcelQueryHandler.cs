@@ -3,29 +3,28 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
 using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
 {
-    public class DownloadAllFarmerExcelQueryHandler : IRequestHandler<DownloadAllFarmerExcelQuery, Result<IActionResult>>
+    public class DownloadAllFarmerExcelQueryHandler : IRequestHandler<DownloadAllFarmerExcelQuery, Result<FileExportResult>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IGenericExcel _downloadGenericExcel;
-        private readonly IMapper _mapper;
 
-        public DownloadAllFarmerExcelQueryHandler (IUnitOfWork unitOfWork, IGenericExcel downloadGenericExcel, IMapper mapper)
+        public DownloadAllFarmerExcelQueryHandler(IUnitOfWork unitOfWork, IGenericExcel downloadGenericExcel)
         {
             _unitOfWork = unitOfWork;
             _downloadGenericExcel = downloadGenericExcel;
-            _mapper = mapper;
         }
 
-        public async Task<Result<IActionResult>> Handle(DownloadAllFarmerExcelQuery request, CancellationToken cancellationToken)
+        public async Task<Result<FileExportResult>> Handle(DownloadAllFarmerExcelQuery request, CancellationToken cancellationToken)
         {
             try
             {
@@ -33,20 +32,20 @@ namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
 
                 if (farmers == null || !farmers.Any())
                 {
-                    return Result<IActionResult>.Failure("No farmers found to export");
+                    return Result<FileExportResult>.Failure("No farmers found to export");
                 }
-                var farmerDTOs = _mapper.Map<List<FarmerDTO>>(farmers);
+                var farmerDTOs = farmers.Where(f => f != null).Select(f => f!.ToDto()).ToList();
                 var sheetName = $"Farmers_{request.InputDate:yyyyMMdd}";
                 var fileName = $"{sheetName}.xlsx";
                 var result = await _downloadGenericExcel.DownloadGenericExcelFile(
                 farmerDTOs,
                 sheetName,
                 fileName);
-                return Result<IActionResult>.Success(result, "Farmer download successfully");
+                return Result<FileExportResult>.Success(result, "Farmer download successfully");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return Result<IActionResult>.Failure("File created fail");
+                return Result<FileExportResult>.Failure("File created fail");
             }
         }
     }

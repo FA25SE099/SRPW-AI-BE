@@ -1,4 +1,5 @@
-﻿using RiceProduction.Domain.Entities;
+﻿using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Domain.Entities;
 using RiceProduction.Infrastructure.Data;
 using System;
 using System.Collections.Generic;

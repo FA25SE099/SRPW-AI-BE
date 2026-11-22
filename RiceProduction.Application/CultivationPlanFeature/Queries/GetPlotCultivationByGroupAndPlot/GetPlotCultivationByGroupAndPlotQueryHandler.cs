@@ -9,12 +9,12 @@ namespace RiceProduction.Application.CultivationPlanFeature.Queries.GetPlotCulti
 
 public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetPlotCultivationByGroupAndPlotQuery, Result<CurrentPlotCultivationDetailResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlotCultivationByGroupAndPlotQueryHandler> _logger;
 
-    public GetPlotCultivationByGroupAndPlotQueryHandler(IUnitOfWork unitOfWork, ILogger<GetPlotCultivationByGroupAndPlotQueryHandler> logger)
+    public GetPlotCultivationByGroupAndPlotQueryHandler(IApplicationDbContext context, ILogger<GetPlotCultivationByGroupAndPlotQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,11 +23,11 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
         try
         {
             // 1. Verify that the plot belongs to the group using GroupPlot
-            var groupPlot = await _unitOfWork.Repository<GroupPlot>().FindAsync(
-                match: gp => gp.PlotId == request.PlotId && gp.GroupId == request.GroupId
-            );
+            var isPlotInGroup = await _context.GroupPlots
+                .AsNoTracking()
+                .AnyAsync(gp => gp.PlotId == request.PlotId && gp.GroupId == request.GroupId, cancellationToken);
 
-            if (groupPlot == null)
+            if (!isPlotInGroup)
             {
                 return Result<CurrentPlotCultivationDetailResponse>.Failure(
                     $"Plot with ID {request.PlotId} does not belong to Group with ID {request.GroupId}.",
@@ -35,14 +35,10 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             }
 
             // 2. Load the Group to get the SeasonId
-            var group = await _unitOfWork.Repository<Group>().FindAsync(
-                match: g => g.Id == request.GroupId,
-                includeProperties: q => q
-                    .Include(g => g.YearSeason)
-                    .ThenInclude(ys => ys.Season)
-                    .ThenInclude(s => s.PlotCultivations)
-
-            );
+            var group = await _context.Groups
+                .AsNoTracking()
+                .Include(g => g.YearSeason)
+                .FirstOrDefaultAsync(g => g.Id == request.GroupId, cancellationToken);
 
             if (group == null)
             {
@@ -59,14 +55,13 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             }
 
             // 3. Find PlotCultivation using PlotId and SeasonId
-            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
-                match: pc => pc.PlotId == request.PlotId && pc.SeasonId == group.YearSeason.SeasonId,
-                includeProperties: q => q
-                    .Include(pc => pc.Plot)
-                    .Include(pc => pc.Season)
-                    .Include(pc => pc.RiceVariety)
-                    .Include(pc => pc.CultivationVersions)
-            );
+            var plotCultivation = await _context.PlotCultivations
+                .AsNoTracking()
+                .Include(pc => pc.Plot)
+                .Include(pc => pc.Season)
+                .Include(pc => pc.RiceVariety)
+                .Include(pc => pc.CultivationVersions)
+                .FirstOrDefaultAsync(pc => pc.PlotId == request.PlotId && pc.SeasonId == group.YearSeason.SeasonId, cancellationToken);
 
             if (plotCultivation == null)
             {
@@ -103,8 +98,8 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
             Guid? versionId = targetVersion?.Id;
             
             // DEBUG: First check raw database values without includes
-            var rawTaskData = await _unitOfWork.Repository<CultivationTask>()
-                .GetQueryable()
+            var rawTaskData = await _context.CultivationTasks
+                .AsNoTracking()
                 .Where(ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId)
                 .Select(ct => new { 
                     TaskId = ct.Id, 
@@ -127,18 +122,18 @@ public class GetPlotCultivationByGroupAndPlotQueryHandler : IRequestHandler<GetP
                 rawTaskData.Count(t => t.Status == Domain.Enums.TaskStatus.Emergency)
             );
             
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId,
-                orderBy: q => q.OrderBy(ct => ct.ExecutionOrder),
+            var tasks = await _context.CultivationTasks
+                .AsNoTracking()
 #pragma warning disable CS8602 // Dereference of a possibly null reference
-                includeProperties: q => q
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionStage)
-                            .ThenInclude(ps => ps.ProductionPlan)
-                    .Include(ct => ct.CultivationTaskMaterials)
-                        .ThenInclude(ctm => ctm.Material)
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionStage)
+                        .ThenInclude(ps => ps.ProductionPlan)
+                .Include(ct => ct.CultivationTaskMaterials)
+                    .ThenInclude(ctm => ctm.Material)
 #pragma warning restore CS8602 // Dereference of a possibly null reference
-            );
+                .Where(ct => ct.PlotCultivationId == plotCultivation.Id && ct.VersionId == versionId)
+                .OrderBy(ct => ct.ExecutionOrder)
+                .ToListAsync(cancellationToken);
 
             // Log what we loaded
             _logger.LogInformation(

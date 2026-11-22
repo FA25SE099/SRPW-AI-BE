@@ -3,20 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.FarmLogFeature.Queries.GetByCultivationTask;
 
 public class GetFarmLogsByCultivationTaskQueryHandler : IRequestHandler<GetFarmLogsByCultivationTaskQuery, PagedResult<List<FarmLogDetailResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetFarmLogsByCultivationTaskQueryHandler> _logger;
 
     public GetFarmLogsByCultivationTaskQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetFarmLogsByCultivationTaskQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,14 +25,12 @@ public class GetFarmLogsByCultivationTaskQueryHandler : IRequestHandler<GetFarmL
     {
         try
         {
-            // Verify CultivationTask exists and get it with related entities
-            var cultivationTask = await _unitOfWork.Repository<CultivationTask>().FindAsync(
-                ct => ct.Id == request.CultivationTaskId,
-                includeProperties: q => q
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Plot)
-                    .Include(ct => ct.ProductionPlanTask)
-            );
+            var cultivationTask = await _context.CultivationTasks
+                .AsNoTracking()
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                .Include(ct => ct.ProductionPlanTask)
+                .FirstOrDefaultAsync(ct => ct.Id == request.CultivationTaskId, cancellationToken);
 
             if (cultivationTask == null)
             {
@@ -42,24 +39,21 @@ public class GetFarmLogsByCultivationTaskQueryHandler : IRequestHandler<GetFarmL
                     "NotFound");
             }
 
-            // Get all farm logs for this specific cultivation task
-            var allLogs = await _unitOfWork.Repository<FarmLog>().ListAsync(
-                filter: fl => fl.CultivationTaskId == request.CultivationTaskId,
-                orderBy: q => q.OrderByDescending(fl => fl.LoggedDate),
-                includeProperties: q => q
-                    .Include(fl => fl.FarmLogMaterials)
-                        .ThenInclude(flm => flm.Material)
-                    .Include(fl => fl.Logger)
-                    .Include(fl => fl.Verifier)
-            );
+            var logsQuery = _context.FarmLogs
+                .AsNoTracking()
+                .Where(fl => fl.CultivationTaskId == request.CultivationTaskId);
 
-            var totalCount = allLogs.Count;
+            var totalCount = await logsQuery.CountAsync(cancellationToken);
 
-            // Apply pagination
-            var pagedLogs = allLogs
+            var pagedLogs = await logsQuery
+                .Include(fl => fl.FarmLogMaterials)
+                    .ThenInclude(flm => flm.Material)
+                .Include(fl => fl.Logger)
+                .Include(fl => fl.Verifier)
+                .OrderByDescending(fl => fl.LoggedDate)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
             // Map to response
             var plot = cultivationTask.PlotCultivation.Plot;

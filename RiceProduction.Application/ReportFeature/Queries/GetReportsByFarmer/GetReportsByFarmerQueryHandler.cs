@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,14 +10,14 @@ namespace RiceProduction.Application.ReportFeature.Queries.GetReportsByFarmer;
 
 public class GetReportsByFarmerQueryHandler : IRequestHandler<GetReportsByFarmerQuery, PagedResult<List<ReportItemResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetReportsByFarmerQueryHandler> _logger;
 
     public GetReportsByFarmerQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetReportsByFarmerQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,16 +27,18 @@ public class GetReportsByFarmerQueryHandler : IRequestHandler<GetReportsByFarmer
     {
         try
         {
-            var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.FarmerId, cancellationToken);
-            if (farmer == null)
+            var farmerExists = await _context.Farmers
+                .AsNoTracking()
+                .AnyAsync(f => f.Id == request.FarmerId, cancellationToken);
+            if (!farmerExists)
             {
                 return PagedResult<List<ReportItemResponse>>.Failure(
                     "Farmer not found.",
                     "NotFound");
             }
 
-            var farmerPlotIds = await _unitOfWork.Repository<Plot>()
-                .GetQueryable()
+            var farmerPlotIds = await _context.Plots
+                .AsNoTracking()
                 .Where(p => p.FarmerId == request.FarmerId)
                 .Select(p => p.Id)
                 .ToListAsync(cancellationToken);
@@ -50,8 +53,8 @@ public class GetReportsByFarmerQueryHandler : IRequestHandler<GetReportsByFarmer
                     "No plots found for this farmer.");
             }
 
-            IQueryable<EmergencyReport> query = _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            IQueryable<EmergencyReport> query = _context.EmergencyReports
+                .AsNoTracking()
                 .Where(r => r.PlotCultivation != null && farmerPlotIds.Contains(r.PlotCultivation.PlotId))
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)

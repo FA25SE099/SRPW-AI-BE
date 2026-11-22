@@ -27,28 +27,20 @@ public class EmailController : ControllerBase
     [HttpPost("send")]
     public async Task<ActionResult<Result<string>>> SendEmail([FromBody] SendEmailCommand command)
     {
-        try
+        _logger.LogInformation("Send email request received for {To}", command.To);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("Send email request received for {To}", command.To);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to send email to {To}: {Errors}",
-                    command.To, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Email sent successfully to {To}, MessageId: {MessageId}",
-                command.To, result.Data);
-            return Ok(result);
+            _logger.LogWarning("Failed to send email to {To}: {Errors}",
+                command.To, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while sending email to {To}", command.To);
-            return InternalServerError<string>();
-        }
+
+        _logger.LogInformation("Email sent successfully to {To}, MessageId: {MessageId}",
+            command.To, result.Data);
+        return Ok(result);
     }
 
     /// <summary>
@@ -59,27 +51,19 @@ public class EmailController : ControllerBase
     [HttpPost("send-bulk")]
     public async Task<ActionResult<Result<string>>> SendBulkEmail([FromBody] SendBulkEmailCommand command)
     {
-        try
+        _logger.LogInformation("Bulk email request received with {Count} recipients",
+            command.EmailRequests?.Count ?? 0);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("Bulk email request received with {Count} recipients",
-                command.EmailRequests?.Count ?? 0);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to send bulk email: {Errors}", FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Bulk email batch created successfully: {BatchId}", result.Data);
-            return Ok(result);
+            _logger.LogWarning("Failed to send bulk email: {Errors}", FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while sending bulk email");
-            return InternalServerError<string>();
-        }
+
+        _logger.LogInformation("Bulk email batch created successfully: {BatchId}", result.Data);
+        return Ok(result);
     }
 
     /// <summary>
@@ -90,28 +74,20 @@ public class EmailController : ControllerBase
     [HttpPost("send-password-reset")]
     public async Task<ActionResult<Result<string>>> SendPasswordResetEmail([FromBody] SendPasswordResetEmailCommand command)
     {
-        try
+        _logger.LogInformation("Password reset email request received for {Email}", command.Email);
+
+        var result = await _mediator.Send(command);
+
+        if (!result.Succeeded)
         {
-            _logger.LogInformation("Password reset email request received for {Email}", command.Email);
-
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to send password reset email to {Email}: {Errors}",
-                    command.Email, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Password reset email sent successfully to {Email}, MessageId: {MessageId}",
-                command.Email, result.Data);
-            return Ok(result);
+            _logger.LogWarning("Failed to send password reset email to {Email}: {Errors}",
+                command.Email, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while sending password reset email to {Email}", command.Email);
-            return InternalServerError<string>();
-        }
+
+        _logger.LogInformation("Password reset email sent successfully to {Email}, MessageId: {MessageId}",
+            command.Email, result.Data);
+        return Ok(result);
     }
 
     /// <summary>
@@ -122,43 +98,35 @@ public class EmailController : ControllerBase
     [HttpPost("send-template")]
     public async Task<ActionResult<Result<string>>> SendTemplatedEmail([FromBody] SendTemplatedEmailCommand command)
     {
-        try
+        _logger.LogInformation("Templated email request received for {To} with template {Template}",
+            command.To, command.TemplateName);
+
+        var emailCommand = new SendEmailCommand
         {
-            _logger.LogInformation("Templated email request received for {To} with template {Template}",
-                command.To, command.TemplateName);
+            To = command.To,
+            Cc = command.Cc,
+            Bcc = command.Bcc,
+            Subject = command.Subject,
+            EmailType = command.EmailType,
+            Campaign = command.Campaign,
+            Priority = command.Priority,
+            TemplateName = command.TemplateName,
+            TemplateData = command.TemplateData,
+            SaveToDatabase = command.SaveToDatabase
+        };
 
-            var emailCommand = new SendEmailCommand
-            {
-                To = command.To,
-                Cc = command.Cc,
-                Bcc = command.Bcc,
-                Subject = command.Subject,
-                EmailType = command.EmailType,
-                Campaign = command.Campaign,
-                Priority = command.Priority,
-                TemplateName = command.TemplateName,
-                TemplateData = command.TemplateData,
-                SaveToDatabase = command.SaveToDatabase
-            };
+        var result = await _mediator.Send(emailCommand);
 
-            var result = await _mediator.Send(emailCommand);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to send templated email to {To}: {Errors}",
-                    command.To, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Templated email sent successfully to {To}, MessageId: {MessageId}",
-                command.To, result.Data);
-            return Ok(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Error occurred while sending templated email to {To}", command.To);
-            return InternalServerError<string>();
+            _logger.LogWarning("Failed to send templated email to {To}: {Errors}",
+                command.To, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
+
+        _logger.LogInformation("Templated email sent successfully to {To}, MessageId: {MessageId}",
+            command.To, result.Data);
+        return Ok(result);
     }
 
     /// <summary>
@@ -169,16 +137,8 @@ public class EmailController : ControllerBase
     [HttpGet("batch/{batchId:guid}/status")]
     public async Task<ActionResult<Result<object>>> GetBatchStatus(Guid batchId)
     {
-        try
-        {
-            var result = await _mediator.Send(new GetEmailBatchStatusQuery { BatchId = batchId });
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving batch status for {BatchId}", batchId);
-            return InternalServerError<object>();
-        }
+        var result = await _mediator.Send(new GetEmailBatchStatusQuery { BatchId = batchId });
+        return this.ToActionResult(result);
     }
 
     /// <summary>
@@ -189,16 +149,8 @@ public class EmailController : ControllerBase
     [HttpPost("get-history")]
     public async Task<ActionResult<PagedResult<List<object>>>> GetEmailHistory([FromBody] GetEmailHistoryQuery query)
     {
-        try
-        {
-            var result = await _mediator.Send(query);
-            return this.ToActionResult(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting email history");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        var result = await _mediator.Send(query);
+        return this.ToActionResult(result);
     }
 
     /// <summary>
@@ -209,45 +161,34 @@ public class EmailController : ControllerBase
     [HttpPost("test")]
     public async Task<ActionResult<Result<string>>> TestEmail([FromBody] TestEmailCommand command)
     {
-        try
+        _logger.LogInformation("Test email request received for {To}", command.To);
+
+        var emailCommand = new SendEmailCommand
         {
-            _logger.LogInformation("Test email request received for {To}", command.To);
+            To = command.To,
+            Subject = "Test Email from Rice Production System",
+            HtmlBody = "<h2>Test Email</h2><p>This is a test email to verify email functionality.</p>",
+            TextBody = "Test Email\n\nThis is a test email to verify email functionality.",
+            EmailType = "test",
+            SaveToDatabase = false
+        };
 
-            var emailCommand = new SendEmailCommand
-            {
-                To = command.To,
-                Subject = "Test Email from Rice Production System",
-                HtmlBody = "<h2>Test Email</h2><p>This is a test email to verify email functionality.</p>",
-                TextBody = "Test Email\n\nThis is a test email to verify email functionality.",
-                EmailType = "test",
-                SaveToDatabase = false
-            };
+        var result = await _mediator.Send(emailCommand);
 
-            var result = await _mediator.Send(emailCommand);
-
-            if (!result.Succeeded)
-            {
-                _logger.LogWarning("Failed to send test email to {To}: {Errors}",
-                    command.To, FormatErrors(result.Errors));
-                return BadRequest(result);
-            }
-
-            _logger.LogInformation("Test email sent successfully to {To}, MessageId: {MessageId}",
-                command.To, result.Data);
-            return Ok(result);
-        }
-        catch (Exception ex)
+        if (!result.Succeeded)
         {
-            _logger.LogError(ex, "Error occurred while sending test email to {To}", command.To);
-            return InternalServerError<string>();
+            _logger.LogWarning("Failed to send test email to {To}: {Errors}",
+                command.To, FormatErrors(result.Errors));
+            return BadRequest(result);
         }
+
+        _logger.LogInformation("Test email sent successfully to {To}, MessageId: {MessageId}",
+            command.To, result.Data);
+        return Ok(result);
     }
 
     private static string FormatErrors(IEnumerable<string>? errors) =>
         string.Join(", ", errors ?? Array.Empty<string>());
-
-    private ActionResult<Result<T>> InternalServerError<T>() =>
-        StatusCode(500, Result<T>.Failure("An error occurred while processing your request"));
 }
 
 // Supporting command classes

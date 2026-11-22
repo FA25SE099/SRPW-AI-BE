@@ -4,20 +4,19 @@ using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetCultivationTasksByPlan;
 
 public class GetCultivationTasksByPlanQueryHandler : IRequestHandler<GetCultivationTasksByPlanQuery, Result<List<CultivationTaskSummaryResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetCultivationTasksByPlanQueryHandler> _logger;
 
     public GetCultivationTasksByPlanQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetCultivationTasksByPlanQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -25,18 +24,19 @@ public class GetCultivationTasksByPlanQueryHandler : IRequestHandler<GetCultivat
     {
         try
         {
-            var tasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: ct => ct.ProductionPlanTask.ProductionStage.ProductionPlanId == request.ProductionPlanId
-                           && (!request.StatusFilter.HasValue || ct.Status == request.StatusFilter)
-                           && (!request.PlotFilter.HasValue || ct.PlotCultivation.PlotId == request.PlotFilter),
-                orderBy: q => q.OrderBy(ct => ct.ScheduledEndDate).ThenBy(ct => ct.ExecutionOrder),
-                includeProperties: q => q
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionStage)
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Plot)
-                            .ThenInclude(p => p.Farmer)
-            );
+            var tasks = await _context.CultivationTasks
+                .AsNoTracking()
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt.ProductionStage)
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                        .ThenInclude(p => p.Farmer)
+                .Where(ct => ct.ProductionPlanTask.ProductionStage.ProductionPlanId == request.ProductionPlanId
+                          && (!request.StatusFilter.HasValue || ct.Status == request.StatusFilter)
+                          && (!request.PlotFilter.HasValue || ct.PlotCultivation.PlotId == request.PlotFilter))
+                .OrderBy(ct => ct.ScheduledEndDate)
+                .ThenBy(ct => ct.ExecutionOrder)
+                .ToListAsync(cancellationToken);
 
             var response = tasks.Select(ct => new CultivationTaskSummaryResponse
             {

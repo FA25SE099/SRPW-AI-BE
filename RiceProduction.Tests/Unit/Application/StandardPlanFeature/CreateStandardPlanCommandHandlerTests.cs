@@ -9,7 +9,6 @@ using RiceProduction.Domain.Enums;
 using System.Linq.Expressions;
 using Xunit;
 using MediatR;
-using RiceProduction.Infrastructure.Repository;
 
 namespace RiceProduction.Tests.Unit.Application.StandardPlanFeature;
 
@@ -114,6 +113,7 @@ public class CreateStandardPlanCommandHandlerTests
             .Returns(new List<Material>().AsQueryable());
 
         _mockStandardPlanRepo.Setup(r => r.AddAsync(It.IsAny<StandardPlan>()))
+            .Callback<StandardPlan>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
             .Returns(Task.CompletedTask);
 
         _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))

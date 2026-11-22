@@ -2,37 +2,39 @@ using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.MaterialDistributionFeature.Queries.GetMaterialDistributionsForGroup;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.MaterialDistributionFeature.Queries.GetPendingReceiptsForFarmer;
 
-public class GetPendingReceiptsForFarmerQueryHandler 
+public class GetPendingReceiptsForFarmerQueryHandler
     : IRequestHandler<GetPendingReceiptsForFarmerQuery, Result<PendingReceiptsForFarmerResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
 
-    public GetPendingReceiptsForFarmerQueryHandler(IUnitOfWork unitOfWork)
+    public GetPendingReceiptsForFarmerQueryHandler(IApplicationDbContext context)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
     }
 
     public async Task<Result<PendingReceiptsForFarmerResponse>> Handle(
-        GetPendingReceiptsForFarmerQuery request, 
+        GetPendingReceiptsForFarmerQuery request,
         CancellationToken cancellationToken)
     {
-        // Verify farmer exists
-        var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.FarmerId);
+        var farmer = await _context.Farmers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == request.FarmerId, cancellationToken);
         if (farmer == null)
         {
             return Result<PendingReceiptsForFarmerResponse>.Failure("Farmer not found");
         }
 
-        // Get all plots owned by this farmer
-        var plots = await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => p.FarmerId == request.FarmerId);
+        var plotIds = await _context.Plots
+            .AsNoTracking()
+            .Where(p => p.FarmerId == request.FarmerId)
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
 
-        if (!plots.Any())
+        if (plotIds.Count == 0)
         {
             return Result<PendingReceiptsForFarmerResponse>.Success(
                 new PendingReceiptsForFarmerResponse
@@ -46,21 +48,16 @@ public class GetPendingReceiptsForFarmerQueryHandler
                 });
         }
 
-        var plotIds = plots.Select(p => p.Id).ToList();
-
-        // Get all plot cultivations for these plots
-        var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-            .GetQueryable()
+        var cultivationIds = await _context.PlotCultivations
+            .AsNoTracking()
             .Where(pc => plotIds.Contains(pc.PlotId))
-            .Include(pc => pc.Plot)
+            .Select(pc => pc.Id)
             .ToListAsync(cancellationToken);
 
-        var cultivationIds = plotCultivations.Select(pc => pc.Id).ToList();
-
         // Get distributions where supervisor confirmed but farmer hasn't (PartiallyConfirmed status)
-        var pendingReceipts = await _unitOfWork.Repository<MaterialDistribution>()
-            .GetQueryable()
-            .Where(md => cultivationIds.Contains(md.PlotCultivationId) && 
+        var pendingReceipts = await _context.MaterialDistributions
+            .AsNoTracking()
+            .Where(md => cultivationIds.Contains(md.PlotCultivationId) &&
                         md.Status == DistributionStatus.PartiallyConfirmed &&
                         md.SupervisorConfirmedAt.HasValue &&
                         !md.FarmerConfirmedAt.HasValue)

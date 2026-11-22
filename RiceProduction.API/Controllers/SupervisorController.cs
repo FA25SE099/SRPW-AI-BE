@@ -51,43 +51,19 @@ public class SupervisorController : Controller
             CurrentPage = request.CurrentPage,
             PageSize = request.PageSize
         };
-        var result = await _mediator.Send(query);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     [HttpPost("get-all-supervisor-admin")]
     public async Task<ActionResult<PagedResult<List<SupervisorResponse>>>> GetSupervisorsPagingAndSearchForAdmin([FromBody] GetAllSupervisorForAdminQuery query)
     {
-        try
-        {
-            var result = await _mediator.Send(query);
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting free cluster managers");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+        return this.ToActionResult(await _mediator.Send(query));
     }
-
 
     [HttpPost]
     public async Task<IActionResult> CreateSupervisorCommand([FromBody] CreateSupervisorCommand command)
     {
-        var result = await _mediator.Send(command);
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
+        return this.ToIActionResult(await _mediator.Send(command));
     }
 
     /// <summary>
@@ -136,14 +112,7 @@ public class SupervisorController : Controller
             Status = status
         };
 
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -161,14 +130,7 @@ public class SupervisorController : Controller
             TolerancePercent = request.TolerancePercent ?? 10 // Default 10% (will be overridden by system setting if available)
         };
 
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -193,14 +155,7 @@ public class SupervisorController : Controller
             Notes = request.Notes
         };
 
-        var result = await _mediator.Send(command);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(command));
     }
 
     /// <summary>
@@ -277,14 +232,7 @@ public class SupervisorController : Controller
             SupervisorId = supervisorId
         };
 
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     [HttpGet("my-group")]
@@ -336,14 +284,7 @@ public class SupervisorController : Controller
             IncludeCurrentSeason = includeCurrentSeason
         };
 
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -371,14 +312,7 @@ public class SupervisorController : Controller
             SearchTerm = request.SearchTerm
         };
 
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     /// <summary>
@@ -408,14 +342,7 @@ public class SupervisorController : Controller
             ReportType = request.ReportType
         };
 
-        var result = await _mediator.Send(query);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(result);
-        }
-
-        return Ok(result);
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     [HttpGet("by-cluster/{clusterId:guid}")]
@@ -425,33 +352,25 @@ public class SupervisorController : Controller
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetSupervisorsByClusterId(Guid clusterId)
     {
-        try
+        if (clusterId == Guid.Empty)
         {
-            if (clusterId == Guid.Empty)
-            {
-                _logger.LogWarning("Invalid cluster ID provided: {ClusterId}", clusterId);
-                return BadRequest(Result.Failure("Invalid cluster ID"));
-            }
-
-            var query = new GetSupervisorByClusterIdQuery { ClusterId = clusterId };
-            var result = await _mediator.Send(query);
-
-            if (result == null || !result.Any())
-            {
-                _logger.LogInformation("No supervisors found for cluster ID: {ClusterId}", clusterId);
-                return NotFound(Result.Failure($"No supervisors found for cluster {clusterId}"));
-            }
-
-            return Ok(Result<List<SupervisorDTO>>.Success(
-                result,
-                $"Retrieved {result.Count} supervisors successfully"
-            ));
+            _logger.LogWarning("Invalid cluster ID provided: {ClusterId}", clusterId);
+            return BadRequest(Result.Failure("Invalid cluster ID"));
         }
-        catch (Exception ex)
+
+        var query = new GetSupervisorByClusterIdQuery { ClusterId = clusterId };
+        var result = await _mediator.Send(query);
+
+        if (result == null || !result.Any())
         {
-            _logger.LogError(ex, "Error retrieving supervisors for cluster ID: {ClusterId}", clusterId);
-            return StatusCode(500, Result.Failure("An error occurred while retrieving supervisors"));
+            _logger.LogInformation("No supervisors found for cluster ID: {ClusterId}", clusterId);
+            return NotFound(Result.Failure($"No supervisors found for cluster {clusterId}"));
         }
+
+        return Ok(Result<List<SupervisorDTO>>.Success(
+            result,
+            $"Retrieved {result.Count} supervisors successfully"
+        ));
     }
 
     [HttpGet]
@@ -461,24 +380,16 @@ public class SupervisorController : Controller
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetAllSupervisor()
     {
-        try
-        {
-            var query = new GetAllSupervisorQueries();
-            var result = await _mediator.Send(query);
+        var query = new GetAllSupervisorQueries();
+        var result = await _mediator.Send(query);
 
-            if (result == null || !result.Any())
-            {
-                _logger.LogInformation("No supervisors found");
-                return NotFound(Result<List<SupervisorDTO>>.Failure("No supervisors found"));
-            }
-
-            return Ok(Result<List<SupervisorDTO>>.Success(result, "Retrieved successfully"));
-        }
-        catch (Exception ex)
+        if (result == null || !result.Any())
         {
-            _logger.LogError(ex, "Error retrieving supervisors");
-            return StatusCode(500, Result.Failure("An error occurred while retrieving supervisors"));
+            _logger.LogInformation("No supervisors found");
+            return NotFound(Result<List<SupervisorDTO>>.Failure("No supervisors found"));
         }
+
+        return Ok(Result<List<SupervisorDTO>>.Success(result, "Retrieved successfully"));
     }
 }
 

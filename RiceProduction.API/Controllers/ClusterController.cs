@@ -36,24 +36,16 @@ public class ClusterController : Controller
     [HttpPost("Get-all")]
     public async Task<ActionResult<PagedResult<List<ClusterResponse>>>> GetAllClusters([FromBody] ClusterListRequest request)
     {
-        try
+        var query = new GetAllClustersQuery
         {
-            var query = new GetAllClustersQuery
-            {
-                CurrentPage = request.CurrentPage,
-                PageSize = request.PageSize,
-                ClusterNameSearch = request.ClusterNameSearch,
-                ManagerExpertNameSearch = request.ManagerExpertNameSearch,
-                PhoneNumber = request.PhoneNumber,
-                SortBy = request.SortBy
-            };
-            return this.ToActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while getting clusters");
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+            CurrentPage = request.CurrentPage,
+            PageSize = request.PageSize,
+            ClusterNameSearch = request.ClusterNameSearch,
+            ManagerExpertNameSearch = request.ManagerExpertNameSearch,
+            PhoneNumber = request.PhoneNumber,
+            SortBy = request.SortBy
+        };
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     [HttpPut("Update-name-and-human-resource")]
@@ -70,47 +62,31 @@ public class ClusterController : Controller
         [FromQuery] int? year = null,
         [FromQuery] int? limit = 5)
     {
-        try
-        {
-            AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} instead");
+        AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} instead");
 
-            var query = new GetClusterHistoryQuery
-            {
-                ClusterId = clusterId,
-                SeasonId = seasonId,
-                Year = year,
-                Limit = limit
-            };
-
-            return this.ToActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
+        var query = new GetClusterHistoryQuery
         {
-            _logger.LogError(ex, "Error occurred while getting cluster history for cluster {ClusterId}", clusterId);
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+            ClusterId = clusterId,
+            SeasonId = seasonId,
+            Year = year,
+            Limit = limit
+        };
+
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     [HttpGet("{clusterId}/current-season")]
     [Obsolete("This endpoint is deprecated. Use GET /api/YearSeason/cluster/{clusterId} to get current season, then GET /api/YearSeason/{id}/dashboard for details.", false)]
     public async Task<ActionResult<Result<ClusterCurrentSeasonResponse>>> GetClusterCurrentSeason(Guid clusterId)
     {
-        try
-        {
-            AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} and /api/YearSeason/{id}/dashboard instead");
+        AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} and /api/YearSeason/{id}/dashboard instead");
 
-            var query = new GetClusterCurrentSeasonQuery
-            {
-                ClusterId = clusterId
-            };
-
-            return this.ToActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
+        var query = new GetClusterCurrentSeasonQuery
         {
-            _logger.LogError(ex, "Error occurred while getting current season for cluster {ClusterId}", clusterId);
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+            ClusterId = clusterId
+        };
+
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     [HttpGet("{clusterId}/seasons")]
@@ -120,30 +96,22 @@ public class ClusterController : Controller
         [FromQuery] bool includeEmpty = true,
         [FromQuery] int? limit = null)
     {
-        try
-        {
-            AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} instead");
+        AddDeprecationHeaders("Use GET /api/YearSeason/cluster/{clusterId} instead");
 
-            var query = new GetClusterAvailableSeasonsQuery
-            {
-                ClusterId = clusterId,
-                IncludeEmpty = includeEmpty,
-                Limit = limit
-            };
-
-            return this.ToActionResult(await _mediator.Send(query));
-        }
-        catch (Exception ex)
+        var query = new GetClusterAvailableSeasonsQuery
         {
-            _logger.LogError(ex, "Error occurred while getting available seasons for cluster {ClusterId}", clusterId);
-            return StatusCode(500, "An error occurred while processing your request");
-        }
+            ClusterId = clusterId,
+            IncludeEmpty = includeEmpty,
+            Limit = limit
+        };
+
+        return this.ToActionResult(await _mediator.Send(query));
     }
 
     private void AddDeprecationHeaders(string message)
     {
-        Response.Headers.Add("X-Deprecated", "true");
-        Response.Headers.Add("X-Deprecated-Message", message);
-        Response.Headers.Add("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
+        Response.Headers.Append("X-Deprecated", "true");
+        Response.Headers.Append("X-Deprecated-Message", message);
+        Response.Headers.Append("X-New-Endpoint", "/api/YearSeason/cluster/{clusterId}");
     }
 }

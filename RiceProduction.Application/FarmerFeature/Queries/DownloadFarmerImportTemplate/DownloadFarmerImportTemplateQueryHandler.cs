@@ -2,15 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerImportTemplate;
 
 public class DownloadFarmerImportTemplateQueryHandler 
-    : IRequestHandler<DownloadFarmerImportTemplateQuery, Result<IActionResult>>
+    : IRequestHandler<DownloadFarmerImportTemplateQuery, Result<FileExportResult>>
 {
     private readonly IGenericExcel _genericExcel;
     private readonly ILogger<DownloadFarmerImportTemplateQueryHandler> _logger;
@@ -23,7 +23,7 @@ public class DownloadFarmerImportTemplateQueryHandler
         _logger = logger;
     }
 
-    public async Task<Result<IActionResult>> Handle(
+    public async Task<Result<FileExportResult>> Handle(
         DownloadFarmerImportTemplateQuery request, 
         CancellationToken cancellationToken)
     {
@@ -82,14 +82,14 @@ public class DownloadFarmerImportTemplateQueryHandler
 
             _logger.LogInformation("Generated farmer import template with {SampleCount} sample rows", sampleData.Count);
 
-            return Result<IActionResult>.Success(
+            return Result<FileExportResult>.Success(
                 result, 
                 "Farmer import template generated successfully");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating farmer import template");
-            return Result<IActionResult>.Failure(
+            return Result<FileExportResult>.Failure(
                 $"Failed to generate template: {ex.Message}");
         }
     }

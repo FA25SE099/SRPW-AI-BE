@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
@@ -12,14 +13,14 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetMyGroupThisSea
 public class GetMyGroupThisSeasonQueryHandler 
     : IRequestHandler<GetMyGroupThisSeasonQuery, Result<MyGroupResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetMyGroupThisSeasonQueryHandler> _logger;
 
     public GetMyGroupThisSeasonQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetMyGroupThisSeasonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -29,31 +30,29 @@ public class GetMyGroupThisSeasonQueryHandler
     {
         try
         {
-            // Verify supervisor exists using SupervisorRepository
-            var supervisor = (await _unitOfWork.SupervisorRepository
-                .ListAsync(s => s.Id == request.SupervisorId))
-                .FirstOrDefault();
+            var supervisorExists = await _context.Supervisors
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == request.SupervisorId, cancellationToken);
 
-            if (supervisor == null)
+            if (!supervisorExists)
             {
                 return Result<MyGroupResponse>.Failure("Supervisor not found");
             }
 
-            var (targetSeason, seasonError) = await ResolveTargetSeasonAsync(request.SeasonId);
+            var (targetSeason, seasonError) = await ResolveTargetSeasonAsync(request.SeasonId, cancellationToken);
             if (targetSeason == null)
             {
                 return Result<MyGroupResponse>.Failure(seasonError!);
             }
 
-            var groups = await _unitOfWork.Repository<Group>()
-                .GetQueryable()
+            var group = await _context.Groups
+                .AsNoTracking()
                 .Include(g => g.YearSeason)
-                    .ThenInclude(ys => ys.RiceVariety)
-                .Where(g => g.SupervisorId == request.SupervisorId &&
-                            g.YearSeason != null && g.YearSeason.SeasonId == targetSeason.Id)
-                .ToListAsync(cancellationToken);
-
-            var group = groups.FirstOrDefault();
+                    .ThenInclude(ys => ys!.RiceVariety)
+                .Include(g => g.Cluster)
+                .FirstOrDefaultAsync(g => g.SupervisorId == request.SupervisorId &&
+                            g.YearSeason != null && g.YearSeason.SeasonId == targetSeason.Id,
+                    cancellationToken);
 
             if (group == null)
             {
@@ -61,24 +60,23 @@ public class GetMyGroupThisSeasonQueryHandler
                     $"No group assigned to this supervisor for season '{targetSeason.SeasonName}'");
             }
 
-            var plotsList = (await _unitOfWork.PlotRepository.GetPlotsForGroupAsync(group.Id, cancellationToken)).ToList();
+            var plotsList = await _context.Plots
+                .AsNoTracking()
+                .Where(p => p.GroupPlots.Any(gp => gp.GroupId == group.Id) && p.Status == PlotStatus.Active)
+                .OrderByDescending(p => p.SoThua)
+                .ToListAsync(cancellationToken);
 
             var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
-            var farmers = await _unitOfWork.FarmerRepository.ListAsync(f => farmerIds.Contains(f.Id));
+            var farmers = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => farmerIds.Contains(f.Id))
+                .ToListAsync(cancellationToken);
             var farmerDict = farmers.ToDictionary(f => f.Id);
 
-            RiceVariety? riceVariety = null;
-            if (group.YearSeason?.RiceVarietyId != null)
-            {
-                riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                    .FindAsync(rv => rv.Id == group.YearSeason.RiceVarietyId);
-            }
-
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == group.ClusterId);
-
-            var plansList = (await _unitOfWork.Repository<ProductionPlan>()
-                .ListAsync(pp => pp.GroupId == group.Id)).ToList();
+            var plansList = await _context.ProductionPlans
+                .AsNoTracking()
+                .Where(pp => pp.GroupId == group.Id)
+                .ToListAsync(cancellationToken);
 
             var readiness = CalculateReadiness(group, plotsList, plansList);
 
@@ -123,7 +121,7 @@ public class GetMyGroupThisSeasonQueryHandler
                 TotalArea = group.TotalArea,
                 AreaGeoJson = PlotGeometryHelper.SerializeGeometry(group.Area),
                 RiceVarietyId = group.YearSeason?.RiceVarietyId,
-                RiceVarietyName = riceVariety?.VarietyName,
+                RiceVarietyName = group.YearSeason?.RiceVariety?.VarietyName,
                 Season = new SeasonInfo
                 {
                     SeasonId = targetSeason.Id,
@@ -134,7 +132,7 @@ public class GetMyGroupThisSeasonQueryHandler
                     IsActive = targetSeason.IsActive
                 },
                 ClusterId = group.ClusterId,
-                ClusterName = cluster?.ClusterName,
+                ClusterName = group.Cluster?.ClusterName,
                 Plots = plotDetails,
                 Readiness = readiness,
                 ProductionPlans = plansSummary
@@ -156,17 +154,20 @@ public class GetMyGroupThisSeasonQueryHandler
         }
     }
 
-    private async Task<(Season? Season, string? Error)> ResolveTargetSeasonAsync(Guid? seasonId)
+    private async Task<(Season? Season, string? Error)> ResolveTargetSeasonAsync(
+        Guid? seasonId,
+        CancellationToken cancellationToken)
     {
         if (seasonId.HasValue)
         {
-            var season = await _unitOfWork.Repository<Season>()
-                .FindAsync(s => s.Id == seasonId.Value);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == seasonId.Value, cancellationToken);
 
             return season != null ? (season, null) : (null, "Season not found");
         }
 
-        var currentSeason = await GetCurrentSeasonAsync();
+        var currentSeason = await GetCurrentSeasonAsync(cancellationToken);
         return currentSeason != null ? (currentSeason, null) : (null, "No current season could be determined");
     }
 
@@ -234,10 +235,12 @@ public class GetMyGroupThisSeasonQueryHandler
         return readiness;
     }
 
-    private async Task<Season?> GetCurrentSeasonAsync()
+    private async Task<Season?> GetCurrentSeasonAsync(CancellationToken cancellationToken)
     {
         var today = DateTime.Now;
-        var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
+        var allSeasons = await _context.Seasons
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
         return allSeasons.FirstOrDefault(s =>
             SeasonDateHelper.IsDateInSeasonRange(today.Month, today.Day, s.StartDate, s.EndDate));
     }

@@ -84,7 +84,7 @@ public class CreatePestProtocolCommandHandler : IRequestHandler<CreatePestProtoc
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Unexpected error while creating pest protocol '{ProtocolName}'}",
+                "Unexpected error while creating pest protocol '{ProtocolName}'",
                 request.Name);
 
             return Result<Guid>.Failure(

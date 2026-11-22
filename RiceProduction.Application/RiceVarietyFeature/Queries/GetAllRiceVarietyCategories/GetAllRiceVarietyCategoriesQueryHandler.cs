@@ -1,21 +1,20 @@
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.RiceVarietyFeature.Queries.GetAllRiceVarietyCategories
 {
     public class GetAllRiceVarietyCategoriesQueryHandler :
         IRequestHandler<GetAllRiceVarietyCategoriesQuery, Result<List<RiceVarietyCategoryResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetAllRiceVarietyCategoriesQueryHandler> _logger;
 
         public GetAllRiceVarietyCategoriesQueryHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<GetAllRiceVarietyCategoriesQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -25,20 +24,26 @@ namespace RiceProduction.Application.RiceVarietyFeature.Queries.GetAllRiceVariet
         {
             try
             {
-                var categories = await _unitOfWork.Repository<RiceVarietyCategory>().ListAsync(
-                    filter: c => request.IsActive == null || c.IsActive == request.IsActive.Value,
-                    orderBy: q => q.OrderBy(c => c.CategoryCode));
+                var query = _context.RiceVarietyCategories.AsNoTracking();
 
-                var response = categories.Select(c => new RiceVarietyCategoryResponse
+                if (request.IsActive.HasValue)
                 {
-                    Id = c.Id,
-                    CategoryName = c.CategoryName,
-                    CategoryCode = c.CategoryCode,
-                    Description = c.Description,
-                    MinGrowthDays = c.MinGrowthDays,
-                    MaxGrowthDays = c.MaxGrowthDays,
-                    IsActive = c.IsActive
-                }).ToList();
+                    query = query.Where(c => c.IsActive == request.IsActive.Value);
+                }
+
+                var response = await query
+                    .OrderBy(c => c.CategoryCode)
+                    .Select(c => new RiceVarietyCategoryResponse
+                    {
+                        Id = c.Id,
+                        CategoryName = c.CategoryName,
+                        CategoryCode = c.CategoryCode,
+                        Description = c.Description,
+                        MinGrowthDays = c.MinGrowthDays,
+                        MaxGrowthDays = c.MaxGrowthDays,
+                        IsActive = c.IsActive
+                    })
+                    .ToListAsync(cancellationToken);
 
                 _logger.LogInformation("Retrieved {Count} rice variety categories", response.Count);
 

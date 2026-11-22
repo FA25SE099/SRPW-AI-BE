@@ -8,7 +8,7 @@ using RiceProduction.Infrastructure.Identity;
 
 namespace RiceProduction.Infrastructure.Data;
 
-public class ApplicationDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>, IApplicationDbContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) 
     {
@@ -37,6 +37,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<Plot> Plots => Set<Plot>();
     public DbSet<GroupPlot> GroupPlots => Set<GroupPlot>();
     public DbSet<PlotCultivation> PlotCultivations => Set<PlotCultivation>();
+    public DbSet<PlotPolygonTask> PlotPolygonTasks => Set<PlotPolygonTask>();
 
     // Material management
     public DbSet<Material> Materials => Set<Material>();
@@ -62,6 +63,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<FarmLog> FarmLogs => Set<FarmLog>();
     public DbSet<FarmLogMaterial> FarmLogMaterials => Set<FarmLogMaterial>();
     public DbSet<EmergencyReport> EmergencyReports => Set<EmergencyReport>();
+    public DbSet<LateFarmerRecord> LateFarmerRecords => Set<LateFarmerRecord>();
     // UAV services
     public DbSet<UavServiceOrder> UavServiceOrders => Set<UavServiceOrder>();
     public DbSet<UavInvoice> UavInvoices => Set<UavInvoice>();

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
@@ -18,16 +19,16 @@ namespace RiceProduction.Application.PlotFeature.Queries.PreviewPlotImport;
 public class PreviewPlotImportQueryHandler
     : IRequestHandler<PreviewPlotImportQuery, Result<PlotImportPreviewDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IGenericExcel _genericExcel;
     private readonly ILogger<PreviewPlotImportQueryHandler> _logger;
 
     public PreviewPlotImportQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IGenericExcel genericExcel,
         ILogger<PreviewPlotImportQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _genericExcel = genericExcel;
         _logger = logger;
     }
@@ -49,13 +50,11 @@ public class PreviewPlotImportQueryHandler
 
             preview.TotalRows = plotImportRows.Count;
 
-            var plotRepo = _unitOfWork.Repository<Plot>();
-            var farmerRepo = _unitOfWork.FarmerRepository;
-            var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
-
             var wktReader = new WKTReader(new GeometryFactory(new PrecisionModel(), 4326));
 
-            var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
+            var allSeasons = await _context.Seasons
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
             var today = DateTime.Now;
             var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, today);
             var currentSeason = resolvedSeason?.Season;
@@ -68,8 +67,20 @@ public class PreviewPlotImportQueryHandler
                 .Distinct()
                 .ToList();
 
-            var farmers = await farmerRepo.ListAsync(f => uniqueFarmCodes.Contains(f.FarmCode));
+            var farmers = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => uniqueFarmCodes.Contains(f.FarmCode))
+                .ToListAsync(cancellationToken);
             var farmerLookup = farmers.ToDictionary(f => f.FarmCode, f => f);
+
+            var farmerIds = farmers.Select(f => f.Id).ToList();
+            var existingPlotKeys = (await _context.Plots
+                .AsNoTracking()
+                .Where(p => farmerIds.Contains(p.FarmerId))
+                .Select(p => new { p.FarmerId, p.SoThua, p.SoTo })
+                .ToListAsync(cancellationToken))
+                .Select(p => (p.FarmerId, p.SoThua, p.SoTo))
+                .ToHashSet();
 
             var uniqueVarietyNames = plotImportRows
                 .Where(p => !string.IsNullOrWhiteSpace(p.RiceVarietyName))
@@ -77,8 +88,10 @@ public class PreviewPlotImportQueryHandler
                 .Distinct()
                 .ToList();
 
-            var riceVarieties = await riceVarietyRepo.ListAsync(
-                rv => uniqueVarietyNames.Contains(rv.VarietyName));
+            var riceVarieties = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => uniqueVarietyNames.Contains(rv.VarietyName))
+                .ToListAsync(cancellationToken);
             var varietyLookup = riceVarieties.ToDictionary(rv => rv.VarietyName, rv => rv);
 
             for (int i = 0; i < plotImportRows.Count; i++)
@@ -102,12 +115,7 @@ public class PreviewPlotImportQueryHandler
                 // Check for duplicates only when the row has no validation errors
                 if (!previewRow.Errors.Any() && farmerLookup.TryGetValue(row.FarmCode, out var farmer))
                 {
-                    var existingPlot = await plotRepo.FindAsync(p =>
-                        p.SoThua == row.SoThua &&
-                        p.SoTo == row.SoTo &&
-                        p.FarmerId == farmer.Id);
-
-                    if (existingPlot != null)
+                    if (existingPlotKeys.Contains((farmer.Id, row.SoThua, row.SoTo)))
                     {
                         previewRow.IsDuplicate = true;
                         previewRow.Status = "Trùng lặp";

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,14 +10,14 @@ namespace RiceProduction.Application.ReportFeature.Queries.GetReportsBySuperviso
 
 public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySupervisorQuery, PagedResult<List<ReportItemResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetReportsBySupervisorQueryHandler> _logger;
 
     public GetReportsBySupervisorQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetReportsBySupervisorQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,21 +27,23 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
     {
         try
         {
-            var supervisor = await _unitOfWork.SupervisorRepository.GetSupervisorByIdAsync(request.SupervisorId, cancellationToken);
-            if (supervisor == null)
+            var supervisorExists = await _context.Supervisors
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == request.SupervisorId, cancellationToken);
+            if (!supervisorExists)
             {
                 return PagedResult<List<ReportItemResponse>>.Failure(
                     "Supervisor not found.",
                     "NotFound");
             }
 
-            var groups = await _unitOfWork.Repository<Group>()
-                .ListAsync(
-                    filter: g => g.SupervisorId == request.SupervisorId,
-                    includeProperties: q => q.Include(g => g.GroupPlots)
-                        .ThenInclude(gp => gp.Plot));
+            var groupIds = await _context.Groups
+                .AsNoTracking()
+                .Where(g => g.SupervisorId == request.SupervisorId)
+                .Select(g => g.Id)
+                .ToListAsync(cancellationToken);
 
-            if (!groups.Any())
+            if (groupIds.Count == 0)
             {
                 return PagedResult<List<ReportItemResponse>>.Success(
                     new List<ReportItemResponse>(),
@@ -50,13 +53,14 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                     "No groups assigned to this supervisor.");
             }
 
-            var supervisedPlotIds = groups
-                .SelectMany(g => g.GroupPlots)
+            var supervisedPlotIds = await _context.GroupPlots
+                .AsNoTracking()
+                .Where(gp => groupIds.Contains(gp.GroupId))
                 .Select(gp => gp.PlotId)
                 .Distinct()
-                .ToList();
+                .ToListAsync(cancellationToken);
 
-            if (!supervisedPlotIds.Any())
+            if (supervisedPlotIds.Count == 0)
             {
                 return PagedResult<List<ReportItemResponse>>.Success(
                     new List<ReportItemResponse>(),
@@ -66,8 +70,8 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                     "No plots found in supervised groups.");
             }
 
-            IQueryable<EmergencyReport> query = _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            IQueryable<EmergencyReport> query = _context.EmergencyReports
+                .AsNoTracking()
                 .Where(r => r.PlotCultivation != null && supervisedPlotIds.Contains(r.PlotCultivation.PlotId))
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
@@ -103,7 +107,7 @@ public class GetReportsBySupervisorQueryHandler : IRequestHandler<GetReportsBySu
                 responseData.Count,
                 request.SupervisorId,
                 supervisedPlotIds.Count,
-                groups.Count);
+                groupIds.Count);
 
             return PagedResult<List<ReportItemResponse>>.Success(
                 responseData,

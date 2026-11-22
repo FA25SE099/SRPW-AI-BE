@@ -1,19 +1,17 @@
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
 
 namespace RiceProduction.Application.SeasonFeature.Queries.GetAllSeasons
 {
     public class GetAllSeasonsQueryHandler : IRequestHandler<GetAllSeasonsQuery, Result<List<SeasonResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetAllSeasonsQueryHandler> _logger;
 
-        public GetAllSeasonsQueryHandler(IUnitOfWork unitOfWork, ILogger<GetAllSeasonsQueryHandler> logger)
+        public GetAllSeasonsQueryHandler(IApplicationDbContext context, ILogger<GetAllSeasonsQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -21,24 +19,33 @@ namespace RiceProduction.Application.SeasonFeature.Queries.GetAllSeasons
         {
             try
             {
-                Expression<Func<Season, bool>> filter = s =>
-                    (string.IsNullOrEmpty(request.Search) || s.SeasonName.Contains(request.Search) || (s.SeasonType != null && s.SeasonType.Contains(request.Search))) &&
-                    (request.IsActive == null || s.IsActive == request.IsActive.Value);
+                var query = _context.Seasons.AsNoTracking();
 
-                var seasons = await _unitOfWork.Repository<Season>().ListAsync(
-                    filter: filter,
-                    orderBy: q => q.OrderBy(s => s.SeasonName));
-
-                var seasonResponses = seasons.Select(s => new SeasonResponse
+                if (!string.IsNullOrEmpty(request.Search))
                 {
-                    Id = s.Id,
-                    SeasonName = s.SeasonName,
-                    StartDate = s.StartDate,
-                    EndDate = s.EndDate,
-                    SeasonType = s.SeasonType,
-                    IsActive = s.IsActive,
-                    CreatedAt = s.CreatedAt
-                }).ToList();
+                    query = query.Where(s =>
+                        s.SeasonName.Contains(request.Search) ||
+                        (s.SeasonType != null && s.SeasonType.Contains(request.Search)));
+                }
+
+                if (request.IsActive.HasValue)
+                {
+                    query = query.Where(s => s.IsActive == request.IsActive.Value);
+                }
+
+                var seasonResponses = await query
+                    .OrderBy(s => s.SeasonName)
+                    .Select(s => new SeasonResponse
+                    {
+                        Id = s.Id,
+                        SeasonName = s.SeasonName,
+                        StartDate = s.StartDate,
+                        EndDate = s.EndDate,
+                        SeasonType = s.SeasonType,
+                        IsActive = s.IsActive,
+                        CreatedAt = s.CreatedAt
+                    })
+                    .ToListAsync(cancellationToken);
 
                 return Result<List<SeasonResponse>>.Success(seasonResponses, "Successfully retrieved all seasons.");
             }

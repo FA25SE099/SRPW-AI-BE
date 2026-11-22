@@ -6,7 +6,7 @@ namespace RiceProduction.Application.FilterFeature.Queries.GetEnumValues;
 
 public class GetEnumValuesQueryHandler : IRequestHandler<GetEnumValuesQuery, Result<EnumValuesResponse>>
 {
-    public async Task<Result<EnumValuesResponse>> Handle(GetEnumValuesQuery request, CancellationToken cancellationToken)
+    public Task<Result<EnumValuesResponse>> Handle(GetEnumValuesQuery request, CancellationToken cancellationToken)
     {
         var response = new EnumValuesResponse();
 
@@ -74,13 +74,13 @@ public class GetEnumValuesQueryHandler : IRequestHandler<GetEnumValuesQuery, Res
                     break;
                     
                 default:
-                    return Result<EnumValuesResponse>.Failure(
+                    return Task.FromResult(Result<EnumValuesResponse>.Failure(
                         $"Unknown enum type: {request.EnumType}. Supported types: PlotStatus, TaskStatus, TaskType, TaskPriority, AlertStatus, AlertSeverity, MaterialType, CultivationStatus",
-                        "InvalidEnumType");
+                        "InvalidEnumType"));
             }
         }
 
-        return Result<EnumValuesResponse>.Success(response, "Enum values retrieved successfully.");
+        return Task.FromResult(Result<EnumValuesResponse>.Success(response, "Enum values retrieved successfully."));
     }
 
     private List<EnumValueDto> GetEnumValues<TEnum>() where TEnum : Enum

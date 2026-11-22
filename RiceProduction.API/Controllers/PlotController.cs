@@ -52,29 +52,21 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(typeof(PlotDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-
         public async Task<ActionResult<PlotDTO>> GetPlotById(Guid id)
         {
-            try
+            if (id == Guid.Empty)
             {
-                if (id == Guid.Empty)
-                {
-                    return BadRequest("Invalid Plot ID");
-                }
-                var query = new GetPlotByIDQueries(id);
-                var result = await _mediator.Send(query);
-                if (result == null)
-                {
-                    return NotFound($"Plot with id {id} not found");
-                }
-                return Ok(result);
+                return BadRequest("Invalid Plot ID");
+            }
 
-            }
-            catch (Exception ex)
+            var query = new GetPlotByIDQueries(id);
+            var result = await _mediator.Send(query);
+            if (result == null)
             {
-                _logger.LogError(ex, "Error occurred while getting Plot {PlotId}", id);
-                return StatusCode(500, "An error occurred while processing your request");
+                return NotFound($"Plot with id {id} not found");
             }
+
+            return Ok(result);
         }
 
         [HttpGet]
@@ -92,12 +84,7 @@ namespace RiceProduction.API.Controllers
                 ClusterManagerId = clusterManagerId
             };
             var result = await _mediator.Send(query);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return result.Succeeded ? Ok(result) : BadRequest(result);
         }
 
         /// <summary>
@@ -117,44 +104,33 @@ namespace RiceProduction.API.Controllers
             [FromQuery] bool? isInGroup = null,
             [FromQuery] Guid? groupId = null)
         {
-            try
+            if (yearSeasonId == Guid.Empty)
             {
-                if (yearSeasonId == Guid.Empty)
-                {
-                    return BadRequest(new { message = "yearSeasonId is required" });
-                }
-
-                var query = new GetPlotsByYearSeasonQuery
-                {
-                    YearSeasonId = yearSeasonId,
-                    PageNumber = pageNumber,
-                    PageSize = pageSize,
-                    SearchTerm = searchTerm,
-                    ClusterManagerId = clusterManagerId,
-                    HasMadeSelection = hasMadeSelection,
-                    IsInGroup = isInGroup,
-                    GroupId = groupId
-                };
-
-                var result = await _mediator.Send(query);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning(
-                        "Failed to get plots by year season {YearSeasonId}: {Message}",
-                        yearSeasonId, result.Message);
-                    return BadRequest(result);
-                }
-
-                return Ok(result);
+                return BadRequest(new { message = "yearSeasonId is required" });
             }
-            catch (Exception ex)
+
+            var query = new GetPlotsByYearSeasonQuery
             {
-                _logger.LogError(ex, 
-                    "Error occurred while getting plots for YearSeason {YearSeasonId}", 
-                    yearSeasonId);
-                return StatusCode(500, new { message = "An error occurred while processing your request" });
+                YearSeasonId = yearSeasonId,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                SearchTerm = searchTerm,
+                ClusterManagerId = clusterManagerId,
+                HasMadeSelection = hasMadeSelection,
+                IsInGroup = isInGroup,
+                GroupId = groupId
+            };
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Failed to get plots by year season {YearSeasonId}: {Message}",
+                    yearSeasonId, result.Message);
             }
+
+            return this.ToIActionResult(result);
         }
         
         [HttpPost]
@@ -162,29 +138,21 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreatePlot([FromBody] CreatePlotCommand command)
         {
-            try
+            _logger.LogInformation(
+                "Create plot request received for farmer {FarmerId}: SoThua={SoThua}, SoTo={SoTo}",
+                command.FarmerId, command.SoThua, command.SoTo);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
             {
-                _logger.LogInformation(
-                    "Create plot request received for farmer {FarmerId}: SoThua={SoThua}, SoTo={SoTo}",
-                    command.FarmerId, command.SoThua, command.SoTo);
-
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Failed to create plot: {Errors}",
-                        string.Join(", ", result.Errors ?? Array.Empty<string>()));
-                    return BadRequest(result);
-                }
-
-                _logger.LogInformation("Plot created successfully: {PlotId}", result.Data?.PlotId);
-                return Ok(result);
+                _logger.LogWarning("Failed to create plot: {Errors}",
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
+                return BadRequest(result);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while creating plot");
-                return StatusCode(500, Result<PlotResponse>.Failure("An error occurred while processing your request"));
-            }
+
+            _logger.LogInformation("Plot created successfully: {PlotId}", result.Data?.PlotId);
+            return Ok(result);
         }
 
         [HttpPost("bulk")]
@@ -192,31 +160,23 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreatePlots([FromBody] CreatePlotsCommand command)
         {
-            try
+            _logger.LogInformation(
+                "Bulk plot creation request received for {Count} plots",
+                command.Plots?.Count ?? 0);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
             {
-                _logger.LogInformation(
-                    "Bulk plot creation request received for {Count} plots",
-                    command.Plots?.Count ?? 0);
-
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Failed to create plots in bulk: {Errors}",
-                        string.Join(", ", result.Errors ?? Array.Empty<string>()));
-                    return BadRequest(result);
-                }
-
-                _logger.LogInformation(
-                    "Bulk plot creation successful: {Count} plots created",
-                    result.Data?.Count ?? 0);
-                return Ok(result);
+                _logger.LogWarning("Failed to create plots in bulk: {Errors}",
+                    string.Join(", ", result.Errors ?? Array.Empty<string>()));
+                return BadRequest(result);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while creating plots in bulk");
-                return StatusCode(500, Result<List<PlotResponse>>.Failure("An error occurred while processing your request"));
-            }
+
+            _logger.LogInformation(
+                "Bulk plot creation successful: {Count} plots created",
+                result.Data?.Count ?? 0);
+            return Ok(result);
         }
 
         [HttpPut]
@@ -226,13 +186,7 @@ namespace RiceProduction.API.Controllers
             {
                 Request = input
             };
-            var result = await _mediator.Send(command);
-
-            if (!result.Succeeded)
-            {
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return this.ToActionResult(await _mediator.Send(command));
         }
 
         [HttpGet("detail/{id}")]
@@ -241,29 +195,23 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<Result<PlotDetailDTO>>> GetPlotDetail(Guid id)
         {
-            try
+            if (id == Guid.Empty)
             {
-                if (id == Guid.Empty)
-                {
-                    return BadRequest(new { message = "Invalid Plot ID" });
-                }
-                _logger.LogInformation("Getting plot detail with ID: {PlotId}", id);
-                var query = new GetPlotDetailQueries(id);
-                var result = await _mediator.Send(query);
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Failed to get plot detail: {Message}", result.Message);
-                    return NotFound(result);
-                }
+                return BadRequest(new { message = "Invalid Plot ID" });
+            }
 
-                return Ok(result);
-            }
-            catch (Exception ex)
+            _logger.LogInformation("Getting plot detail with ID: {PlotId}", id);
+            var query = new GetPlotDetailQueries(id);
+            var result = await _mediator.Send(query);
+            if (!result.Succeeded)
             {
-                _logger.LogError(ex, "Error occurred while getting plot detail {PlotId}", id);
-                return StatusCode(500, new { message = "An error occurred while processing your request" });
+                _logger.LogWarning("Failed to get plot detail: {Message}", result.Message);
+                return NotFound(result);
             }
+
+            return Ok(result);
         }
+
         [HttpGet("out-season")]
         [ProducesResponseType(typeof(Result<IEnumerable<PlotDTO>>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -278,10 +226,9 @@ namespace RiceProduction.API.Controllers
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to get plots out of season: {Message}", result.Message);
-                return BadRequest(result);
             }
 
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         [HttpGet("awaiting-polygon")]
@@ -318,10 +265,9 @@ namespace RiceProduction.API.Controllers
             if (!result.Succeeded)
             {
                 _logger.LogWarning("Failed to get plots awaiting polygon: {Message}", result.Message);
-                return BadRequest(result);
             }
 
-            return Ok(result);
+            return this.ToIActionResult(result);
         }
 
         /// <summary>
@@ -336,52 +282,37 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> PreviewPlotImportFromExcel(IFormFile excelFile)
         {
-            try
+            var validationError = ValidateExcelImportFile(excelFile);
+            if (validationError != null)
             {
-                var validationError = ValidateExcelImportFile(excelFile);
-                if (validationError != null)
-                {
-                    return validationError;
-                }
-
-                var query = new PreviewPlotImportQuery
-                {
-                    ExcelFile = excelFile
-                };
-
-                _logger.LogInformation("Previewing plot import from Excel file: {FileName}, Size: {FileSize} bytes",
-                    excelFile.FileName, excelFile.Length);
-
-                var result = await _mediator.Send(query);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Plot import preview failed: {Message}", result.Message);
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = result.Message
-                    });
-                }
-
-                return Ok(new
-                {
-                    success = true,
-                    data = result.Data
-                });
+                return validationError;
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while previewing plot import from Excel file: {FileName}",
-                    excelFile?.FileName ?? "Unknown");
 
-                return StatusCode(500, new
+            var query = new PreviewPlotImportQuery
+            {
+                ExcelFile = excelFile
+            };
+
+            _logger.LogInformation("Previewing plot import from Excel file: {FileName}, Size: {FileSize} bytes",
+                excelFile.FileName, excelFile.Length);
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Plot import preview failed: {Message}", result.Message);
+                return BadRequest(new
                 {
                     success = false,
-                    message = "An error occurred while processing your request",
-                    errors = new[] { ex.Message }
+                    message = result.Message
                 });
             }
+
+            return Ok(new
+            {
+                success = true,
+                data = result.Data
+            });
         }
 
         /// <summary>
@@ -396,134 +327,97 @@ namespace RiceProduction.API.Controllers
         public async Task<IActionResult> ImportPlotsFromData(
             [FromBody] ImportPlotsFromDataCommand command)
         {
-            try
+            if (command.PlotRows == null || !command.PlotRows.Any())
             {
-                if (command.PlotRows == null || !command.PlotRows.Any())
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Không có dữ liệu thửa đất để nhập"
-                    });
-                }
-
-                _logger.LogInformation(
-                    "Starting plot import from data array: {RowCount} rows",
-                    command.PlotRows.Count);
-
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Plot import from data failed: {Message}", result.Message);
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = result.Message
-                    });
-                }
-
-                return Ok(new
-                {
-                    success = true,
-                    message = result.Message,
-                    data = result.Data
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while importing plots from data");
-
-                return StatusCode(500, new
+                return BadRequest(new
                 {
                     success = false,
-                    message = "An error occurred while processing your request",
-                    errors = new[] { ex.Message }
+                    message = "Không có dữ liệu thửa đất để nhập"
                 });
             }
+
+            _logger.LogInformation(
+                "Starting plot import from data array: {RowCount} rows",
+                command.PlotRows.Count);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Plot import from data failed: {Message}", result.Message);
+                return BadRequest(new
+                {
+                    success = false,
+                    message = result.Message
+                });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                message = result.Message,
+                data = result.Data
+            });
         }
 
         [HttpPost("import-excel")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> ImportPlotsFromExcel(IFormFile excelFile, [FromQuery] DateTime? importDate)
         {
-            try
+            var validationError = ValidateExcelImportFile(excelFile);
+            if (validationError != null)
             {
-                var validationError = ValidateExcelImportFile(excelFile);
-                if (validationError != null)
-                {
-                    return validationError;
-                }
-
-                var command = new ImportPlotByExcelCommand
-                {
-                    ExcelFile = excelFile,
-                    ImportDate = importDate ?? DateTime.UtcNow
-                };
-
-                _logger.LogInformation("Starting plot import from Excel file: {FileName}, Size: {FileSize} bytes",
-                    excelFile.FileName, excelFile.Length);
-
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Plot import failed: {Message}", result.Message);
-
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = result.Message,
-                        errors = result.Errors ?? new List<string> { result.Message }
-                    });
-                }
-
-                _logger.LogInformation("Plot import completed successfully. {Count} plots imported",
-                    result.Data?.Count ?? 0);
-
-                return Ok(new
-                {
-                    success = true, 
-                    message = result.Message,
-                    data = result.Data
-                });
+                return validationError;
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while importing plots from Excel file: {FileName}",
-                    excelFile?.FileName ?? "Unknown");
 
-                return StatusCode(500, new
+            var command = new ImportPlotByExcelCommand
+            {
+                ExcelFile = excelFile,
+                ImportDate = importDate ?? DateTime.UtcNow
+            };
+
+            _logger.LogInformation("Starting plot import from Excel file: {FileName}, Size: {FileSize} bytes",
+                excelFile.FileName, excelFile.Length);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Plot import failed: {Message}", result.Message);
+
+                return BadRequest(new
                 {
                     success = false,
-                    message = "An error occurred while processing your request",
-                    errors = new[] { ex.Message }
+                    message = result.Message,
+                    errors = result.Errors ?? new List<string> { result.Message }
                 });
             }
+
+            _logger.LogInformation("Plot import completed successfully. {Count} plots imported",
+                result.Data?.Count ?? 0);
+
+            return Ok(new
+            {
+                success = true, 
+                message = result.Message,
+                data = result.Data
+            });
         }
+
         [HttpGet("download-sample-excel")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> DownloadPlotSampleExcel()
         {
-            try
-            {
-                var query = new DownloadPlotSampleExcelQuery();
-                var result = await _mediator.Send(query);
+            var query = new DownloadPlotSampleExcelQuery();
+            var result = await _mediator.Send(query);
 
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Failed to generate sample Excel: {Message}", result.Message);
-                    return BadRequest(result);
-                }
-
-                return result.Data ?? BadRequest(new { message = "Failed to generate Excel file" });
-            }
-            catch (Exception ex)
+            if (!result.Succeeded)
             {
-                _logger.LogError(ex, "Error occurred while generating sample Excel");
-                return StatusCode(500, new { message = "An error occurred while processing your request" });
+                _logger.LogWarning("Failed to generate sample Excel: {Message}", result.Message);
             }
+
+            return this.ToFileActionResult(result);
         }
 
         [HttpGet("download-import-template")]
@@ -531,28 +425,19 @@ namespace RiceProduction.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> DownloadPlotImportTemplate()
         {
-            try
+            var query = new DownloadPlotImportTemplateQuery
             {
-                var query = new DownloadPlotImportTemplateQuery
-                {
-                    ClusterManagerId = User.TryGetUserId(out var userId) ? userId : null
-                };
+                ClusterManagerId = User.TryGetUserId(out var userId) ? userId : null
+            };
 
-                var result = await _mediator.Send(query);
+            var result = await _mediator.Send(query);
 
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Failed to generate plot import template: {Message}", result.Message);
-                    return BadRequest(result);
-                }
-
-                return result.Data ?? BadRequest(new { message = "Failed to generate template" });
-            }
-            catch (Exception ex)
+            if (!result.Succeeded)
             {
-                _logger.LogError(ex, "Error generating plot import template");
-                return StatusCode(500, new { message = "An error occurred" });
+                _logger.LogWarning("Failed to generate plot import template: {Message}", result.Message);
             }
+
+            return this.ToFileActionResult(result);
         }
 
         [HttpGet("export-data")]
@@ -565,34 +450,25 @@ namespace RiceProduction.API.Controllers
             [FromQuery] bool onlyWithPolygons = false,
             [FromQuery] bool onlyWithoutPolygons = false)
         {
-            try
+            clusterManagerId ??= User.TryGetUserId(out var userId) ? userId : null;
+
+            var query = new ExportPlotDataQuery
             {
-                clusterManagerId ??= User.TryGetUserId(out var userId) ? userId : null;
+                ClusterManagerId = clusterManagerId,
+                FarmerId = farmerId,
+                GroupId = groupId,
+                OnlyWithPolygons = onlyWithPolygons,
+                OnlyWithoutPolygons = onlyWithoutPolygons
+            };
 
-                var query = new ExportPlotDataQuery
-                {
-                    ClusterManagerId = clusterManagerId,
-                    FarmerId = farmerId,
-                    GroupId = groupId,
-                    OnlyWithPolygons = onlyWithPolygons,
-                    OnlyWithoutPolygons = onlyWithoutPolygons
-                };
+            var result = await _mediator.Send(query);
 
-                var result = await _mediator.Send(query);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning("Failed to export plot data: {Message}", result.Message);
-                    return BadRequest(new { message = result.Message });
-                }
-
-                return result.Data ?? BadRequest(new { message = "Failed to export plot data" });
-            }
-            catch (Exception ex)
+            if (!result.Succeeded)
             {
-                _logger.LogError(ex, "Error exporting plot data");
-                return StatusCode(500, new { message = "An error occurred while exporting plot data" });
+                _logger.LogWarning("Failed to export plot data: {Message}", result.Message);
             }
+
+            return this.ToFileActionResult(result);
         }
 
         [HttpGet("get-current-farmer-plots")]
@@ -674,6 +550,7 @@ namespace RiceProduction.API.Controllers
                 timestamp = DateTime.UtcNow
             });
         }
+
         [HttpPut("{plotId}/coordinate")]
         [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -682,54 +559,43 @@ namespace RiceProduction.API.Controllers
             Guid plotId,
             [FromBody] UpdateCoordinateRequest request)
         {
-            try
+            if (plotId == Guid.Empty)
             {
-                if (plotId == Guid.Empty)
-                {
-                    return BadRequest(Result<bool>.Failure("Invalid Plot ID"));
-                }
-
-                if (request == null || string.IsNullOrWhiteSpace(request.CoordinateGeoJson))
-                {
-                    return BadRequest(Result<bool>.Failure("Coordinate GeoJSON is required"));
-                }
-
-                var command = new UpdateCoordinateCommand
-                {
-                    PlotId = plotId,
-                    CoordinateGeoJson = request.CoordinateGeoJson,
-                    Notes = request.Notes
-                };
-
-                _logger.LogInformation(
-                    "Updating coordinate for Plot {PlotId}",
-                    plotId);
-
-                var result = await _mediator.Send(command);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning(
-                        "Failed to update coordinate for Plot {PlotId}: {Message}",
-                        plotId,
-                        result.Message);
-                    return BadRequest(result);
-                }
-
-                _logger.LogInformation(
-                    "Successfully updated coordinate for Plot {PlotId}",
-                    plotId);
-
-                return Ok(result);
+                return BadRequest(Result<bool>.Failure("Invalid Plot ID"));
             }
-            catch (Exception ex)
+
+            if (request == null || string.IsNullOrWhiteSpace(request.CoordinateGeoJson))
             {
-                _logger.LogError(
-                    ex,
-                    "Error occurred while updating coordinate for Plot {PlotId}",
-                    plotId);
-                return StatusCode(500, Result<bool>.Failure("An error occurred while processing your request"));
+                return BadRequest(Result<bool>.Failure("Coordinate GeoJSON is required"));
             }
+
+            var command = new UpdateCoordinateCommand
+            {
+                PlotId = plotId,
+                CoordinateGeoJson = request.CoordinateGeoJson,
+                Notes = request.Notes
+            };
+
+            _logger.LogInformation(
+                "Updating coordinate for Plot {PlotId}",
+                plotId);
+
+            var result = await _mediator.Send(command);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Failed to update coordinate for Plot {PlotId}: {Message}",
+                    plotId,
+                    result.Message);
+                return BadRequest(result);
+            }
+
+            _logger.LogInformation(
+                "Successfully updated coordinate for Plot {PlotId}",
+                plotId);
+
+            return Ok(result);
         }
 
         [HttpGet("check-polygon-editable")]
@@ -739,50 +605,38 @@ namespace RiceProduction.API.Controllers
             [FromQuery] Guid plotId,
             [FromQuery] Guid yearSeasonId)
         {
-            try
+            if (plotId == Guid.Empty)
             {
-                if (plotId == Guid.Empty)
-                {
-                    return BadRequest(Result<CheckPlotPolygonEditableResponse>.Failure("Invalid Plot ID"));
-                }
+                return BadRequest(Result<CheckPlotPolygonEditableResponse>.Failure("Invalid Plot ID"));
+            }
 
-                if (yearSeasonId == Guid.Empty)
-                {
-                    return BadRequest(Result<CheckPlotPolygonEditableResponse>.Failure("Invalid Year Season ID"));
-                }
+            if (yearSeasonId == Guid.Empty)
+            {
+                return BadRequest(Result<CheckPlotPolygonEditableResponse>.Failure("Invalid Year Season ID"));
+            }
 
-                var query = new CheckPlotPolygonEditableQuery
-                {
-                    PlotId = plotId,
-                    YearSeasonId = yearSeasonId
-                };
+            var query = new CheckPlotPolygonEditableQuery
+            {
+                PlotId = plotId,
+                YearSeasonId = yearSeasonId
+            };
 
-                _logger.LogInformation(
-                    "Checking if plot polygon is editable for PlotId: {PlotId}, YearSeasonId: {YearSeasonId}",
+            _logger.LogInformation(
+                "Checking if plot polygon is editable for PlotId: {PlotId}, YearSeasonId: {YearSeasonId}",
+                plotId,
+                yearSeasonId);
+
+            var result = await _mediator.Send(query);
+
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Failed to check plot polygon editability for PlotId: {PlotId}: {Message}",
                     plotId,
-                    yearSeasonId);
-
-                var result = await _mediator.Send(query);
-
-                if (!result.Succeeded)
-                {
-                    _logger.LogWarning(
-                        "Failed to check plot polygon editability for PlotId: {PlotId}: {Message}",
-                        plotId,
-                        result.Message);
-                    return BadRequest(result);
-                }
-
-                return Ok(result);
+                    result.Message);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Error occurred while checking plot polygon editability for PlotId: {PlotId}",
-                    plotId);
-                return StatusCode(500, Result<CheckPlotPolygonEditableResponse>.Failure("An error occurred while processing your request"));
-            }
+
+            return this.ToActionResult(result);
         }
 
         private IActionResult? ValidateExcelImportFile(IFormFile? excelFile)

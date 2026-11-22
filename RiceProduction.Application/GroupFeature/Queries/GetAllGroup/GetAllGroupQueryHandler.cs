@@ -1,9 +1,8 @@
-﻿using System.Linq.Expressions;
-using AutoMapper;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 
 namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
@@ -12,17 +11,14 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
         : IRequestHandler<GetAllGroupQuery, Result<IEnumerable<GroupDTO>>>
     {
         private readonly ILogger<GetAllGroupQueryHandler> _logger;
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
+        private readonly IApplicationDbContext _context;
 
         public GetAllGroupQueryHandler(
             ILogger<GetAllGroupQueryHandler> logger,
-            IUnitOfWork unitOfWork,
-            IMapper mapper)
+            IApplicationDbContext context)
         {
             _logger = logger;
-            _unitOfWork = unitOfWork;
-            _mapper = mapper;
+            _context = context;
         }
 
         public async Task<Result<IEnumerable<GroupDTO>>> Handle(
@@ -34,15 +30,15 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
                 _logger.LogInformation(
                     "Getting groups with filters: ClusterId={ClusterId}, SeasonId={SeasonId}",
                     request.ClusterId, request.SeasonId);
-                var groupsQuery = _unitOfWork.Repository<Group>()
-                    .GetQueryable()
+
+                var groups = await _context.Groups
+                    .AsNoTracking()
                     .Include(g => g.YearSeason)
                     .Where(g => (request.ClusterId == Guid.Empty || g.ClusterId == request.ClusterId) &&
                                (request.SeasonId == Guid.Empty || (g.YearSeason != null && g.YearSeason.SeasonId == request.SeasonId)) &&
                                g.Status == GroupStatus.Active)
-                    .OrderBy(g => g.Area);
-
-                var groups = await groupsQuery.ToListAsync(cancellationToken);
+                    .OrderBy(g => g.Area)
+                    .ToListAsync(cancellationToken);
 
                 if (!groups.Any())
                 {
@@ -55,15 +51,15 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetAllGroup
                         "No groups found");
                 }
 
-                var groupDTOs = _mapper.Map<IEnumerable<GroupDTO>>(groups);
+                var groupDTOs = groups.Select(g => g.ToDto()).ToList();
 
                 _logger.LogInformation(
                     "Successfully retrieved {Count} groups",
-                    groups.Count());
+                    groups.Count);
 
                 return Result<IEnumerable<GroupDTO>>.Success(
                     groupDTOs,
-                    $"Successfully retrieved {groups.Count()} groups");
+                    $"Successfully retrieved {groups.Count} groups");
             }
             catch (Exception ex)
             {

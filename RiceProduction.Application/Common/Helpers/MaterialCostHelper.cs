@@ -46,9 +46,9 @@ public static class MaterialCostHelper
             return null;
         }
 
-        var amountPerMaterial = material.AmmountPerMaterial is > 0 ? material.AmmountPerMaterial.Value : 1M;
+        var amountPerMaterial = material.EffectiveAmountPerMaterial;
         var totalQuantityNeeded = quantityPerHa * area;
-        var packagesNeeded = CalculatePackagesNeeded(totalQuantityNeeded, amountPerMaterial, material.IsPartition);
+        var packagesNeeded = material.CalculatePackagesNeeded(totalQuantityNeeded);
         var actualQuantity = packagesNeeded * amountPerMaterial;
         var totalCost = packagesNeeded * priceInfo.PricePerMaterial;
 
@@ -94,6 +94,7 @@ public static class MaterialCostHelper
             return;
         }
 
+        existing.QuantityPerHa += materialCost.QuantityPerHa;
         existing.TotalQuantityNeeded += materialCost.TotalQuantityNeeded;
         existing.PackagesNeeded += materialCost.PackagesNeeded;
         existing.ActualQuantity += materialCost.ActualQuantity;

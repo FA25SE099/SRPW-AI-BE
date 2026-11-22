@@ -2,18 +2,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SystemSettingFeature.Queries.GetAllSystemSettings;
 
 public class GetAllSystemSettingsQueryHandler : IRequestHandler<GetAllSystemSettingsQuery, PagedResult<List<SystemSettingResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetAllSystemSettingsQueryHandler> _logger;
 
-    public GetAllSystemSettingsQueryHandler(IUnitOfWork unitOfWork, ILogger<GetAllSystemSettingsQueryHandler> logger)
+    public GetAllSystemSettingsQueryHandler(IApplicationDbContext context, ILogger<GetAllSystemSettingsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -21,9 +20,8 @@ public class GetAllSystemSettingsQueryHandler : IRequestHandler<GetAllSystemSett
     {
         try
         {
-            var query = _unitOfWork.Repository<SystemSetting>().GetQueryable();
+            var query = _context.SystemSettings.AsNoTracking();
 
-            // Apply filters
             if (!string.IsNullOrEmpty(request.SearchKey))
             {
                 query = query.Where(s => s.SettingKey.Contains(request.SearchKey) || 
@@ -35,13 +33,10 @@ public class GetAllSystemSettingsQueryHandler : IRequestHandler<GetAllSystemSett
                 query = query.Where(s => s.SettingCategory == request.Category);
             }
 
-            // Get total count
             var totalCount = await query.CountAsync(cancellationToken);
 
-            // Apply sorting
             query = query.OrderBy(s => s.SettingCategory).ThenBy(s => s.SettingKey);
 
-            // Apply pagination
             var skip = (request.CurrentPage - 1) * request.PageSize;
             var settings = await query
                 .Skip(skip)

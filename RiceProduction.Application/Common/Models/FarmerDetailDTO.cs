@@ -31,7 +31,6 @@ namespace RiceProduction.Application.Common.Models
     }
     public class ProductionStageDetailDTO : ProductionStageDTO
     {
-        public ICollection<ProductionPlanTaskDTO> ProductionPlanTasks { get; set; } = new List<ProductionPlanTaskDTO>();
     }
 
 

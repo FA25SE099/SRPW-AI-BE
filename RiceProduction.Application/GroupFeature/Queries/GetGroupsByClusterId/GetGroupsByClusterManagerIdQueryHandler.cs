@@ -29,12 +29,13 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId
         {
             try
             {
-                var userId = (Guid)_currentUser.Id;
-                if (userId == null || userId == Guid.Empty)
+                if (!_currentUser.Id.HasValue || _currentUser.Id.Value == Guid.Empty)
                 {
                     return PagedResult<List<GroupResponse>>.Failure(
                         "Current user ID not found");
                 }
+
+                var userId = _currentUser.Id.Value;
 
                 var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(userId, cancellationToken);
                 if (clusterManager == null)

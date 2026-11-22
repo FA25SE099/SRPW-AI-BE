@@ -11,14 +11,14 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetPlanDetails;
 public class GetPlanDetailsQueryHandler 
     : IRequestHandler<GetPlanDetailsQuery, Result<PlanDetailsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlanDetailsQueryHandler> _logger;
 
     public GetPlanDetailsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPlanDetailsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -29,36 +29,37 @@ public class GetPlanDetailsQueryHandler
         try
         {
             // 1. Load plan with all relationships
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
-                match: p => p.Id == request.ProductionPlanId,
-                includeProperties: q => q
-                    .Include(p => p.Group)
-                        .ThenInclude(g => g!.YearSeason)
-                    .Include(p => p.Group)
-                        .ThenInclude(g => g!.GroupPlots)
-                            .ThenInclude(gp => gp.Plot)
-                                .ThenInclude(plot => plot.Farmer)
-                    .Include(p => p.CurrentProductionStages.OrderBy(s => s.SequenceOrder))
-                        .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
-                            .ThenInclude(t => t.ProductionPlanTaskMaterials)
-                                .ThenInclude(m => m.Material)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks)
-                            .ThenInclude(t => t.CultivationTasks)
-                                .ThenInclude(ct => ct.PlotCultivation)
-                                    .ThenInclude(pc => pc.Plot)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks)
-                            .ThenInclude(t => t.CultivationTasks)
-                                .ThenInclude(ct => ct.AssignedSupervisor)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks)
-                            .ThenInclude(t => t.CultivationTasks)
-                                .ThenInclude(ct => ct.AssignedVendor)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks)
-                            .ThenInclude(t => t.CultivationTasks)
-                                .ThenInclude(ct => ct.Verifier));
+            var plan = await _context.ProductionPlans
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.YearSeason)
+                .Include(p => p.Group)
+                    .ThenInclude(g => g!.GroupPlots)
+                        .ThenInclude(gp => gp.Plot)
+                            .ThenInclude(plot => plot.Farmer)
+                .Include(p => p.CurrentProductionStages.OrderBy(s => s.SequenceOrder))
+                    .ThenInclude(s => s.ProductionPlanTasks.OrderBy(t => t.SequenceOrder))
+                        .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                            .ThenInclude(m => m.Material)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks)
+                        .ThenInclude(t => t.CultivationTasks)
+                            .ThenInclude(ct => ct.PlotCultivation)
+                                .ThenInclude(pc => pc.Plot)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks)
+                        .ThenInclude(t => t.CultivationTasks)
+                            .ThenInclude(ct => ct.AssignedSupervisor)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks)
+                        .ThenInclude(t => t.CultivationTasks)
+                            .ThenInclude(ct => ct.AssignedVendor)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks)
+                        .ThenInclude(t => t.CultivationTasks)
+                            .ThenInclude(ct => ct.Verifier)
+                .FirstOrDefaultAsync(p => p.Id == request.ProductionPlanId, cancellationToken);
 
             if (plan == null)
             {
@@ -76,14 +77,15 @@ public class GetPlanDetailsQueryHandler
             Season? season = null;
             if (plan.Group.YearSeason?.SeasonId != null)
             {
-                season = await _unitOfWork.Repository<Season>()
-                    .FindAsync(s => s.Id == plan.Group.YearSeason.SeasonId);
+                season = await _context.Seasons
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == plan.Group.YearSeason.SeasonId, cancellationToken);
             }
 
             var metrics = AggregatePlanStages(plan.CurrentProductionStages);
 
             var plots = plan.Group?.GroupPlots?.Select(gp => gp.Plot).ToList() ?? new List<Plot>();
-            var plotProgressList = await CalculatePlotProgress(plots);
+            var plotProgressList = await CalculatePlotProgress(plots, cancellationToken);
 
             var response = new PlanDetailsResponse
             {
@@ -384,20 +386,22 @@ public class GetPlanDetailsQueryHandler
         return (actualEnd.Value - scheduledEnd.Value).Days;
     }
 
-    private async Task<List<PlotProgressDetails>> CalculatePlotProgress(List<Plot> plots)
+    private async Task<List<PlotProgressDetails>> CalculatePlotProgress(
+        List<Plot> plots,
+        CancellationToken cancellationToken)
     {
         var plotProgressList = new List<PlotProgressDetails>();
         var plotIds = plots.Select(p => p.Id).ToList();
 
-        var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-            .ListAsync(
-                pc => plotIds.Contains(pc.PlotId),
-                includeProperties: q => q
-                    .Include(pc => pc.Plot)
-                        .ThenInclude(p => p.Farmer)
-                    .Include(pc => pc.CultivationTasks)
-                        .ThenInclude(ct => ct.ProductionPlanTask)
-                            .ThenInclude(ppt => ppt.ProductionStage));
+        var plotCultivations = await _context.PlotCultivations
+            .AsNoTracking()
+            .Include(pc => pc.Plot)
+                .ThenInclude(p => p.Farmer)
+            .Include(pc => pc.CultivationTasks)
+                .ThenInclude(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt!.ProductionStage)
+            .Where(pc => plotIds.Contains(pc.PlotId))
+            .ToListAsync(cancellationToken);
 
         var cultivationByPlotId = plotCultivations
             .GroupBy(pc => pc.PlotId)

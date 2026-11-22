@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -11,14 +12,14 @@ namespace RiceProduction.Application.ReportFeature.Queries.GetReportWithEmergenc
 public class GetReportWithEmergencyMaterialsQueryHandler
     : IRequestHandler<GetReportWithEmergencyMaterialsQuery, Result<ReportWithEmergencyMaterialsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetReportWithEmergencyMaterialsQueryHandler> _logger;
 
     public GetReportWithEmergencyMaterialsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetReportWithEmergencyMaterialsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -28,8 +29,8 @@ public class GetReportWithEmergencyMaterialsQueryHandler
     {
         try
         {
-            var report = await _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            var report = await _context.EmergencyReports
+                .AsNoTracking()
                 .Include(r => r.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                         .ThenInclude(p => p.Farmer)
@@ -55,11 +56,12 @@ public class GetReportWithEmergencyMaterialsQueryHandler
             var emergencyTasks = new List<CultivationTask>();
             if (report.PlotCultivationId.HasValue)
             {
-                emergencyTasks = await _unitOfWork.Repository<CultivationTask>()
-                    .GetQueryable()
+                emergencyTasks = await _context.CultivationTasks
+                    .AsNoTracking()
                     .Include(ct => ct.CultivationTaskMaterials)
                         .ThenInclude(ctm => ctm.Material)
                             .ThenInclude(m => m.MaterialPrices)
+                    .AsSplitQuery()
                     .Where(ct => ct.PlotCultivationId == report.PlotCultivationId.Value &&
                                 (ct.Status == TaskStatus.Emergency || ct.Status == TaskStatus.EmergencyApproval) &&
                                 ct.IsContingency)

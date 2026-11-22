@@ -1,45 +1,47 @@
-﻿using RiceProduction.Application.Auth.Commands.Login;
+﻿using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.GetAllMaterialByType;
 
 public class GetAllMaterialByTypeQueryHandler : IRequestHandler<GetAllMaterialByTypeQuery, PagedResult<List<MaterialResponseForList>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
 
-    public GetAllMaterialByTypeQueryHandler(IUnitOfWork unitOfWork)
+    public GetAllMaterialByTypeQueryHandler(IApplicationDbContext context)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
     }
 
     public async Task<PagedResult<List<MaterialResponseForList>>> Handle(GetAllMaterialByTypeQuery request, CancellationToken cancellationToken)
     {
         try
         {
-            var materialRepo = await _unitOfWork.Repository<Material>().ListAsync(
-                filter: m => m.IsActive && m.Type == request.MaterialType,
-                orderBy: q => q.OrderBy(m => m.Name));
-            var materialPriceRepoList = await _unitOfWork.Repository<MaterialPrice>().ListAsync();
+            var materialsQuery = _context.Materials
+                .AsNoTracking()
+                .Where(m => m.IsActive && m.Type == request.MaterialType);
 
-            // Get total count for pagination
-            var totalCount = materialRepo.Count();
+            var totalCount = await materialsQuery.CountAsync(cancellationToken);
 
-            // Apply paging in-memory (if your repo doesn't support skip/take)
-            var pagedMaterials = materialRepo
+            var pagedMaterials = await materialsQuery
+                .OrderBy(m => m.Name)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .ToListAsync(cancellationToken);
 
-            // Use provided DateTime or current DateTime
+            if (!pagedMaterials.Any())
+            {
+                return PagedResult<List<MaterialResponseForList>>.Failure(
+                    $"No materials found of type {request.MaterialType}");
+            }
+
+            var materialIds = pagedMaterials.Select(m => m.Id).ToList();
+            var materialPrices = await _context.MaterialPrices
+                .AsNoTracking()
+                .Where(p => materialIds.Contains(p.MaterialId))
+                .ToListAsync(cancellationToken);
+
             var effectiveDate = request.PriceDateTime ?? DateTime.UtcNow;
 
             var materialResponses = pagedMaterials
@@ -50,14 +52,12 @@ public class GetAllMaterialByTypeQueryHandler : IRequestHandler<GetAllMaterialBy
                     Type = m.Type,
                     AmmountPerMaterial = m.AmmountPerMaterial,
                     Showout = m.AmmountPerMaterial.ToString() + m.Unit,
-                    PricePerMaterial = materialPriceRepoList
-                    .Where(p => p.MaterialId == m.Id
-                    && m.IsActive
-                    && (p.ValidFrom <= effectiveDate)
-                    && (!p.ValidTo.HasValue || (p.ValidTo.Value >= effectiveDate))
-                         )
-                    .OrderByDescending(p => p.ValidFrom)
-                    .FirstOrDefault()?.PricePerMaterial ?? 0,
+                    PricePerMaterial = materialPrices
+                        .Where(p => p.MaterialId == m.Id
+                            && p.ValidFrom <= effectiveDate
+                            && (!p.ValidTo.HasValue || p.ValidTo.Value >= effectiveDate))
+                        .OrderByDescending(p => p.ValidFrom)
+                        .FirstOrDefault()?.PricePerMaterial ?? 0,
                     Unit = m.Unit,
                     Description = m.Description,
                     ImgUrls = m.imgUrls,
@@ -66,12 +66,6 @@ public class GetAllMaterialByTypeQueryHandler : IRequestHandler<GetAllMaterialBy
                     IsPartition = m.IsPartition
                 })
                 .ToList();
-
-            if (!materialResponses.Any())
-            {
-                return PagedResult<List<MaterialResponseForList>>.Failure(
-                    $"No materials found of type {request.MaterialType}");
-            }
 
             var message = request.PriceDateTime.HasValue
                 ? $"Successfully retrieved materials of type {request.MaterialType} with prices as of {request.PriceDateTime.Value:yyyy-MM-dd HH:mm:ss}"

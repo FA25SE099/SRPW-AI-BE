@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
@@ -11,15 +12,14 @@ namespace RiceProduction.Application.ClusterFeature.Queries.GetClusterCurrentSea
 public class GetClusterCurrentSeasonQueryHandler
     : IRequestHandler<GetClusterCurrentSeasonQuery, Result<ClusterCurrentSeasonResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetClusterCurrentSeasonQueryHandler> _logger;
 
     public GetClusterCurrentSeasonQueryHandler(
-        IUnitOfWork unitOfWork,
-        ILogger<GetClusterCurrentSeasonQueryHandler> logger
-        )
+        IApplicationDbContext context,
+        ILogger<GetClusterCurrentSeasonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -29,8 +29,9 @@ public class GetClusterCurrentSeasonQueryHandler
     {
         try
         {
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
+            var cluster = await _context.Clusters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == request.ClusterId, cancellationToken);
 
             if (cluster == null)
             {
@@ -38,17 +39,21 @@ public class GetClusterCurrentSeasonQueryHandler
                     $"Cluster with ID {request.ClusterId} not found");
             }
 
-            var (currentSeason, currentYear) = await GetCurrentSeasonAndYear();
+            var allSeasons = await _context.Seasons
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+
+            var (currentSeason, currentYear) = ResolveCurrentSeasonAndYear(allSeasons);
             if (currentSeason == null)
             {
                 return Result<ClusterCurrentSeasonResponse>.Failure(
                     "No current season could be determined");
             }
 
-            var groupsList = await _unitOfWork.Repository<Group>()
-                .GetQueryable()
+            var groupsList = await _context.Groups
+                .AsNoTracking()
                 .Include(g => g.YearSeason)
-                    .ThenInclude(ys => ys.RiceVariety)
+                    .ThenInclude(ys => ys!.RiceVariety)
                 .Where(g => g.ClusterId == cluster.Id &&
                            g.YearSeason != null && g.YearSeason.SeasonId == currentSeason.Id &&
                            g.Year == currentYear)
@@ -75,20 +80,26 @@ public class GetClusterCurrentSeasonQueryHandler
 
             if (hasGroups)
             {
-                await PopulateGroupDetailsAsync(response, groupsList);
+                await PopulateGroupDetailsAsync(response, groupsList, cancellationToken);
             }
             else
             {
-                (clusterFarmers, clusterPlots) = await GetClusterFarmersAndPlotsAsync(cluster.Id);
-                await PopulateReadinessInfoAsync(response, cluster.Id, clusterFarmers, clusterPlots);
+                (clusterFarmers, clusterPlots) = await GetClusterFarmersAndPlotsAsync(cluster.Id, cancellationToken);
+                await PopulateReadinessInfoAsync(response, cluster.Id, clusterFarmers, clusterPlots, cancellationToken);
             }
 
             if (clusterFarmers == null || clusterPlots == null)
             {
-                (clusterFarmers, clusterPlots) = await GetClusterFarmersAndPlotsAsync(cluster.Id);
+                (clusterFarmers, clusterPlots) = await GetClusterFarmersAndPlotsAsync(cluster.Id, cancellationToken);
             }
 
-            await PopulateRiceVarietySelectionAsync(response, currentSeason.Id, clusterFarmers, clusterPlots);
+            await PopulateRiceVarietySelectionAsync(
+                response,
+                currentSeason.Id,
+                allSeasons,
+                clusterFarmers,
+                clusterPlots,
+                cancellationToken);
 
             return Result<ClusterCurrentSeasonResponse>.Success(response);
         }
@@ -102,42 +113,41 @@ public class GetClusterCurrentSeasonQueryHandler
         }
     }
 
-    private async Task<(List<Farmer> Farmers, List<Plot> Plots)> GetClusterFarmersAndPlotsAsync(Guid clusterId)
+    private async Task<(List<Farmer> Farmers, List<Plot> Plots)> GetClusterFarmersAndPlotsAsync(
+        Guid clusterId,
+        CancellationToken cancellationToken)
     {
-        var farmers = (await _unitOfWork.FarmerRepository
-            .ListAsync(f => f.ClusterId == clusterId)).ToList();
+        var farmers = await _context.Farmers
+            .AsNoTracking()
+            .Where(f => f.ClusterId == clusterId)
+            .ToListAsync(cancellationToken);
         var farmerIds = farmers.Select(f => f.Id).ToList();
 
-        var plots = (await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => farmerIds.Contains(p.FarmerId))).ToList();
+        var plots = await _context.Plots
+            .AsNoTracking()
+            .Where(p => farmerIds.Contains(p.FarmerId))
+            .ToListAsync(cancellationToken);
 
         return (farmers, plots);
     }
 
     private async Task PopulateGroupDetailsAsync(
         ClusterCurrentSeasonResponse response,
-        List<Group> groups)
+        List<Group> groups,
+        CancellationToken cancellationToken)
     {
         var groupIds = groups.Select(g => g.Id).ToList();
 
-        var groupPlots = await _unitOfWork.Repository<GroupPlot>()
-            .ListAsync(gp => groupIds.Contains(gp.GroupId),
-                includeProperties: q => q.Include(gp => gp.Plot));
-        var plotsList = groupPlots.Select(gp => gp.Plot).ToList();
+        var groupPlots = await _context.GroupPlots
+            .AsNoTracking()
+            .Where(gp => groupIds.Contains(gp.GroupId))
+            .Select(gp => new { gp.GroupId, gp.Plot.FarmerId })
+            .ToListAsync(cancellationToken);
 
-        var farmerIds = plotsList.Select(p => p.FarmerId).Distinct().ToList();
-        var farmers = await _unitOfWork.FarmerRepository
-            .ListAsync(f => farmerIds.Contains(f.Id));
-
-        var varietyIds = groups
-            .Where(g => g.YearSeason?.RiceVarietyId != null)
-            .Select(g => g.YearSeason!.RiceVarietyId)
-            .Distinct()
-            .ToList();
-
-        var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-            .ListAsync(rv => varietyIds.Contains(rv.Id));
-        var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
+        var farmerIds = groupPlots.Select(gp => gp.FarmerId).Distinct().ToList();
+        var totalFarmers = await _context.Farmers
+            .AsNoTracking()
+            .CountAsync(f => farmerIds.Contains(f.Id), cancellationToken);
 
         var supervisorIds = groups
             .Where(g => g.SupervisorId.HasValue)
@@ -145,24 +155,23 @@ public class GetClusterCurrentSeasonQueryHandler
             .Distinct()
             .ToList();
 
-        var supervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => supervisorIds.Contains(s.Id) && s.ClusterId == response.ClusterId);
-        var supervisorDict = supervisors.ToDictionary(s => s.Id);
+        var supervisorDict = await _context.Supervisors
+            .AsNoTracking()
+            .Where(s => supervisorIds.Contains(s.Id) && s.ClusterId == response.ClusterId)
+            .ToDictionaryAsync(s => s.Id, s => s.FullName, cancellationToken);
 
         response.Groups = groups.Select(g => new GroupSeasonSummary
         {
             GroupId = g.Id,
             SupervisorId = g.SupervisorId,
             SupervisorName = g.SupervisorId.HasValue
-                ? supervisorDict.GetValueOrDefault(g.SupervisorId.Value)?.FullName
+                ? supervisorDict.GetValueOrDefault(g.SupervisorId.Value)
                 : null,
             RiceVarietyId = g.YearSeason?.RiceVarietyId,
-            RiceVarietyName = g.YearSeason?.RiceVarietyId != null
-                ? varietyDict.GetValueOrDefault(g.YearSeason.RiceVarietyId.Value)?.VarietyName
-                : null,
+            RiceVarietyName = g.YearSeason?.RiceVariety?.VarietyName,
             PlantingDate = g.PlantingDate,
             Status = g.Status.ToString(),
-            PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => gp.GroupId == g.Id)),
+            PlotCount = groupPlots.Count(gp => gp.GroupId == g.Id),
             TotalArea = g.TotalArea
         }).ToList();
 
@@ -175,17 +184,17 @@ public class GetClusterCurrentSeasonQueryHandler
                 return new RiceVarietyGroupSummary
                 {
                     RiceVarietyId = g.Key,
-                    RiceVarietyName = varietyDict.GetValueOrDefault(g.Key)?.VarietyName ?? "Unknown",
+                    RiceVarietyName = g.First().YearSeason?.RiceVariety?.VarietyName ?? "Unknown",
                     GroupCount = g.Count(),
-                    PlotCount = plotsList.Count(p => p.GroupPlots.Any(gp => varietyGroupIds.Contains(gp.GroupId))),
+                    PlotCount = groupPlots.Count(gp => varietyGroupIds.Contains(gp.GroupId)),
                     TotalArea = g.Sum(gr => gr.TotalArea ?? 0)
                 };
             })
             .OrderByDescending(v => v.PlotCount)
             .ToList();
 
-        response.TotalPlots = plotsList.Count;
-        response.TotalFarmers = farmers.Count();
+        response.TotalPlots = groupPlots.Count;
+        response.TotalFarmers = totalFarmers;
         response.TotalArea = groups.Sum(g => g.TotalArea ?? 0);
     }
 
@@ -193,10 +202,12 @@ public class GetClusterCurrentSeasonQueryHandler
         ClusterCurrentSeasonResponse response,
         Guid clusterId,
         List<Farmer> farmersList,
-        List<Plot> plotsList)
+        List<Plot> plotsList,
+        CancellationToken cancellationToken)
     {
-        var availableSupervisors = (await _unitOfWork.SupervisorRepository
-            .ListAsync(s => s.IsActive && s.ClusterId == clusterId)).ToList();
+        var availableSupervisorCount = await _context.Supervisors
+            .AsNoTracking()
+            .CountAsync(s => s.IsActive && s.ClusterId == clusterId, cancellationToken);
 
         var plotsWithPolygon = plotsList.Count(p => p.Boundary != null && p.Status == PlotStatus.Active);
         var plotsWithoutPolygon = plotsList.Count(p => p.Boundary == null || p.Status == PlotStatus.PendingPolygon);
@@ -210,7 +221,7 @@ public class GetClusterCurrentSeasonQueryHandler
             recommendations.Add("Assign polygon drawing tasks to supervisors");
         }
 
-        if (!availableSupervisors.Any())
+        if (availableSupervisorCount == 0)
         {
             blockingIssues.Add("No supervisors available with capacity");
             recommendations.Add("Add more supervisors or increase capacity");
@@ -224,7 +235,7 @@ public class GetClusterCurrentSeasonQueryHandler
 
         var readinessScore = 0;
         if (plotsWithPolygon > 0) readinessScore += 40;
-        if (availableSupervisors.Any()) readinessScore += 30;
+        if (availableSupervisorCount > 0) readinessScore += 30;
         if (farmersList.Count >= 5) readinessScore += 30;
 
         response.Readiness = new ClusterReadinessInfo
@@ -233,7 +244,7 @@ public class GetClusterCurrentSeasonQueryHandler
             AvailablePlots = plotsList.Count,
             PlotsWithPolygon = plotsWithPolygon,
             PlotsWithoutPolygon = plotsWithoutPolygon,
-            AvailableSupervisors = availableSupervisors.Count,
+            AvailableSupervisors = availableSupervisorCount,
             AvailableFarmers = farmersList.Count,
             BlockingIssues = blockingIssues,
             Recommendations = recommendations,
@@ -244,16 +255,20 @@ public class GetClusterCurrentSeasonQueryHandler
     private async Task PopulateRiceVarietySelectionAsync(
         ClusterCurrentSeasonResponse response,
         Guid seasonId,
+        List<Season> allSeasons,
         List<Farmer> farmersList,
-        List<Plot> plotsList)
+        List<Plot> plotsList,
+        CancellationToken cancellationToken)
     {
         var farmerIds = farmersList.Select(f => f.Id).ToList();
         var totalFarmers = farmersList.Count;
         var plotIds = plotsList.Select(p => p.Id).ToList();
         var plotToFarmerId = plotsList.ToDictionary(p => p.Id, p => p.FarmerId);
 
-        var cultivationsList = (await _unitOfWork.Repository<PlotCultivation>()
-            .ListAsync(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == seasonId)).ToList();
+        var cultivationsList = await _context.PlotCultivations
+            .AsNoTracking()
+            .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == seasonId)
+            .ToListAsync(cancellationToken);
 
         var farmersWithSelection = cultivationsList
             .Select(pc => plotToFarmerId[pc.PlotId])
@@ -263,20 +278,22 @@ public class GetClusterCurrentSeasonQueryHandler
         var farmersPending = totalFarmers - farmersWithSelection.Count;
         var completionRate = totalFarmers > 0 ? (decimal)farmersWithSelection.Count / totalFarmers * 100 : 0;
 
-        var previousSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
-        var previousSeason = previousSeasons
+        var previousSeason = allSeasons
             .OrderByDescending(s => s.CreatedAt)
             .ElementAtOrDefault(1);
 
         var previousCultivations = previousSeason != null
-            ? (await _unitOfWork.Repository<PlotCultivation>()
-                .ListAsync(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == previousSeason.Id)).ToList()
+            ? await _context.PlotCultivations
+                .AsNoTracking()
+                .Where(pc => plotIds.Contains(pc.PlotId) && pc.SeasonId == previousSeason.Id)
+                .ToListAsync(cancellationToken)
             : new List<PlotCultivation>();
 
         var varietyIds = cultivationsList.Select(pc => pc.RiceVarietyId).Distinct().ToList();
-        var varieties = await _unitOfWork.Repository<RiceVariety>()
-            .ListAsync(rv => varietyIds.Contains(rv.Id));
-        var varietyDict = varieties.ToDictionary(rv => rv.Id);
+        var varietyDict = await _context.RiceVarieties
+            .AsNoTracking()
+            .Where(rv => varietyIds.Contains(rv.Id))
+            .ToDictionaryAsync(rv => rv.Id, rv => rv.VarietyName, cancellationToken);
 
         var selections = cultivationsList
             .GroupBy(pc => pc.RiceVarietyId)
@@ -289,7 +306,7 @@ public class GetClusterCurrentSeasonQueryHandler
                 return new VarietySelectionSummary
                 {
                     VarietyId = varietyId,
-                    VarietyName = varietyDict.GetValueOrDefault(varietyId)?.VarietyName ?? "Unknown",
+                    VarietyName = varietyDict.GetValueOrDefault(varietyId) ?? "Unknown",
                     SelectedBy = currentCount,
                     PreviousSeason = previousCount,
                     IsRecommended = true,
@@ -313,7 +330,7 @@ public class GetClusterCurrentSeasonQueryHandler
             FarmerId = fid,
             FarmerName = farmerDict.GetValueOrDefault(fid)?.FullName ?? "Unknown",
             PreviousVariety = previousCultivationsByFarmerId[fid]
-                .Select(pc => varietyDict.GetValueOrDefault(pc.RiceVarietyId)?.VarietyName)
+                .Select(pc => varietyDict.GetValueOrDefault(pc.RiceVarietyId))
                 .FirstOrDefault(),
             PlotCount = plotsByFarmerId[fid].Count()
         }).ToList();
@@ -329,11 +346,9 @@ public class GetClusterCurrentSeasonQueryHandler
         };
     }
 
-    private async Task<(Season? season, int year)> GetCurrentSeasonAndYear()
+    private static (Season? season, int year) ResolveCurrentSeasonAndYear(IEnumerable<Season> allSeasons)
     {
         var today = DateTime.Now;
-        var allSeasons = await _unitOfWork.Repository<Season>()
-            .ListAsync(_ => true);
 
         foreach (var season in allSeasons)
         {

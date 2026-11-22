@@ -1,6 +1,6 @@
 using System;
-using Microsoft.AspNetCore.Mvc;
 using RiceProduction.Application.Common.Models;
+using RiceProduction.Application.Common.Models.Response;
 
 namespace RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTemplate;
 
@@ -9,7 +9,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.DownloadPlotImportTempl
 /// Generates one row per plot based on each farmer's NumberOfPlots
 /// Includes rice variety reference sheet
 /// </summary>
-public class DownloadPlotImportTemplateQuery : IRequest<Result<IActionResult>>
+public class DownloadPlotImportTemplateQuery : IRequest<Result<FileExportResult>>
 {
     /// <summary>
     /// Cluster manager ID to filter farmers by cluster

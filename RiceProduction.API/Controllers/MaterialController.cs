@@ -58,7 +58,7 @@ public class MaterialController : ControllerBase
     public async Task<IActionResult> DownloadMaterialExcel([FromBody] DateTime request)
     {
         var query = new DownloadAllMaterialExcelQuery { InputDate = request };
-        return ToFileActionResult(await _mediator.Send(query));
+        return this.ToFileActionResult(await _mediator.Send(query));
     }
 
     [HttpPost("import-update-excel")]
@@ -77,7 +77,7 @@ public class MaterialController : ControllerBase
     public async Task<IActionResult> DownloadCreateSampleMaterialExcelFile()
     {
         var query = new DownloadCreateSampleMaterialExcelQuery();
-        return ToFileActionResult(await _mediator.Send(query));
+        return this.ToFileActionResult(await _mediator.Send(query));
     }
 
     [HttpPost("import-create-excel")]
@@ -186,9 +186,4 @@ public class MaterialController : ControllerBase
     {
         return this.ToIActionResult(await _mediator.Send(query));
     }
-
-    private IActionResult ToFileActionResult<T>(Result<T> result) where T : IActionResult =>
-        result.Succeeded && result.Data != null
-            ? result.Data
-            : BadRequest(new { message = result.Message });
 }

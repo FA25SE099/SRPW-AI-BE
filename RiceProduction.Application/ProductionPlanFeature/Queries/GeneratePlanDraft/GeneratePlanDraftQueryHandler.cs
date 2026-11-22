@@ -1,13 +1,8 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Request;
 using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Domain.Entities;
 
@@ -16,14 +11,14 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GeneratePlanD
 public class GeneratePlanDraftQueryHandler :
     IRequestHandler<GeneratePlanDraftQuery, Result<GeneratePlanDraftResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GeneratePlanDraftQueryHandler> _logger;
 
     public GeneratePlanDraftQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GeneratePlanDraftQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -31,7 +26,9 @@ public class GeneratePlanDraftQueryHandler :
     {
         try
         {
-            var group = await _unitOfWork.Repository<Group>().FindAsync(g => g.Id == request.GroupId);
+            var group = await _context.Groups
+                .AsNoTracking()
+                .FirstOrDefaultAsync(g => g.Id == request.GroupId, cancellationToken);
 
             if (group == null)
             {
@@ -45,13 +42,14 @@ public class GeneratePlanDraftQueryHandler :
 
             var effectiveTotalArea = group.TotalArea.Value;
 
-            var standardPlan = await _unitOfWork.Repository<StandardPlan>().FindAsync(
-                match: sp => sp.Id == request.StandardPlanId,
-                includeProperties: q => q
-                    .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
-                        .ThenInclude(sps => sps.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
-                            .ThenInclude(spt => spt.StandardPlanTaskMaterials)
-                                .ThenInclude(sptm => sptm.Material));
+            var standardPlan = await _context.StandardPlans
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(sp => sp.StandardPlanStages.OrderBy(s => s.SequenceOrder))
+                    .ThenInclude(sps => sps.StandardPlanTasks.OrderBy(t => t.SequenceOrder))
+                        .ThenInclude(spt => spt.StandardPlanTaskMaterials)
+                            .ThenInclude(sptm => sptm.Material)
+                .FirstOrDefaultAsync(sp => sp.Id == request.StandardPlanId, cancellationToken);
 
             if (standardPlan == null)
             {
@@ -70,8 +68,10 @@ public class GeneratePlanDraftQueryHandler :
 
             var priceReferenceDate = DateTime.SpecifyKind(request.BasePlantingDate.Date, DateTimeKind.Utc);
 
-            var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate);
+            var potentialPrices = await _context.MaterialPrices
+                .AsNoTracking()
+                .Where(p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate)
+                .ToListAsync(cancellationToken);
 
             var materialPriceMap = potentialPrices
                 .GroupBy(p => p.MaterialId)
@@ -80,7 +80,7 @@ public class GeneratePlanDraftQueryHandler :
 
             var materialDetailsMap = allStandardMaterials
                 .Select(m => m.Material)
-                .Distinct()
+                .DistinctBy(m => m.Id)
                 .ToDictionary(m => m.Id, m => m);
 
             decimal totalPlanCost = 0M;
