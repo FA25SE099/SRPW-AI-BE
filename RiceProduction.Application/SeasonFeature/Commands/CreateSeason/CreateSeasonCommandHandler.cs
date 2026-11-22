@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,13 +10,13 @@ namespace RiceProduction.Application.SeasonFeature.Commands.CreateSeason
 {
     public class CreateSeasonCommandHandler : IRequestHandler<CreateSeasonCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<CreateSeasonCommandHandler> _logger;
 
-        public CreateSeasonCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<CreateSeasonCommandHandler> logger)
+        public CreateSeasonCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<CreateSeasonCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,15 +25,14 @@ namespace RiceProduction.Application.SeasonFeature.Commands.CreateSeason
         {
             try
             {
-                var seasonRepo = _unitOfWork.Repository<Season>();
-
-                var duplicate = await seasonRepo.FindAsync(s => s.SeasonName == request.SeasonName);
-                if (duplicate != null)
+                var exists = await _context.Seasons
+                    .AnyAsync(s => s.SeasonName == request.SeasonName, cancellationToken);
+                if (exists)
                 {
                     return Result<Guid>.Failure($"Season with name '{request.SeasonName}' already exists");
                 }
 
-                var id = await seasonRepo.GenerateNewGuid(Guid.NewGuid());
+                var id = Guid.NewGuid();
                 var newSeason = new Season
                 {
                     Id = id,
@@ -43,8 +43,8 @@ namespace RiceProduction.Application.SeasonFeature.Commands.CreateSeason
                     IsActive = request.IsActive
                 };
 
-                await seasonRepo.AddAsync(newSeason);
-                await _unitOfWork.CompleteAsync();
+                _context.Seasons.Add(newSeason);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new SeasonChangedEvent(id, ChangeType.Created), cancellationToken);
 

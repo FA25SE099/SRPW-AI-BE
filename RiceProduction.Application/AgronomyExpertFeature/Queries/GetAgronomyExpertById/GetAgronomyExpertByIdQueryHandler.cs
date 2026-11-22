@@ -1,26 +1,19 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.AgronomyExpertResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyExpertById
 {
     public class GetAgronomyExpertByIdQueryHandler : IRequestHandler<GetAgronomyExpertByIdQuery, Result<AgronomyExpertResponse>>
     {
-        private readonly IAgronomyExpertRepository _expertRepo;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetAgronomyExpertByIdQueryHandler> _logger;
 
-        public GetAgronomyExpertByIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetAgronomyExpertByIdQueryHandler> logger)
+        public GetAgronomyExpertByIdQueryHandler(IApplicationDbContext context, ILogger<GetAgronomyExpertByIdQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
-            _expertRepo = _unitOfWork.AgronomyExpertRepository;
+            _context = context;
             _logger = logger;
         }
 
@@ -28,31 +21,35 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyEx
         {
             try
             {
-                var expert = await _expertRepo.GetAgronomyExpertByIdAsync(
-                    request.AgronomyExpertId,
-                    cancellationToken);
+                var agronomyExpertResponse = await _context.AgronomyExperts
+                    .AsNoTracking()
+                    .Where(e => e.Id == request.AgronomyExpertId)
+                    .Select(e => new AgronomyExpertResponse
+                    {
+                        ExpertId = e.Id,
+                        ExpertName = e.FullName,
+                        ExpertPhoneNumber = e.PhoneNumber,
+                        Email = e.Email,
+                        ClusterId = e.ClusterId,
+                        ClusterName = e.ManagedCluster != null ? e.ManagedCluster.ClusterName : null,
+                        AssignedDate = e.AssignedDate
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
 
-                var agronomyExpertResponse = new AgronomyExpertResponse
+                if (agronomyExpertResponse == null)
                 {
-                    ExpertId = expert.Id,
-                    ExpertName = expert.FullName,
-                    ExpertPhoneNumber = expert.PhoneNumber,
-                    Email = expert.Email,
-                    ClusterId = expert.ClusterId,
-                    ClusterName = expert.ManagedCluster?.ClusterName,
-                    AssignedDate = expert.AssignedDate
-                };
+                    return Result<AgronomyExpertResponse>.Failure("Agronomy expert not found");
+                }
 
                 return Result<AgronomyExpertResponse>.Success(
                     agronomyExpertResponse,
-                    "Agronomy experts retrieved successfully");
+                    "Agronomy expert retrieved successfully");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while getting agronomy experts");
+                _logger.LogError(ex, "Error occurred while getting agronomy expert");
                 return Result<AgronomyExpertResponse>.Failure("An error occurred while processing your request");
             }
         }
     }
 }
-

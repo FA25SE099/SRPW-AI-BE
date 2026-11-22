@@ -8,11 +8,11 @@ namespace RiceProduction.Application.SmsFeature.Commands.ProcessSmsDeliveryWebho
 
 public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSmsDeliveryWebhookCommand, WebhookResponse>
 {
-    private readonly IUnitOfWork _context;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ProcessSmsDeliveryWebhookCommandHandler> _logger;
 
     public ProcessSmsDeliveryWebhookCommandHandler(
-        IUnitOfWork context,
+        IApplicationDbContext context,
         ILogger<ProcessSmsDeliveryWebhookCommandHandler> logger)
     {
         _context = context;
@@ -37,8 +37,8 @@ public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSm
             }
 
             // Find notification by MessageId (tranId from SpeedSMS)
-            var notification = await _context.Repository<Notification>()
-                .FindAsync(n => n.MessageId == request.TranId && n.PhoneNumber == request.Phone);
+            var notification = await _context.Notifications
+                .FirstOrDefaultAsync(n => n.MessageId == request.TranId && n.PhoneNumber == request.Phone, cancellationToken);
 
             if (notification == null)
             {
@@ -51,7 +51,7 @@ public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSm
             }
 
             string newStatus;
-            string errorMessage = null;
+            string? errorMessage = null;
 
             if (request.Status == 0)
             {
@@ -83,7 +83,7 @@ public class ProcessSmsDeliveryWebhookCommandHandler : IRequestHandler<ProcessSm
             }
             notification.LastModified = DateTimeOffset.UtcNow;
 
-            await _context.CompleteAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Notification updated successfully - Id: {NotificationId}, Status: {Status}", 
                 notification.Id, newStatus);

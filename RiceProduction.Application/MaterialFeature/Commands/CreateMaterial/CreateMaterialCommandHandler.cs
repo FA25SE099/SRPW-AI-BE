@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,13 +10,13 @@ namespace RiceProduction.Application.MaterialFeature.Commands.CreateMaterial
 {
     public class CreateMaterialCommandHandler : IRequestHandler<CreateMaterialCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<CreateMaterialCommandHandler> _logger;
 
-        public CreateMaterialCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<CreateMaterialCommandHandler> logger)
+        public CreateMaterialCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<CreateMaterialCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,15 +25,15 @@ namespace RiceProduction.Application.MaterialFeature.Commands.CreateMaterial
         {
             try
             {
-                var materialRepo = _unitOfWork.Repository<Material>();
-                
-                var duplicate = await materialRepo.FindAsync(m => m.Name == request.Name && m.Type == request.Type);
-                if (duplicate != null)
+                var duplicateExists = await _context.Materials
+                    .AsNoTracking()
+                    .AnyAsync(m => m.Name == request.Name && m.Type == request.Type, cancellationToken);
+                if (duplicateExists)
                 {
                     return Result<Guid>.Failure($"Material with name '{request.Name}' and type '{request.Type}' already exists");
                 }
 
-                var id = await materialRepo.GenerateNewGuid(Guid.NewGuid());
+                var id = Guid.NewGuid();
                 var newMaterial = new Material
                 {
                     Id = id,
@@ -55,8 +56,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.CreateMaterial
                     }
                 };
 
-                await materialRepo.AddAsync(newMaterial);
-                await _unitOfWork.CompleteAsync();
+                _context.Materials.Add(newMaterial);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new MaterialChangedEvent(id, ChangeType.Created), cancellationToken);
 

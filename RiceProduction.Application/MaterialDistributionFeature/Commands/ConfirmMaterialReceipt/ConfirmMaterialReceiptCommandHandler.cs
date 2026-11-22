@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,14 +10,14 @@ namespace RiceProduction.Application.MaterialDistributionFeature.Commands.Confir
 public class ConfirmMaterialReceiptCommandHandler 
     : IRequestHandler<ConfirmMaterialReceiptCommand, Result<bool>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ConfirmMaterialReceiptCommandHandler> _logger;
 
     public ConfirmMaterialReceiptCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ConfirmMaterialReceiptCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,8 +27,7 @@ public class ConfirmMaterialReceiptCommandHandler
     {
         try
         {
-            var distribution = await _unitOfWork.Repository<MaterialDistribution>()
-                .GetQueryable()
+            var distribution = await _context.MaterialDistributions
                 .Include(md => md.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                 .FirstOrDefaultAsync(md => md.Id == request.MaterialDistributionId, cancellationToken);
@@ -44,15 +44,15 @@ public class ConfirmMaterialReceiptCommandHandler
             if (distribution.Status != DistributionStatus.PartiallyConfirmed)
                 return Result<bool>.Failure("Material must be confirmed by supervisor first");
 
-            if (distribution.PlotCultivation.Plot.FarmerId != request.FarmerId)
+            if (distribution.PlotCultivation?.Plot?.FarmerId != request.FarmerId)
                 return Result<bool>.Failure("Farmer not authorized for this plot");
 
             distribution.FarmerConfirmedAt = DateTime.UtcNow;
             distribution.FarmerNotes = request.Notes;
             distribution.Status = DistributionStatus.Completed;
 
-            _unitOfWork.Repository<MaterialDistribution>().Update(distribution);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.MaterialDistributions.Update(distribution);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Farmer {FarmerId} confirmed receipt of material distribution {DistributionId}",

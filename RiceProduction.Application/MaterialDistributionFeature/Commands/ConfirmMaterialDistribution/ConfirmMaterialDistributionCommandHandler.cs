@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,14 +10,14 @@ namespace RiceProduction.Application.MaterialDistributionFeature.Commands.Confir
 public class ConfirmMaterialDistributionCommandHandler 
     : IRequestHandler<ConfirmMaterialDistributionCommand, Result<bool>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ConfirmMaterialDistributionCommandHandler> _logger;
 
     public ConfirmMaterialDistributionCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ConfirmMaterialDistributionCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,8 +27,7 @@ public class ConfirmMaterialDistributionCommandHandler
     {
         try
         {
-            var distribution = await _unitOfWork.Repository<MaterialDistribution>()
-                .GetQueryable()
+            var distribution = await _context.MaterialDistributions
                 .Include(md => md.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                         .ThenInclude(p => p.GroupPlots)
@@ -43,7 +43,7 @@ public class ConfirmMaterialDistributionCommandHandler
             if (distribution.Status == DistributionStatus.Rejected)
                 return Result<bool>.Failure("Material distribution was rejected");
 
-            var group = distribution.PlotCultivation.Plot.GroupPlots.FirstOrDefault()?.Group;
+            var group = distribution.PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group;
             if (group != null && group.SupervisorId != request.SupervisorId)
                 return Result<bool>.Failure("Supervisor not authorized for this group");
 
@@ -54,7 +54,7 @@ public class ConfirmMaterialDistributionCommandHandler
                     distribution.Id, distribution.DistributionDeadline, request.ActualDistributionDate);
             }
 
-            var farmerConfirmationWindow = await GetFarmerConfirmationWindow();
+            var farmerConfirmationWindow = await GetFarmerConfirmationWindow(cancellationToken);
 
             distribution.SupervisorConfirmedBy = request.SupervisorId;
             distribution.SupervisorConfirmedAt = DateTime.UtcNow;
@@ -64,8 +64,8 @@ public class ConfirmMaterialDistributionCommandHandler
             distribution.Status = DistributionStatus.PartiallyConfirmed;
             distribution.FarmerConfirmationDeadline = DateTime.UtcNow.AddDays(farmerConfirmationWindow);
 
-            _unitOfWork.Repository<MaterialDistribution>().Update(distribution);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.MaterialDistributions.Update(distribution);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Supervisor {SupervisorId} confirmed material distribution {DistributionId}",
@@ -80,10 +80,11 @@ public class ConfirmMaterialDistributionCommandHandler
         }
     }
 
-    private async Task<int> GetFarmerConfirmationWindow()
+    private async Task<int> GetFarmerConfirmationWindow(CancellationToken cancellationToken)
     {
-        var setting = await _unitOfWork.Repository<SystemSetting>()
-            .FindAsync(s => s.SettingKey == "FarmerConfirmationWindowDays");
+        var setting = await _context.SystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SettingKey == "FarmerConfirmationWindowDays", cancellationToken);
 
         return setting != null && int.TryParse(setting.SettingValue, out var value) ? value : 3;
     }

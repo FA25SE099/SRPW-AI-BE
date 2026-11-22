@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,13 +10,13 @@ namespace RiceProduction.Application.SeasonFeature.Commands.UpdateSeason
 {
     public class UpdateSeasonCommandHandler : IRequestHandler<UpdateSeasonCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<UpdateSeasonCommandHandler> _logger;
 
-        public UpdateSeasonCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<UpdateSeasonCommandHandler> logger)
+        public UpdateSeasonCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<UpdateSeasonCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,9 +25,8 @@ namespace RiceProduction.Application.SeasonFeature.Commands.UpdateSeason
         {
             try
             {
-                var seasonRepo = _unitOfWork.Repository<Season>();
-
-                var season = await seasonRepo.FindAsync(s => s.Id == request.SeasonId);
+                var season = await _context.Seasons
+                    .FirstOrDefaultAsync(s => s.Id == request.SeasonId, cancellationToken);
                 if (season == null)
                 {
                     return Result<Guid>.Failure($"Season with ID {request.SeasonId} not found");
@@ -38,8 +38,8 @@ namespace RiceProduction.Application.SeasonFeature.Commands.UpdateSeason
                 season.SeasonType = request.SeasonType;
                 season.IsActive = request.IsActive;
 
-                seasonRepo.Update(season);
-                await _unitOfWork.CompleteAsync();
+                _context.Seasons.Update(season);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new SeasonChangedEvent(request.SeasonId, ChangeType.Updated), cancellationToken);
 

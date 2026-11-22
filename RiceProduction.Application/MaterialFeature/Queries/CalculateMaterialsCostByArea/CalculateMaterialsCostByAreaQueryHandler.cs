@@ -1,20 +1,20 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
 
 public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<CalculateMaterialsCostByAreaQuery, Result<CalculateMaterialsCostByAreaResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CalculateMaterialsCostByAreaQueryHandler> _logger;
 
-    public CalculateMaterialsCostByAreaQueryHandler(IUnitOfWork unitOfWork, ILogger<CalculateMaterialsCostByAreaQueryHandler> logger)
+    public CalculateMaterialsCostByAreaQueryHandler(IApplicationDbContext context, ILogger<CalculateMaterialsCostByAreaQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -31,17 +31,17 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
                 .Distinct()
                 .ToList();
 
-            var materials = await _unitOfWork.Repository<Material>().ListAsync(
-                filter: m => allMaterialIds.Contains(m.Id) && m.IsActive
-            );
+            var materialsDict = await _context.Materials
+                .AsNoTracking()
+                .Where(m => allMaterialIds.Contains(m.Id) && m.IsActive)
+                .ToDictionaryAsync(m => m.Id, m => m, cancellationToken);
 
-            if (!materials.Any())
+            if (materialsDict.Count == 0)
             {
                 return Result<CalculateMaterialsCostByAreaResponse>.Failure("No active materials found.", "MaterialsNotFound");
             }
 
-            var materialsDict = materials.ToDictionary(m => m.Id, m => m);
-            var currentPrices = await MaterialCostHelper.GetCurrentPricesAsync(_unitOfWork, allMaterialIds, currentDate);
+            var currentPrices = await MaterialCostHelper.GetCurrentPricesAsync(_context, allMaterialIds, currentDate, cancellationToken);
 
             decimal totalCost = 0M;
             var taskCostBreakdowns = new List<TaskCostBreakdown>();
@@ -80,7 +80,7 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
             }
 
             var materialCostItems = materialAggregation.Values.ToList();
-            if (!materialCostItems.Any())
+            if (materialCostItems.Count == 0)
             {
                 return Result<CalculateMaterialsCostByAreaResponse>.Failure("No valid material cost calculations could be performed.", "NoValidCalculations");
             }
@@ -95,7 +95,7 @@ public class CalculateMaterialsCostByAreaQueryHandler : IRequestHandler<Calculat
                 PriceWarnings = priceWarnings
             };
 
-            var message = priceWarnings.Any()
+            var message = priceWarnings.Count > 0
                 ? $"Successfully calculated material costs with {priceWarnings.Count} warning(s)."
                 : "Successfully calculated material costs.";
 

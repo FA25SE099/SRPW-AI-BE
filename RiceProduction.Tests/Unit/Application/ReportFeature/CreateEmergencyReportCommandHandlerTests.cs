@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RiceProduction.Application.Common.Interfaces;
@@ -6,7 +7,7 @@ using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.EmergencyReportFeature.Commands.CreateEmergencyReport;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
 
 namespace RiceProduction.Tests.Unit.Application.ReportFeature;
@@ -16,49 +17,41 @@ namespace RiceProduction.Tests.Unit.Application.ReportFeature;
 /// </summary>
 public class CreateEmergencyReportCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<EmergencyReport>> _mockEmergencyReportRepo;
-    private readonly Mock<IGenericRepository<PlotCultivation>> _mockPlotCultivationRepo;
-    private readonly Mock<IGenericRepository<Group>> _mockGroupRepo;
-    private readonly Mock<IClusterRepository> _mockClusterRepo;
     private readonly Mock<IUser> _mockUser;
     private readonly Mock<IStorageService> _mockStorageService;
-    private readonly Mock<ILogger<CreateEmergencyReportCommandHandler>> _mockLogger;
-    private readonly CreateEmergencyReportCommandHandler _handler;
 
     public CreateEmergencyReportCommandHandlerTests()
     {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockEmergencyReportRepo = new Mock<IGenericRepository<EmergencyReport>>();
-        _mockPlotCultivationRepo = new Mock<IGenericRepository<PlotCultivation>>();
-        _mockGroupRepo = new Mock<IGenericRepository<Group>>();
-        _mockClusterRepo = new Mock<IClusterRepository>();
         _mockUser = new Mock<IUser>();
         _mockStorageService = new Mock<IStorageService>();
-        _mockLogger = new Mock<ILogger<CreateEmergencyReportCommandHandler>>();
 
-        _mockUnitOfWork.Setup(u => u.Repository<EmergencyReport>()).Returns(_mockEmergencyReportRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<PlotCultivation>()).Returns(_mockPlotCultivationRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<Group>()).Returns(_mockGroupRepo.Object);
-        _mockUnitOfWork.Setup(u => u.ClusterRepository).Returns(_mockClusterRepo.Object);
-
-        // Setup default authenticated user
-        var userId = Guid.NewGuid();
-        _mockUser.Setup(u => u.Id).Returns(userId);
+        _mockUser.Setup(u => u.Id).Returns(Guid.NewGuid());
         _mockUser.Setup(u => u.Roles).Returns(new List<string> { "Farmer" });
+    }
 
-        _handler = new CreateEmergencyReportCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockUser.Object,
+    private CreateEmergencyReportCommandHandler CreateHandler(
+        TestApplicationDbContext context,
+        IUser? user = null) =>
+        new(
+            context,
+            user ?? _mockUser.Object,
             _mockStorageService.Object,
-            _mockLogger.Object);
+            Mock.Of<ILogger<CreateEmergencyReportCommandHandler>>());
+
+    private static async Task<Guid> SeedPlotCultivationAsync(TestApplicationDbContext context)
+    {
+        var pc = new PlotCultivation { Id = Guid.NewGuid() };
+        context.PlotCultivations.Add(pc);
+        await context.SaveChangesAsync();
+        return pc.Id;
     }
 
     [Fact]
     public async Task Handle_ValidPestReport_CreatesSuccessfully()
     {
-        // Arrange
-        var plotCultivationId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
+        var handler = CreateHandler(context);
 
         var command = new CreateEmergencyReportCommand
         {
@@ -69,33 +62,23 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.High
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockEmergencyReportRepo.Setup(r => r.AddAsync(It.IsAny<EmergencyReport>()))
-            .Callback<EmergencyReport>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().NotBe(Guid.Empty);
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.Is<EmergencyReport>(
-            report => report.AlertType == "Pest" &&
-                     report.Severity == AlertSeverity.High &&
-                     report.PlotCultivationId == plotCultivationId)), Times.Once);
+        var report = await context.EmergencyReports.SingleOrDefaultAsync(r => r.Id == result.Data);
+        report.Should().NotBeNull();
+        report!.AlertType.Should().Be("Pest");
+        report.Severity.Should().Be(AlertSeverity.High);
+        report.PlotCultivationId.Should().Be(plotCultivationId);
     }
 
     [Fact]
     public async Task Handle_DiseaseReport_CreatesWithCorrectType()
     {
-        // Arrange
-        var plotCultivationId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
+        var handler = CreateHandler(context);
 
         var command = new CreateEmergencyReportCommand
         {
@@ -106,53 +89,42 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Critical
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.Is<EmergencyReport>(
-            report => report.AlertType == "Disease")), Times.Once);
+        var report = await context.EmergencyReports.SingleAsync(r => r.Id == result.Data);
+        report.AlertType.Should().Be("Disease");
     }
 
     [Fact]
     public async Task Handle_WeatherDamageReport_CreatesSuccessfully()
     {
-        // Arrange
-        var groupId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var group = new Group { Id = Guid.NewGuid() };
+        context.Groups.Add(group);
+        await context.SaveChangesAsync();
 
+        var handler = CreateHandler(context);
         var command = new CreateEmergencyReportCommand
         {
-            GroupId = groupId,
+            GroupId = group.Id,
             AlertType = "Weather",
             Title = "Severe Flooding",
             Description = "Severe flooding due to heavy rainfall",
             Severity = AlertSeverity.Critical
         };
 
-        _mockGroupRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<Group, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task Handle_PlotCultivationNotFound_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
+
         var command = new CreateEmergencyReportCommand
         {
             PlotCultivationId = Guid.NewGuid(),
@@ -162,23 +134,19 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Medium
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(false);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("PlotCultivation") && e.Contains("not found"));
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.IsAny<EmergencyReport>()), Times.Never);
+        (await context.EmergencyReports.CountAsync()).Should().Be(0);
     }
 
     [Fact]
     public async Task Handle_LowSeverityReport_CreatesSuccessfully()
     {
-        // Arrange
-        var plotCultivationId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
+        var handler = CreateHandler(context);
 
         var command = new CreateEmergencyReportCommand
         {
@@ -189,26 +157,19 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Low
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.Is<EmergencyReport>(
-            report => report.Severity == AlertSeverity.Low)), Times.Once);
+        var report = await context.EmergencyReports.SingleAsync(r => r.Id == result.Data);
+        report.Severity.Should().Be(AlertSeverity.Low);
     }
 
     [Fact]
     public async Task Handle_ReportWithLongDescription_StoresFullDescription()
     {
-        // Arrange
-        var plotCultivationId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
+        var handler = CreateHandler(context);
 
         var longDescription = string.Join(" ", Enumerable.Repeat(
             "Detailed observation of pest infestation including location, extent, and damage assessment.", 20));
@@ -222,26 +183,19 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Medium
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.Is<EmergencyReport>(
-            report => report.Description.Contains("Detailed observation of pest infestation"))), Times.Once);
+        var report = await context.EmergencyReports.SingleAsync(r => r.Id == result.Data);
+        report.Description.Should().Contain("Detailed observation of pest infestation");
     }
 
     [Fact]
     public async Task Handle_MultipleReportsForSamePlotCultivation_AllowsCreation()
     {
-        // Arrange
-        var plotCultivationId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
+        var handler = CreateHandler(context);
 
         var command = new CreateEmergencyReportCommand
         {
@@ -252,24 +206,18 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.High
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task Handle_DatabaseSaveFails_ReturnsFailure()
     {
-        // Arrange
-        var plotCultivationId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
+        context.SaveChangesException = new Exception("Database error");
+        var handler = CreateHandler(context);
 
         var command = new CreateEmergencyReportCommand
         {
@@ -280,16 +228,8 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Medium
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Database error"));
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("error"));
     }
@@ -297,38 +237,34 @@ public class CreateEmergencyReportCommandHandlerTests
     [Fact]
     public async Task Handle_OtherEmergencyType_CreatesSuccessfully()
     {
-        // Arrange
-        var clusterId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var cluster = new Cluster { Id = Guid.NewGuid(), ClusterName = "Test Cluster" };
+        context.Clusters.Add(cluster);
+        await context.SaveChangesAsync();
 
+        var handler = CreateHandler(context);
         var command = new CreateEmergencyReportCommand
         {
-            ClusterId = clusterId,
+            ClusterId = cluster.Id,
             AlertType = "Other",
             Title = "Unexpected Issue",
             Description = "Unexpected issue requiring attention",
             Severity = AlertSeverity.Medium
         };
 
-        _mockClusterRepo.Setup(r => r.ExistClusterAsync(clusterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.Is<EmergencyReport>(
-            report => report.AlertType == "Other")), Times.Once);
+        var report = await context.EmergencyReports.SingleAsync(r => r.Id == result.Data);
+        report.AlertType.Should().Be("Other");
     }
 
     [Fact]
     public async Task Handle_CriticalSeverityReport_CreatesWithHighPriority()
     {
-        // Arrange
-        var plotCultivationId = Guid.NewGuid();
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
+        var handler = CreateHandler(context);
 
         var command = new CreateEmergencyReportCommand
         {
@@ -339,33 +275,20 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Critical
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.Is<EmergencyReport>(
-            report => report.Severity == AlertSeverity.Critical)), Times.Once);
+        var report = await context.EmergencyReports.SingleAsync(r => r.Id == result.Data);
+        report.Severity.Should().Be(AlertSeverity.Critical);
     }
 
     [Fact]
     public async Task Handle_UserNotAuthenticated_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var unauthenticatedUser = new Mock<IUser>();
         unauthenticatedUser.Setup(u => u.Id).Returns((Guid?)null);
-
-        var handler = new CreateEmergencyReportCommandHandler(
-            _mockUnitOfWork.Object,
-            unauthenticatedUser.Object,
-            _mockStorageService.Object,
-            _mockLogger.Object);
+        var handler = CreateHandler(context, unauthenticatedUser.Object);
 
         var command = new CreateEmergencyReportCommand
         {
@@ -376,10 +299,8 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Medium
         };
 
-        // Act
         var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("not authenticated") || e.Contains("Unauthorized"));
     }
@@ -387,20 +308,19 @@ public class CreateEmergencyReportCommandHandlerTests
     [Fact]
     public async Task Handle_NoAffectedEntitySpecified_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
+
         var command = new CreateEmergencyReportCommand
         {
-            // No PlotCultivationId, GroupId, or ClusterId specified
             AlertType = "Pest",
             Title = "Test Report",
             Description = "Test report",
             Severity = AlertSeverity.Medium
         };
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("At least one affected entity"));
     }
@@ -408,7 +328,9 @@ public class CreateEmergencyReportCommandHandlerTests
     [Fact]
     public async Task Handle_InvalidAlertType_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
+
         var command = new CreateEmergencyReportCommand
         {
             PlotCultivationId = Guid.NewGuid(),
@@ -418,13 +340,8 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.Medium
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Alert type must be"));
     }
@@ -432,18 +349,14 @@ public class CreateEmergencyReportCommandHandlerTests
     [Fact]
     public async Task Handle_SupervisorUser_SetsCorrectSource()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var plotCultivationId = await SeedPlotCultivationAsync(context);
         var supervisorUser = new Mock<IUser>();
         supervisorUser.Setup(u => u.Id).Returns(Guid.NewGuid());
         supervisorUser.Setup(u => u.Roles).Returns(new List<string> { "Supervisor" });
 
-        var handler = new CreateEmergencyReportCommandHandler(
-            _mockUnitOfWork.Object,
-            supervisorUser.Object,
-            _mockStorageService.Object,
-            _mockLogger.Object);
+        var handler = CreateHandler(context, supervisorUser.Object);
 
-        var plotCultivationId = Guid.NewGuid();
         var command = new CreateEmergencyReportCommand
         {
             PlotCultivationId = plotCultivationId,
@@ -453,18 +366,10 @@ public class CreateEmergencyReportCommandHandlerTests
             Severity = AlertSeverity.High
         };
 
-        _mockPlotCultivationRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PlotCultivation, bool>>>()))
-            .ReturnsAsync(true);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
         var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockEmergencyReportRepo.Verify(r => r.AddAsync(It.Is<EmergencyReport>(
-            report => report.Source == AlertSource.SupervisorInspection)), Times.Once);
+        var report = await context.EmergencyReports.SingleAsync(r => r.Id == result.Data);
+        report.Source.Should().Be(AlertSource.SupervisorInspection);
     }
 }

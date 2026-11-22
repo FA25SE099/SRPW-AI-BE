@@ -11,14 +11,14 @@ namespace RiceProduction.Application.ReportFeature.Command;
 
 public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ResolveReportCommandHandler> _logger;
 
     public ResolveReportCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ResolveReportCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -32,10 +32,9 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
         try
         {
-            var emergencyReport = await _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            var emergencyReport = await _context.EmergencyReports
                 .Include(er => er.PlotCultivation)
-                    .ThenInclude(pc => pc.Plot)
+                    .ThenInclude(pc => pc!.Plot)
                 .FirstOrDefaultAsync(er => er.Id == request.ReportId, cancellationToken);
 
             if (emergencyReport == null)
@@ -45,8 +44,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                     "EmergencyReportNotFound");
             }
 
-            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
+            var plotCultivation = await _context.PlotCultivations
                 .Include(pc => pc.Plot)
                 .FirstOrDefaultAsync(pc => pc.Id == request.CultivationPlanId, cancellationToken);
 
@@ -69,8 +67,9 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 return materialValidationResult;
             }
 
-            var existingVersions = await _unitOfWork.Repository<CultivationVersion>()
-                .ListAsync(v => v.PlotCultivationId == plotCultivation.Id);
+            var existingVersions = await _context.CultivationVersions
+                .Where(v => v.PlotCultivationId == plotCultivation.Id)
+                .ToListAsync(cancellationToken);
 
             if (existingVersions.Any(v =>
                 v.VersionName.Equals(request.NewVersionName.Trim(), StringComparison.OrdinalIgnoreCase)))
@@ -90,18 +89,18 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 activateImmediately: false);
             newVersion.CreatedAt = DateTime.UtcNow;
 
-            await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.CultivationVersions.Add(newVersion);
+            await _context.SaveChangesAsync(cancellationToken);
 
             var plotArea = plot.Area;
             var currentActiveVersion = existingVersions.FirstOrDefault(v => v.IsActive);
-            var oldCultivationTasks = await LoadActiveVersionTasksAsync(plotCultivation.Id, currentActiveVersion);
+            var oldCultivationTasks = await LoadActiveVersionTasksAsync(plotCultivation.Id, currentActiveVersion, cancellationToken);
 
             var (cultivationTasks, newlyCreatedTaskIndices) = await BuildCultivationTasksAsync(
-                request, emergencyReport, plotCultivation.Id, newVersion.Id, plotArea);
+                request, emergencyReport, plotCultivation.Id, newVersion.Id, plotArea, cancellationToken);
 
-            await _unitOfWork.Repository<CultivationTask>().AddRangeAsync(cultivationTasks);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.CultivationTasks.AddRange(cultivationTasks);
+            await _context.SaveChangesAsync(cancellationToken);
 
             await VerifySavedTasksAsync(cultivationTasks, cancellationToken);
 
@@ -136,8 +135,8 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 $"Emergency resolved by creating version '{newVersion.VersionName}' with {cultivationTasks.Count} tasks " +
                 $"on plot {plot.SoThua}/{plot.SoTo} ({plotArea:F2} ha).";
 
-            _unitOfWork.Repository<EmergencyReport>().Update(emergencyReport);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.EmergencyReports.Update(emergencyReport);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Emergency Report {ReportId} resolved by Expert {ExpertId}. Created version '{VersionName}' with {TaskCount} tasks.",
@@ -174,8 +173,8 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             return null;
         }
 
-        var existingMaterialIds = await _unitOfWork.Repository<Material>()
-            .GetQueryable()
+        var existingMaterialIds = await _context.Materials
+            .AsNoTracking()
             .Where(m => requestedMaterialIds.Contains(m.Id))
             .Select(m => m.Id)
             .ToListAsync(cancellationToken);
@@ -188,19 +187,22 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
     private async Task<IReadOnlyList<CultivationTask>> LoadActiveVersionTasksAsync(
         Guid plotCultivationId,
-        CultivationVersion? currentActiveVersion)
+        CultivationVersion? currentActiveVersion,
+        CancellationToken cancellationToken)
     {
         if (currentActiveVersion == null)
         {
             return Array.Empty<CultivationTask>();
         }
 
-        return await _unitOfWork.Repository<CultivationTask>().ListAsync(
-            filter: ct => ct.PlotCultivationId == plotCultivationId && ct.VersionId == currentActiveVersion.Id,
-            includeProperties: q => q
-                .Include(ct => ct.FarmLogs)
-                    .ThenInclude(fl => fl.FarmLogMaterials)
-                .Include(ct => ct.LateFarmerRecords));
+        return await _context.CultivationTasks
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(ct => ct.FarmLogs)
+                .ThenInclude(fl => fl.FarmLogMaterials)
+            .Include(ct => ct.LateFarmerRecords)
+            .Where(ct => ct.PlotCultivationId == plotCultivationId && ct.VersionId == currentActiveVersion.Id)
+            .ToListAsync(cancellationToken);
     }
 
     private async Task<(List<CultivationTask> Tasks, HashSet<int> NewlyCreatedIndices)> BuildCultivationTasksAsync(
@@ -208,7 +210,8 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         EmergencyReport emergencyReport,
         Guid plotCultivationId,
         Guid newVersionId,
-        decimal plotArea)
+        decimal plotArea,
+        CancellationToken cancellationToken)
     {
         var cultivationTasks = new List<CultivationTask>();
         var newlyCreatedTaskIndices = new HashSet<int>();
@@ -227,7 +230,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
             }
 
             var (productionPlanTaskId, productionPlanTask) = await ResolveProductionPlanTaskAsync(
-                taskRequest.CultivationPlanTaskId);
+                taskRequest.CultivationPlanTaskId, cancellationToken);
 
             // Convert NewEmergency status to Emergency for saving
             var taskStatus = isNewlyCreated
@@ -289,7 +292,8 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
     }
 
     private async Task<(Guid? ProductionPlanTaskId, ProductionPlanTask? ProductionPlanTask)> ResolveProductionPlanTaskAsync(
-        Guid? cultivationPlanTaskId)
+        Guid? cultivationPlanTaskId,
+        CancellationToken cancellationToken)
     {
         if (!cultivationPlanTaskId.HasValue)
         {
@@ -297,10 +301,10 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
         }
 
         // Frontend sends CultivationPlanTaskId which is actually an existing CultivationTask ID
-        var existingCultivationTask = await _unitOfWork.Repository<CultivationTask>()
-            .FindAsync(
-                match: ct => ct.Id == cultivationPlanTaskId.Value,
-                includeProperties: q => q.Include(ct => ct.ProductionPlanTask));
+        var existingCultivationTask = await _context.CultivationTasks
+            .AsNoTracking()
+            .Include(ct => ct.ProductionPlanTask)
+            .FirstOrDefaultAsync(ct => ct.Id == cultivationPlanTaskId.Value, cancellationToken);
 
         if (existingCultivationTask != null)
         {
@@ -323,8 +327,8 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
     private async Task VerifySavedTasksAsync(List<CultivationTask> cultivationTasks, CancellationToken cancellationToken)
     {
         var savedTaskIds = cultivationTasks.Select(t => t.Id).ToList();
-        var verifyTasks = await _unitOfWork.Repository<CultivationTask>()
-            .GetQueryable()
+        var verifyTasks = await _context.CultivationTasks
+            .AsNoTracking()
             .Where(t => savedTaskIds.Contains(t.Id))
             .Select(t => new { t.Id, t.CultivationTaskName, t.ProductionPlanTaskId, t.ExecutionOrder })
             .ToListAsync(cancellationToken);
@@ -354,13 +358,13 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
         if (existingVersions.Any())
         {
-            _unitOfWork.Repository<CultivationVersion>().UpdateRange(existingVersions);
+            _context.CultivationVersions.UpdateRange(existingVersions);
         }
 
         newVersion.Activate();
-        _unitOfWork.Repository<CultivationVersion>().Update(newVersion);
+        _context.CultivationVersions.Update(newVersion);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     private static DateTime? SpecifyUtc(DateTime? value) =>
@@ -489,8 +493,8 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
             if (newFarmLogs.Any())
             {
-                await _unitOfWork.Repository<FarmLog>().AddRangeAsync(newFarmLogs);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _context.FarmLogs.AddRange(newFarmLogs);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Successfully copied total {Count} farm logs to {TaskCount} tasks. Skipped {SkippedCount} newly created tasks.",
@@ -573,8 +577,8 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
 
             if (newLateRecords.Any())
             {
-                await _unitOfWork.Repository<LateFarmerRecord>().AddRangeAsync(newLateRecords);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _context.LateFarmerRecords.AddRange(newLateRecords);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Successfully copied total {Count} late farmer records to {TaskCount} tasks. Skipped {SkippedCount} newly created tasks.",
@@ -623,8 +627,7 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                 var newCultivationTask = newTasks[i]; // Same index as request
                 
                 // Find all UAV assignments that reference the old cultivation task
-                var uavAssignments = await _unitOfWork.Repository<UavOrderPlotAssignment>()
-                    .GetQueryable()
+                var uavAssignments = await _context.UavOrderPlotAssignments
                     .Where(ua => ua.CultivationTaskId == oldCultivationTaskId)
                     .ToListAsync(cancellationToken);
                 
@@ -647,12 +650,12 @@ public class ResolveReportCommandHandler : IRequestHandler<ResolveReportCommand,
                         assignment.Id, oldCultivationTaskId, newCultivationTask.Id);
                 }
                 
-                _unitOfWork.Repository<UavOrderPlotAssignment>().UpdateRange(uavAssignments);
+                _context.UavOrderPlotAssignments.UpdateRange(uavAssignments);
             }
             
             if (updatedCount > 0)
             {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
                 
                 _logger.LogInformation(
                     "Successfully updated {Count} UAV assignments to reference new cultivation tasks",

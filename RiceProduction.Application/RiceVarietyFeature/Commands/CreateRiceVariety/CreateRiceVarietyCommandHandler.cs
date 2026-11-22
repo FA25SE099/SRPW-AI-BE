@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,13 +10,13 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVarie
 {
     public class CreateRiceVarietyCommandHandler : IRequestHandler<CreateRiceVarietyCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<CreateRiceVarietyCommandHandler> _logger;
 
-        public CreateRiceVarietyCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<CreateRiceVarietyCommandHandler> logger)
+        public CreateRiceVarietyCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<CreateRiceVarietyCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,22 +25,23 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVarie
         {
             try
             {
-                var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
-                var categoryRepo = _unitOfWork.Repository<RiceVarietyCategory>();
-
-                var category = await categoryRepo.FindAsync(c => c.Id == request.CategoryId);
-                if (category == null)
+                var categoryExists = await _context.RiceVarietyCategories
+                    .AsNoTracking()
+                    .AnyAsync(c => c.Id == request.CategoryId, cancellationToken);
+                if (!categoryExists)
                 {
                     return Result<Guid>.Failure($"Category with ID {request.CategoryId} not found");
                 }
 
-                var duplicate = await riceVarietyRepo.FindAsync(v => v.VarietyName == request.VarietyName);
-                if (duplicate != null)
+                var duplicateExists = await _context.RiceVarieties
+                    .AsNoTracking()
+                    .AnyAsync(v => v.VarietyName == request.VarietyName, cancellationToken);
+                if (duplicateExists)
                 {
                     return Result<Guid>.Failure($"Rice variety with name '{request.VarietyName}' already exists");
                 }
 
-                var id = await riceVarietyRepo.GenerateNewGuid(Guid.NewGuid());
+                var id = Guid.NewGuid();
                 var newVariety = new RiceVariety
                 {
                     Id = id,
@@ -52,8 +54,8 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.CreateRiceVarie
                     IsActive = request.IsActive
                 };
 
-                await riceVarietyRepo.AddAsync(newVariety);
-                await _unitOfWork.CompleteAsync();
+                _context.RiceVarieties.Add(newVariety);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new RiceVarietyChangedEvent(id, ChangeType.Created), cancellationToken);
 

@@ -1,21 +1,21 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.YearSeasonFeature.Commands.UpdateYearSeasonStatus;
 
 public class UpdateYearSeasonStatusCommandHandler : IRequestHandler<UpdateYearSeasonStatusCommand, Result<bool>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<UpdateYearSeasonStatusCommandHandler> _logger;
 
     public UpdateYearSeasonStatusCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<UpdateYearSeasonStatusCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,8 +23,8 @@ public class UpdateYearSeasonStatusCommandHandler : IRequestHandler<UpdateYearSe
     {
         try
         {
-            var yearSeasonRepo = _unitOfWork.Repository<YearSeason>();
-            var yearSeason = await yearSeasonRepo.GetEntityByIdAsync(request.Id);
+            var yearSeason = await _context.YearSeasons
+                .FirstOrDefaultAsync(ys => ys.Id == request.Id, cancellationToken);
 
             if (yearSeason == null)
             {
@@ -32,8 +32,7 @@ public class UpdateYearSeasonStatusCommandHandler : IRequestHandler<UpdateYearSe
             }
 
             yearSeason.Status = request.Status;
-            yearSeasonRepo.Update(yearSeason);
-            await _unitOfWork.CompleteAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Updated YearSeason status to {Status} for ID: {YearSeasonId}", request.Status, request.Id);
             return Result<bool>.Success(true, $"YearSeason status updated to {request.Status}");

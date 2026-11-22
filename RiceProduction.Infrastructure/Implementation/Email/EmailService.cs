@@ -116,17 +116,17 @@ namespace RiceProduction.Infrastructure.Services
 
         private readonly IConfiguration _configuration;
         private readonly ILogger<EmailService> _logger;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly SmtpClient _smtpClient;
 
         public EmailService(
             IConfiguration configuration,
             ILogger<EmailService> logger,
-            IUnitOfWork unitOfWork)
+            IApplicationDbContext context)
         {
             _configuration = configuration;
             _logger = logger;
-            _unitOfWork = unitOfWork;
+            _context = context;
 
             _smtpClient = new SmtpClient("smtp.gmail.com")
             {
@@ -219,8 +219,8 @@ namespace RiceProduction.Infrastructure.Services
 
             try
             {
-                await _unitOfWork.Repository<EmailBatch>().AddAsync(batch);
-                await _unitOfWork.CompleteAsync();
+                _context.EmailBatches.Add(batch);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 var emailRequests = new List<EmailRequest>();
                 var sentCount = 0;
@@ -259,14 +259,14 @@ namespace RiceProduction.Infrastructure.Services
                     emailRequests.Add(emailRequest);
                 }
 
-                await _unitOfWork.Repository<EmailRequest>().AddRangeAsync(emailRequests);
+                _context.EmailRequests.AddRange(emailRequests);
 
                 batch.SentCount = sentCount;
                 batch.FailedCount = failedCount;
                 batch.Status = failedCount == 0 ? "completed" : "partially_failed";
                 batch.CompletedAt = DateTime.UtcNow;
 
-                await _unitOfWork.CompleteAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation("Bulk email batch {BatchId} completed: {Sent} sent, {Failed} failed",
                     batch.Id, sentCount, failedCount);
@@ -279,7 +279,7 @@ namespace RiceProduction.Infrastructure.Services
                 batch.CompletedAt = DateTime.UtcNow;
                 batch.ErrorMessage = ex.Message;
 
-                await _unitOfWork.CompleteAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogError(ex, "Bulk email batch {BatchId} failed", batch.Id);
                 return Result<EmailBatch>.Failure($"Bulk email batch failed: {ex.Message}");

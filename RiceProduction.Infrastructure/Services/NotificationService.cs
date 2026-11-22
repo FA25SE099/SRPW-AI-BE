@@ -24,13 +24,13 @@ namespace RiceProduction.Infrastructure.Services
 
         private readonly FirebaseMessaging _fcm;
         private readonly ILogger<NotificationService> _logger;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IConfiguration _configuration;
 
-        public NotificationService(ILogger<NotificationService> logger, IUnitOfWork unitOfWork, IConfiguration configuration)
+        public NotificationService(ILogger<NotificationService> logger, IApplicationDbContext context, IConfiguration configuration)
         {
             _logger = logger;
-            _unitOfWork = unitOfWork;
+            _context = context;
             _configuration = configuration;
 
             InitializeFirebase();
@@ -123,8 +123,8 @@ namespace RiceProduction.Infrastructure.Services
                     }
                 }
 
-                _unitOfWork.Repository<Domain.Entities.Notification>().Update(notification);
-                await _unitOfWork.CompleteAsync();
+                _context.Notifications.Update(notification);
+                await _context.SaveChangesAsync();
                 return true;
             }
             catch (Exception ex)

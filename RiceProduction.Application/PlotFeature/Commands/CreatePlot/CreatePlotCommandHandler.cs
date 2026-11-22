@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using RiceProduction.Application.Common.Helpers;
@@ -13,16 +14,16 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
 {
     public class CreatePlotCommandHandler : IRequestHandler<CreatePlotCommand, Result<PlotResponse>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<CreatePlotCommandHandler> _logger;
 
         public CreatePlotCommandHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             IMediator mediator,
             ILogger<CreatePlotCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -33,9 +34,10 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
         {
             try
             {
-                var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(
-                    request.FarmerId,
-                    cancellationToken);
+                var farmer = await _context.Farmers
+                    .AsNoTracking()
+                    .Select(f => new { f.Id, f.FullName })
+                    .FirstOrDefaultAsync(f => f.Id == request.FarmerId, cancellationToken);
 
                 if (farmer == null)
                 {
@@ -43,20 +45,22 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                         $"Farmer with ID '{request.FarmerId}' not found");
                 }
 
-                var plotRepo = _unitOfWork.Repository<Plot>();
-                var existingPlot = await plotRepo.FindAsync(p =>
-                    p.SoThua == request.SoThua &&
-                    p.SoTo == request.SoTo &&
-                    p.FarmerId == request.FarmerId);
+                var existingPlot = await _context.Plots
+                    .AsNoTracking()
+                    .AnyAsync(p =>
+                        p.SoThua == request.SoThua &&
+                        p.SoTo == request.SoTo &&
+                        p.FarmerId == request.FarmerId,
+                        cancellationToken);
 
-                if (existingPlot != null)
+                if (existingPlot)
                 {
                     return Result<PlotResponse>.Failure(
                         $"Plot with SoThua={request.SoThua} and SoTo={request.SoTo} already exists for this farmer");
                 }
 
                 var geometryFactory = new GeometryFactory(new PrecisionModel(), PlotGeometryHelper.Wgs84Srid);
-                var plotId = await plotRepo.GenerateNewGuid(Guid.NewGuid());
+                var plotId = Guid.NewGuid();
                 var newPlot = new Plot
                 {
                     Id = plotId,
@@ -70,7 +74,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     Boundary = PlotGeometryHelper.CreateDefaultBoundary(geometryFactory)
                 };
 
-                await plotRepo.AddAsync(newPlot);
+                _context.Plots.Add(newPlot);
 
                 PlotCultivation? plotCultivation = null;
                 if (!string.IsNullOrWhiteSpace(request.RiceVarietyName))
@@ -78,10 +82,11 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     plotCultivation = await CreatePlotCultivationAsync(
                         plotId,
                         request.Area!.Value,
-                        request.RiceVarietyName);
+                        request.RiceVarietyName,
+                        cancellationToken);
                 }
 
-                await _unitOfWork.CompleteAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Created plot {PlotId} (SoThua:{SoThua}, SoTo:{SoTo}) for farmer {FarmerId}",
@@ -131,12 +136,14 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
         private async Task<PlotCultivation?> CreatePlotCultivationAsync(
             Guid plotId,
             decimal area,
-            string riceVarietyName)
+            string riceVarietyName,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var riceVariety = await _unitOfWork.Repository<RiceVariety>().FindAsync(
-                    rv => rv.VarietyName == riceVarietyName);
+                var riceVariety = await _context.RiceVarieties
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(rv => rv.VarietyName == riceVarietyName, cancellationToken);
 
                 if (riceVariety == null)
                 {
@@ -146,8 +153,10 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     return null;
                 }
 
-                var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
-                var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now);
+                var allSeasons = await _context.Seasons
+                    .AsNoTracking()
+                    .ToListAsync(cancellationToken);
+                var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.UtcNow);
                 if (resolvedSeason == null)
                 {
                     _logger.LogWarning(
@@ -169,7 +178,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     Status = CultivationStatus.Planned
                 };
 
-                await _unitOfWork.Repository<PlotCultivation>().AddAsync(plotCultivation);
+                _context.PlotCultivations.Add(plotCultivation);
 
                 var firstVersion = new CultivationVersion
                 {
@@ -181,7 +190,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlot
                     ActivatedAt = DateTime.UtcNow
                 };
 
-                await _unitOfWork.Repository<CultivationVersion>().AddAsync(firstVersion);
+                _context.CultivationVersions.Add(firstVersion);
 
                 _logger.LogInformation(
                     "Created cultivation for plot {PlotId} with variety '{RiceVarietyName}' in season {SeasonName} {Year}",

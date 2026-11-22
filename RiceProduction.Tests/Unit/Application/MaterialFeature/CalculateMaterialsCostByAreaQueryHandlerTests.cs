@@ -1,13 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models.Request.MaterialCostCalculationRequests;
 using RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsCostByArea;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
 using RiceProduction.Tests.Fixtures;
-using System.Linq.Expressions;
 using Xunit;
 
 namespace RiceProduction.Tests.Unit.Application.MaterialFeature;
@@ -17,34 +14,14 @@ namespace RiceProduction.Tests.Unit.Application.MaterialFeature;
 /// </summary>
 public class CalculateMaterialsCostByAreaQueryHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<Material>> _mockMaterialRepo;
-    private readonly Mock<IGenericRepository<MaterialPrice>> _mockMaterialPriceRepo;
-    private readonly Mock<ILogger<CalculateMaterialsCostByAreaQueryHandler>> _mockLogger;
-    private readonly CalculateMaterialsCostByAreaQueryHandler _handler;
-
-    public CalculateMaterialsCostByAreaQueryHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockMaterialRepo = new Mock<IGenericRepository<Material>>();
-        _mockMaterialPriceRepo = new Mock<IGenericRepository<MaterialPrice>>();
-        _mockLogger = new Mock<ILogger<CalculateMaterialsCostByAreaQueryHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Material>()).Returns(_mockMaterialRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<MaterialPrice>()).Returns(_mockMaterialPriceRepo.Object);
-
-        _handler = new CalculateMaterialsCostByAreaQueryHandler(_mockUnitOfWork.Object, _mockLogger.Object);
-    }
+    private readonly Mock<ILogger<CalculateMaterialsCostByAreaQueryHandler>> _mockLogger = new();
 
     [Fact]
     public async Task Handle_NoActiveMaterials_ReturnsFailure()
     {
         // Arrange
-        _mockMaterialRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<Material, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<Material>());
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CalculateMaterialsCostByAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new CalculateMaterialsCostByAreaQuery
         {
@@ -63,7 +40,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -74,6 +51,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
     public async Task Handle_ValidMaterialsWithCurrentPrices_CalculatesCorrectTotalCost()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId1 = Guid.NewGuid();
         var materialId2 = Guid.NewGuid();
 
@@ -115,17 +93,11 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _mockMaterialRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<Material, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<Material> { material1, material2 });
+        context.Materials.AddRange(material1, material2);
+        context.MaterialPrices.AddRange(price1, price2);
+        await context.SaveChangesAsync();
 
-        _mockMaterialPriceRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<MaterialPrice, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<MaterialPrice> { price1, price2 });
+        var handler = new CalculateMaterialsCostByAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new CalculateMaterialsCostByAreaQuery
         {
@@ -145,7 +117,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -155,7 +127,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
 
         // Material 1: 50 kg/ha * 10 ha * 100,000 = 50,000,000
         var mat1 = result.Data.MaterialCostItems.First(m => m.MaterialId == materialId1);
-        mat1.TotalQuantityNeeded.Should().BeGreaterThan(0); // Depends on calculation
+        mat1.TotalQuantityNeeded.Should().BeGreaterThan(0);
         mat1.TotalCost.Should().BeGreaterThan(0);
 
         // Material 2: 10 liters/ha * 10 ha * 250,000 = 25,000,000
@@ -172,6 +144,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
     public async Task Handle_MaterialsWithMultiplePrices_UsesLatestValidPrice()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
 
         var material = new Material
@@ -203,17 +176,11 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
             CreatedAt = DateTimeOffset.UtcNow.AddDays(-9)
         };
 
-        _mockMaterialRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<Material, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<Material> { material });
+        context.Materials.Add(material);
+        context.MaterialPrices.AddRange(oldPrice, currentPrice);
+        await context.SaveChangesAsync();
 
-        _mockMaterialPriceRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<MaterialPrice, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<MaterialPrice> { oldPrice, currentPrice });
+        var handler = new CalculateMaterialsCostByAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new CalculateMaterialsCostByAreaQuery
         {
@@ -232,18 +199,19 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data!.MaterialCostItems.First().PricePerMaterial.Should().Be(100000m); // Should use latest price
-        result.Data.TotalCostForArea.Should().BeGreaterThan(0); // Some positive cost
+        result.Data.TotalCostForArea.Should().BeGreaterThan(0);
     }
 
     [Fact]
     public async Task Handle_MaterialWithNoPrices_GeneratesWarning()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
 
         var material = new Material
@@ -255,17 +223,10 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _mockMaterialRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<Material, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<Material> { material });
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
 
-        _mockMaterialPriceRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<MaterialPrice, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<MaterialPrice>()); // No prices
+        var handler = new CalculateMaterialsCostByAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new CalculateMaterialsCostByAreaQuery
         {
@@ -284,7 +245,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert - Handler returns failure when no valid calculations can be performed
         result.Succeeded.Should().BeFalse();
@@ -295,6 +256,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
     public async Task Handle_GroupedMaterialsSameMaterialId_SumsQuantities()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
 
         var material = new Material
@@ -316,17 +278,11 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _mockMaterialRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<Material, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<Material> { material });
+        context.Materials.Add(material);
+        context.MaterialPrices.Add(price);
+        await context.SaveChangesAsync();
 
-        _mockMaterialPriceRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<MaterialPrice, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<MaterialPrice> { price });
+        var handler = new CalculateMaterialsCostByAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new CalculateMaterialsCostByAreaQuery
         {
@@ -361,7 +317,7 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -372,10 +328,11 @@ public class CalculateMaterialsCostByAreaQueryHandlerTests
     }
 
     [Fact]
-    public void Constructor_InitializesAllDependencies()
+    public async Task Constructor_InitializesAllDependencies()
     {
         // Arrange & Act
-        var handler = new CalculateMaterialsCostByAreaQueryHandler(_mockUnitOfWork.Object, _mockLogger.Object);
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CalculateMaterialsCostByAreaQueryHandler(context, _mockLogger.Object);
 
         // Assert
         handler.Should().NotBeNull();

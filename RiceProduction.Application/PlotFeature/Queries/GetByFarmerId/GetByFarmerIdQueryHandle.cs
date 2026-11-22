@@ -1,21 +1,19 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Query;
-using System.Linq.Expressions;
 
 namespace RiceProduction.Application.PlotFeature.Queries.GetByFarmerId;
 public class GetByFarmerIdQueryHandler : IRequestHandler<GetByFarmerIdQuery, PagedResult<List<PlotListResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetByFarmerIdQueryHandler> _logger;
 
-    public GetByFarmerIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetByFarmerIdQueryHandler> logger)
+    public GetByFarmerIdQueryHandler(IApplicationDbContext context, ILogger<GetByFarmerIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,39 +21,46 @@ public class GetByFarmerIdQueryHandler : IRequestHandler<GetByFarmerIdQuery, Pag
     {
         try
         {
-            // 1. Xây dựng biểu thức lọc (Filter Expression)
-            Expression<Func<Plot, bool>> filter = p =>
-                p.FarmerId == request.FarmerId &&
-                (!request.Status.HasValue || p.Status == request.Status.Value) &&
-                (!request.IsUnassigned.HasValue ||
-                    (request.IsUnassigned.Value && !p.GroupPlots.Any()) || // Lọc thửa CHƯA gán
-                    (!request.IsUnassigned.Value && p.GroupPlots.Any())); // Lọc thửa ĐÃ gán
+            var query = _context.Plots
+                .AsNoTracking()
+                .Where(p => p.FarmerId == request.FarmerId);
 
-            // 2. Định nghĩa các Includes
-            Func<IQueryable<Plot>, IIncludableQueryable<Plot, object>> includes =
-                q => q.Include(p => p.GroupPlots)
-                        .ThenInclude(gp => gp.Group)
-                            .ThenInclude(g => g.Cluster) // Cần để lấy tên Cluster (GroupName)
-                      .Include(p => p.Alerts) // Cần để đếm ActiveAlerts
-                      .Include(p => p.PlotCultivations); // Cần để đếm ActiveCultivations
+            if (request.Status.HasValue)
+            {
+                var status = request.Status.Value;
+                query = query.Where(p => p.Status == status);
+            }
 
-            // 3. Tải tất cả dữ liệu phù hợp (cho in-memory paging)
-            var allPlots = await _unitOfWork.Repository<Plot>().ListAsync(
-                filter: filter,
-                orderBy: q => q.OrderBy(p => p.SoTo).ThenBy(p => p.SoThua),
-                includeProperties: includes
-            );
+            if (request.IsUnassigned.HasValue)
+            {
+                query = request.IsUnassigned.Value
+                    ? query.Where(p => !p.GroupPlots.Any())   // thửa CHƯA gán
+                    : query.Where(p => p.GroupPlots.Any());   // thửa ĐÃ gán
+            }
 
-            // 4. Lấy tổng số lượng
-            var totalCount = allPlots.Count;
+            var totalCount = await query.CountAsync(cancellationToken);
 
-            // 5. Áp dụng Paging (in-memory)
-            var pagedPlots = allPlots
+            var pagedPlots = await query
+                .OrderBy(p => p.SoTo).ThenBy(p => p.SoThua).ThenBy(p => p.Id)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
+                .Select(p => new
+                {
+                    p.Id,
+                    p.Area,
+                    p.SoThua,
+                    p.SoTo,
+                    p.Status,
+                    p.Boundary,
+                    p.Coordinate,
+                    FirstGroup = p.GroupPlots
+                        .Select(gp => new { gp.GroupId, ClusterName = gp.Group.Cluster.ClusterName })
+                        .FirstOrDefault(),
+                    ActiveAlerts = p.Alerts.Count(a => a.Status == AlertStatus.Pending || a.Status == AlertStatus.UnderReview),
+                    ActiveCultivations = p.PlotCultivations.Count(pc => pc.Status == CultivationStatus.Planned || pc.Status == CultivationStatus.InProgress)
+                })
+                .ToListAsync(cancellationToken);
 
-            // 6. Ánh xạ sang Response DTO
             var responseData = pagedPlots.Select(p => new PlotListResponse
             {
                 PlotId = p.Id,
@@ -65,12 +70,11 @@ public class GetByFarmerIdQueryHandler : IRequestHandler<GetByFarmerIdQuery, Pag
                 Status = p.Status,
                 Boundary = p.Boundary != null ? p.Boundary.AsText() : null,
                 Coordinate = p.Coordinate != null ? p.Coordinate.AsText() : null,
-                GroupId = p.GroupPlots.FirstOrDefault()?.GroupId, // Get first group if any
-                GroupName = p.GroupPlots.FirstOrDefault()?.Group?.Cluster?.ClusterName, // Lấy tên Cluster làm tên Group
-                ActiveAlerts = p.Alerts.Count(a => a.Status == AlertStatus.Pending || a.Status == AlertStatus.UnderReview),
-                ActiveCultivations = p.PlotCultivations.Count(pc => pc.Status == CultivationStatus.Planned || pc.Status == CultivationStatus.InProgress)
+                GroupId = p.FirstGroup?.GroupId,
+                GroupName = p.FirstGroup?.ClusterName, // Lấy tên Cluster làm tên Group
+                ActiveAlerts = p.ActiveAlerts,
+                ActiveCultivations = p.ActiveCultivations
             }).ToList();
-
             return PagedResult<List<PlotListResponse>>.Success(
                 responseData,
                 request.CurrentPage,

@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -7,16 +8,14 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterIdB
 {
     public class GetClusterIdByManagerIdQueryHandler : IRequestHandler<GetClusterIdByManagerIdQuery, Result<Guid?>>
     {
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IClusterManagerRepository _clusterManagerRepository;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetClusterIdByManagerIdQueryHandler> _logger;
 
         public GetClusterIdByManagerIdQueryHandler(
-            IUnitOfWork unitOfWork, 
+            IApplicationDbContext context,
             ILogger<GetClusterIdByManagerIdQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
-            _clusterManagerRepository = _unitOfWork.ClusterManagerRepository;
+            _context = context;
             _logger = logger;
         }
 
@@ -24,8 +23,11 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterIdB
         {
             try
             {
-                var clusterManager = await _clusterManagerRepository
-                    .GetClusterManagerByIdAsync(request.ClusterManagerId, cancellationToken);
+                var clusterManager = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(m => m.Id == request.ClusterManagerId)
+                    .Select(m => new { m.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 if (clusterManager == null)
                 {

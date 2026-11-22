@@ -10,14 +10,14 @@ namespace RiceProduction.Application.MaterialDistributionFeature.Commands.BulkCo
 public class BulkConfirmMaterialDistributionCommandHandler 
     : IRequestHandler<BulkConfirmMaterialDistributionCommand, Result<BulkConfirmationResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<BulkConfirmMaterialDistributionCommandHandler> _logger;
 
     public BulkConfirmMaterialDistributionCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<BulkConfirmMaterialDistributionCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -28,8 +28,7 @@ public class BulkConfirmMaterialDistributionCommandHandler
         try
         {
             // Get all pending distributions for this plot cultivation
-            var distributions = await _unitOfWork.Repository<MaterialDistribution>()
-                .GetQueryable()
+            var distributions = await _context.MaterialDistributions
                 .Include(md => md.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                         .ThenInclude(p => p.GroupPlots)
@@ -47,7 +46,7 @@ public class BulkConfirmMaterialDistributionCommandHandler
             }
 
             // Verify supervisor authorization
-            var group = distributions.First().PlotCultivation.Plot.GroupPlots.FirstOrDefault()?.Group;
+            var group = distributions.First().PlotCultivation?.Plot?.GroupPlots?.FirstOrDefault()?.Group;
             if (group != null && group.SupervisorId != request.SupervisorId)
             {
                 return Result<BulkConfirmationResponse>.Failure(
@@ -96,7 +95,7 @@ public class BulkConfirmMaterialDistributionCommandHandler
                 distribution.Status = DistributionStatus.PartiallyConfirmed;
                 distribution.FarmerConfirmationDeadline = farmerDeadline;
 
-                _unitOfWork.Repository<MaterialDistribution>().Update(distribution);
+                _context.MaterialDistributions.Update(distribution);
                 confirmedIds.Add(distribution.Id);
 
                 _logger.LogDebug(
@@ -104,7 +103,7 @@ public class BulkConfirmMaterialDistributionCommandHandler
                     distribution.Id, distribution.Material?.Name ?? "Unknown");
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Supervisor {SupervisorId} bulk confirmed {Count} material distributions for PlotCultivation {PlotCultivationId}",
@@ -133,8 +132,9 @@ public class BulkConfirmMaterialDistributionCommandHandler
 
     private async Task<int> GetFarmerConfirmationWindowAsync(CancellationToken cancellationToken)
     {
-        var setting = await _unitOfWork.Repository<SystemSetting>()
-            .FindAsync(s => s.SettingKey == "FarmerConfirmationWindowDays");
+        var setting = await _context.SystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SettingKey == "FarmerConfirmationWindowDays", cancellationToken);
 
         return setting != null && int.TryParse(setting.SettingValue, out var value) ? value : 3;
     }

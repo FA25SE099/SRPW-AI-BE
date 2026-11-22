@@ -13,16 +13,16 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
 {
     public class CreatePlotsCommandHandler : IRequestHandler<CreatePlotsCommand, Result<List<PlotResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<CreatePlotsCommandHandler> _logger;
 
         public CreatePlotsCommandHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             IMediator mediator,
             ILogger<CreatePlotsCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -36,9 +36,12 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                 _logger.LogInformation("Starting bulk plot creation for {Count} plots", request.Plots.Count);
 
                 var farmerIds = request.Plots.Select(p => p.FarmerId).Distinct().ToList();
-                var farmers = await _unitOfWork.FarmerRepository.ListAsync(
-                    f => farmerIds.Contains(f.Id));
-                var farmerLookup = farmers.ToDictionary(f => f.Id);
+                var farmers = await _context.Farmers
+                    .AsNoTracking()
+                    .Where(f => farmerIds.Contains(f.Id))
+                    .Select(f => new { f.Id, f.FullName })
+                    .ToListAsync(cancellationToken);
+                var farmerLookup = farmers.ToDictionary(f => f.Id, f => f.FullName ?? string.Empty);
 
                 var validationErrors = new List<string>();
                 for (int i = 0; i < request.Plots.Count; i++)
@@ -63,9 +66,11 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                         $"Validation failed:\n{string.Join("\n", validationErrors)}");
                 }
 
-                var plotRepo = _unitOfWork.Repository<Plot>();
-                var existingPlots = await plotRepo.ListAsync(p =>
-                    farmerIds.Contains(p.FarmerId));
+                var existingPlots = await _context.Plots
+                    .AsNoTracking()
+                    .Where(p => farmerIds.Contains(p.FarmerId))
+                    .Select(p => new { p.FarmerId, p.SoThua, p.SoTo })
+                    .ToListAsync(cancellationToken);
                 var existingPlotKeys = existingPlots
                     .Select(p => $"{p.FarmerId}_{p.SoThua}_{p.SoTo}")
                     .ToHashSet();
@@ -77,13 +82,17 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                     .ToList();
 
                 var riceVarieties = riceVarietyNames.Any()
-                    ? await _unitOfWork.Repository<RiceVariety>()
-                        .ListAsync(rv => riceVarietyNames.Contains(rv.VarietyName))
+                    ? await _context.RiceVarieties
+                        .AsNoTracking()
+                        .Where(rv => riceVarietyNames.Contains(rv.VarietyName))
+                        .ToListAsync(cancellationToken)
                     : new List<RiceVariety>();
                 var varietyLookup = riceVarieties.ToDictionary(rv => rv.VarietyName);
 
-                var allSeasons = await _unitOfWork.Repository<Season>().ListAsync(_ => true);
-                var today = DateTime.Now;
+                var allSeasons = await _context.Seasons
+                    .AsNoTracking()
+                    .ToListAsync(cancellationToken);
+                var today = DateTime.UtcNow;
                 var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, today);
                 var currentSeason = resolvedSeason?.Season;
                 var currentYear = resolvedSeason?.Year ?? today.Year;
@@ -100,7 +109,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                 {
                     var plotKey = $"{plotRequest.FarmerId}_{plotRequest.SoThua}_{plotRequest.SoTo}";
 
-                    if (existingPlotKeys.Contains(plotKey))
+                    if (!existingPlotKeys.Add(plotKey))
                     {
                         skippedPlots.Add(
                             $"SoThua:{plotRequest.SoThua}, SoTo:{plotRequest.SoTo} (already exists)");
@@ -110,7 +119,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                         continue;
                     }
 
-                    var plotId = await plotRepo.GenerateNewGuid(Guid.NewGuid());
+                    var plotId = Guid.NewGuid();
                     plotsToCreate.Add(new Plot
                     {
                         Id = plotId,
@@ -159,11 +168,11 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                         "No plots to create. All plots already exist or validation failed.");
                 }
 
-                await plotRepo.AddRangeAsync(plotsToCreate);
+                _context.Plots.AddRange(plotsToCreate);
 
                 if (cultivationsToCreate.Any())
                 {
-                    await _unitOfWork.Repository<PlotCultivation>().AddRangeAsync(cultivationsToCreate);
+                    _context.PlotCultivations.AddRange(cultivationsToCreate);
 
                     _logger.LogInformation(
                         "Creating {Count} PlotCultivation records for season {SeasonName} {Year}",
@@ -174,14 +183,14 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
 
                 if (versionsToCreate.Any())
                 {
-                    await _unitOfWork.Repository<CultivationVersion>().AddRangeAsync(versionsToCreate);
+                    _context.CultivationVersions.AddRange(versionsToCreate);
 
                     _logger.LogInformation(
                         "Creating {Count} CultivationVersion records",
                         versionsToCreate.Count);
                 }
 
-                await _unitOfWork.CompleteAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 var plotResponses = plotsToCreate
                     .Select(plot => new PlotResponse
@@ -191,7 +200,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.CreatePlots
                         SoTo = plot.SoTo,
                         Area = plot.Area,
                         FarmerId = plot.FarmerId,
-                        FarmerName = farmerLookup[plot.FarmerId].FullName ?? string.Empty,
+                        FarmerName = farmerLookup[plot.FarmerId],
                         SoilType = plot.SoilType,
                         Status = plot.Status,
                         GroupId = plot.GroupPlots.FirstOrDefault()?.GroupId

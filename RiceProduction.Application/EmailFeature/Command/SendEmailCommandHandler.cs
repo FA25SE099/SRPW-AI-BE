@@ -9,25 +9,25 @@ namespace RiceProduction.Application.EmailFeature.Commands.SendEmail
     public class SendEmailCommandHandler : IRequestHandler<SendEmailCommand, Result<string>>
     {
         private readonly IEmailService _emailService;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<SendEmailCommandHandler> _logger;
 
         public SendEmailCommandHandler(
             IEmailService emailService,
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<SendEmailCommandHandler> logger)
         {
             _emailService = emailService;
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
         public async Task<Result<string>> Handle(SendEmailCommand request, CancellationToken cancellationToken)
         {
+            EmailRequest? emailRequest = null;
+
             try
             {
-                EmailRequest? emailRequest = null;
-
                 if (request.SaveToDatabase)
                 {
                     emailRequest = new EmailRequest
@@ -46,8 +46,8 @@ namespace RiceProduction.Application.EmailFeature.Commands.SendEmail
                         MaxRetries = 3
                     };
 
-                    await _unitOfWork.Repository<EmailRequest>().AddAsync(emailRequest);
-                    await _unitOfWork.CompleteAsync();
+                    _context.EmailRequests.Add(emailRequest);
+                    await _context.SaveChangesAsync(cancellationToken);
                 }
 
                 Result<string> result;
@@ -84,7 +84,7 @@ namespace RiceProduction.Application.EmailFeature.Commands.SendEmail
                         emailRequest.ErrorMessage = result.Message;
                     }
 
-                    await _unitOfWork.CompleteAsync();
+                    await _context.SaveChangesAsync(cancellationToken);
                 }
 
                 if (result.Succeeded)
@@ -103,19 +103,13 @@ namespace RiceProduction.Application.EmailFeature.Commands.SendEmail
             {
                 _logger.LogError(ex, "Error sending email to {To}", request.To);
 
-                if (request.SaveToDatabase)
+                if (emailRequest != null)
                 {
                     try
                     {
-                        var failedRequest = await _unitOfWork.Repository<EmailRequest>()
-                            .FindAsync(e => e.To == request.To && e.Subject == request.Subject);
-
-                        if (failedRequest != null)
-                        {
-                            failedRequest.Status = "failed";
-                            failedRequest.ErrorMessage = ex.Message;
-                            await _unitOfWork.CompleteAsync();
-                        }
+                        emailRequest.Status = "failed";
+                        emailRequest.ErrorMessage = ex.Message;
+                        await _context.SaveChangesAsync(cancellationToken);
                     }
                     catch (Exception updateEx)
                     {

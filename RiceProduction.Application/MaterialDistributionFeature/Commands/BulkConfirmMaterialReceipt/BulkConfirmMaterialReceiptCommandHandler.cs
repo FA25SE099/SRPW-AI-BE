@@ -10,14 +10,14 @@ namespace RiceProduction.Application.MaterialDistributionFeature.Commands.BulkCo
 public class BulkConfirmMaterialReceiptCommandHandler 
     : IRequestHandler<BulkConfirmMaterialReceiptCommand, Result<BulkReceiptConfirmationResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<BulkConfirmMaterialReceiptCommandHandler> _logger;
 
     public BulkConfirmMaterialReceiptCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<BulkConfirmMaterialReceiptCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -34,15 +34,16 @@ public class BulkConfirmMaterialReceiptCommandHandler
             }
 
             // Verify farmer exists
-            var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.FarmerId);
-            if (farmer == null)
+            var farmerExists = await _context.Farmers
+                .AsNoTracking()
+                .AnyAsync(f => f.Id == request.FarmerId, cancellationToken);
+            if (!farmerExists)
             {
                 return Result<BulkReceiptConfirmationResponse>.Failure("Farmer not found");
             }
 
             // Get all distributions that match the provided IDs
-            var distributions = await _unitOfWork.Repository<MaterialDistribution>()
-                .GetQueryable()
+            var distributions = await _context.MaterialDistributions
                 .Include(md => md.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                 .Include(md => md.Material)
@@ -63,7 +64,7 @@ public class BulkConfirmMaterialReceiptCommandHandler
             foreach (var distribution in distributions)
             {
                 // Validate each distribution
-                if (distribution.PlotCultivation.Plot.FarmerId != request.FarmerId)
+                if (distribution.PlotCultivation?.Plot?.FarmerId != request.FarmerId)
                 {
                     failedReasons.Add($"Distribution {distribution.Id}: Farmer not authorized for this plot");
                     _logger.LogWarning(
@@ -104,7 +105,7 @@ public class BulkConfirmMaterialReceiptCommandHandler
                 distribution.FarmerNotes = request.Notes;
                 distribution.Status = DistributionStatus.Completed;
 
-                _unitOfWork.Repository<MaterialDistribution>().Update(distribution);
+                _context.MaterialDistributions.Update(distribution);
                 confirmedIds.Add(distribution.Id);
 
                 _logger.LogDebug(
@@ -115,7 +116,7 @@ public class BulkConfirmMaterialReceiptCommandHandler
             // Save all changes
             if (confirmedIds.Any())
             {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Farmer {FarmerId} bulk confirmed {Count} material receipts ({Failed} failed)",

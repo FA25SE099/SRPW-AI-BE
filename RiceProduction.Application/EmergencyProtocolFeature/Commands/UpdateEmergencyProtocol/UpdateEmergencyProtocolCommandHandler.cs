@@ -12,20 +12,17 @@ namespace RiceProduction.Application.EmergencyProtocolFeature.Commands.UpdateEme
 
 public class UpdateEmergencyProtocolCommandHandler : IRequestHandler<UpdateEmergencyProtocolCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _currentUser;
-    private readonly IMediator _mediator;
     private readonly ILogger<UpdateEmergencyProtocolCommandHandler> _logger;
 
     public UpdateEmergencyProtocolCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser currentUser,
-        IMediator mediator,
         ILogger<UpdateEmergencyProtocolCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _currentUser = currentUser;
-        _mediator = mediator;
         _logger = logger;
     }
 
@@ -40,12 +37,12 @@ public class UpdateEmergencyProtocolCommandHandler : IRequestHandler<UpdateEmerg
         try
         {
             // 1. Get existing emergency protocol with all related data
-            var emergencyProtocol = await _unitOfWork.Repository<EmergencyProtocol>()
-                .GetQueryable()
+            var emergencyProtocol = await _context.EmergencyProtocols
                 .Include(ep => ep.StandardPlanStages)
                     .ThenInclude(s => s.StandardPlanTasks)
                         .ThenInclude(t => t.StandardPlanTaskMaterials)
                 .Include(ep => ep.Thresholds)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(ep => ep.Id == request.EmergencyProtocolId, cancellationToken);
 
             if (emergencyProtocol == null)
@@ -56,8 +53,9 @@ public class UpdateEmergencyProtocolCommandHandler : IRequestHandler<UpdateEmerg
             }
 
             // 2. Validate category exists
-            var categoryExists = await _unitOfWork.Repository<RiceVarietyCategory>()
-                .ExistsAsync(c => c.Id == request.CategoryId);
+            var categoryExists = await _context.RiceVarietyCategories
+                .AsNoTracking()
+                .AnyAsync(c => c.Id == request.CategoryId, cancellationToken);
 
             if (!categoryExists)
             {
@@ -67,10 +65,12 @@ public class UpdateEmergencyProtocolCommandHandler : IRequestHandler<UpdateEmerg
             }
 
             // 3. Check for duplicate plan name (excluding current protocol)
-            var duplicateExists = await _unitOfWork.Repository<EmergencyProtocol>()
-                .ExistsAsync(p => p.Id != request.EmergencyProtocolId &&
+            var duplicateExists = await _context.EmergencyProtocols
+                .AsNoTracking()
+                .AnyAsync(p => p.Id != request.EmergencyProtocolId &&
                               p.CategoryId == request.CategoryId &&
-                              p.PlanName.ToLower() == request.PlanName.ToLower());
+                              p.PlanName.ToLower() == request.PlanName.ToLower(),
+                    cancellationToken);
 
             if (duplicateExists)
             {
@@ -125,14 +125,14 @@ public class UpdateEmergencyProtocolCommandHandler : IRequestHandler<UpdateEmerg
             emergencyProtocol.TotalDurationDays = request.TotalDurationDays;
             emergencyProtocol.IsActive = request.IsActive;
 
-            _unitOfWork.Repository<StandardPlanStage>().DeleteRange(emergencyProtocol.StandardPlanStages);
-            _unitOfWork.Repository<Threshold>().DeleteRange(emergencyProtocol.Thresholds);
+            _context.StandardPlanStages.RemoveRange(emergencyProtocol.StandardPlanStages);
+            _context.Thresholds.RemoveRange(emergencyProtocol.Thresholds);
 
             ReplaceStages(emergencyProtocol, request);
             ReplaceThresholds(emergencyProtocol, request);
 
-            _unitOfWork.Repository<EmergencyProtocol>().Update(emergencyProtocol);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.EmergencyProtocols.Update(emergencyProtocol);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully updated EmergencyProtocol {ProtocolId} by User {UserId}",
@@ -176,8 +176,8 @@ public class UpdateEmergencyProtocolCommandHandler : IRequestHandler<UpdateEmerg
             return null;
         }
 
-        var existingIds = await _unitOfWork.Repository<TEntity>()
-            .GetQueryable()
+        var existingIds = await _context.Set<TEntity>()
+            .AsNoTracking()
             .Where(e => ids.Contains(e.Id))
             .Select(e => e.Id)
             .ToListAsync(cancellationToken);

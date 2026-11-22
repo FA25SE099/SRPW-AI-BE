@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -7,18 +8,16 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetCurrentAgr
 {
     public class GetCurrentAgronomyExpertQueryHandler : IRequestHandler<GetCurrentAgronomyExpertQuery, Result<CurrentAgronomyExpertResponse>>
     {
-        private readonly IAgronomyExpertRepository _expertRepo;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IUser _currentUser;
         private readonly ILogger<GetCurrentAgronomyExpertQueryHandler> _logger;
 
         public GetCurrentAgronomyExpertQueryHandler(
-            IUnitOfWork unitOfWork, 
+            IApplicationDbContext context,
             IUser currentUser,
             ILogger<GetCurrentAgronomyExpertQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
-            _expertRepo = _unitOfWork.AgronomyExpertRepository;
+            _context = context;
             _currentUser = currentUser;
             _logger = logger;
         }
@@ -32,9 +31,21 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetCurrentAgr
                     return Result<CurrentAgronomyExpertResponse>.Failure("User not authenticated");
                 }
 
-                var expert = await _expertRepo.GetAgronomyExpertByIdAsync(
-                    _currentUser.Id.Value,
-                    cancellationToken);
+                var userId = _currentUser.Id.Value;
+
+                var expert = await _context.AgronomyExperts
+                    .AsNoTracking()
+                    .Where(e => e.Id == userId)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        e.FullName,
+                        e.Email,
+                        e.ClusterId,
+                        ClusterName = e.ManagedCluster != null ? e.ManagedCluster.ClusterName : null,
+                        e.AssignedDate
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 if (expert == null)
                 {
@@ -47,7 +58,7 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetCurrentAgr
                     ExpertName = expert.FullName,
                     Email = expert.Email,
                     ClusterId = expert.ClusterId?.ToString(),
-                    ClusterName = expert.ManagedCluster?.ClusterName,
+                    ClusterName = expert.ClusterName,
                     AssignedDate = expert.AssignedDate?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                 };
 
@@ -63,4 +74,3 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetCurrentAgr
         }
     }
 }
-

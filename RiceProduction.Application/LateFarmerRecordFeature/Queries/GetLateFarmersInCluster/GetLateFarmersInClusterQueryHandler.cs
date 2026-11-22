@@ -7,12 +7,12 @@ namespace RiceProduction.Application.LateFarmerRecordFeature.Queries.GetLateFarm
 
 public class GetLateFarmersInClusterQueryHandler : IRequestHandler<GetLateFarmersInClusterQuery, PagedResult<IEnumerable<FarmerWithLateCountDTO>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetLateFarmersInClusterQueryHandler> _logger;
 
-    public GetLateFarmersInClusterQueryHandler(IUnitOfWork unitOfWork, ILogger<GetLateFarmersInClusterQueryHandler> logger)
+    public GetLateFarmersInClusterQueryHandler(IApplicationDbContext context, ILogger<GetLateFarmersInClusterQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,7 +27,11 @@ public class GetLateFarmersInClusterQueryHandler : IRequestHandler<GetLateFarmer
             // Get cluster ID from AgronomyExpert or Supervisor
             if (request.AgronomyExpertId.HasValue)
             {
-                var expert = await _unitOfWork.AgronomyExpertRepository.GetAgronomyExpertByIdAsync(request.AgronomyExpertId.Value, cancellationToken);
+                var expert = await _context.AgronomyExperts
+                    .AsNoTracking()
+                    .Where(e => e.Id == request.AgronomyExpertId.Value)
+                    .Select(e => new { e.Id, e.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
                 if (expert == null)
                 {
                     return PagedResult<IEnumerable<FarmerWithLateCountDTO>>.Failure("Agronomy Expert not found");
@@ -36,7 +40,11 @@ public class GetLateFarmersInClusterQueryHandler : IRequestHandler<GetLateFarmer
             }
             else if (request.SupervisorId.HasValue)
             {
-                var supervisor = await _unitOfWork.SupervisorRepository.GetSupervisorByIdAsync(request.SupervisorId.Value, cancellationToken);
+                var supervisor = await _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => s.Id == request.SupervisorId.Value)
+                    .Select(s => new { s.Id, s.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
                 if (supervisor == null)
                 {
                     return PagedResult<IEnumerable<FarmerWithLateCountDTO>>.Failure("Supervisor not found");
@@ -49,29 +57,18 @@ public class GetLateFarmersInClusterQueryHandler : IRequestHandler<GetLateFarmer
                 return PagedResult<IEnumerable<FarmerWithLateCountDTO>>.Failure("Cluster ID not found for the specified user");
             }
 
-            // Get all late farmer records in the cluster by navigating through CultivationTask -> Plot -> GroupPlot -> Group -> Cluster
-            // Only get records from active versions
-            var lateRecordsQuery = _unitOfWork.LateFarmerRecordRepository.GetQueryable()
+            // Get distinct farmer IDs who have late records from active versions in the cluster
+            var farmerIdsWithLateRecords = await _context.LateFarmerRecords
                 .AsNoTracking()
-                .Include(lr => lr.CultivationTask)
-                    .ThenInclude(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Plot)
-                            .ThenInclude(p => p.GroupPlots)
-                                .ThenInclude(gp => gp.Group)
-                .Include(lr => lr.CultivationTask)
-                    .ThenInclude(ct => ct.Version) // Include version to check if active
                 .Where(lr => lr.CultivationTask.PlotCultivation.Plot.GroupPlots
                     .Any(gp => gp.Group.ClusterId == clusterId.Value)
                     && lr.CultivationTask.Version != null
-                    && lr.CultivationTask.Version.IsActive); // Only active versions
-
-            // Get distinct farmer IDs who have late records
-            var farmerIdsWithLateRecords = await lateRecordsQuery
+                    && lr.CultivationTask.Version.IsActive)
                 .Select(lr => lr.FarmerId)
                 .Distinct()
                 .ToListAsync(cancellationToken);
 
-            if (!farmerIdsWithLateRecords.Any())
+            if (farmerIdsWithLateRecords.Count == 0)
             {
                 return PagedResult<IEnumerable<FarmerWithLateCountDTO>>.Success(
                     data: new List<FarmerWithLateCountDTO>(),
@@ -83,9 +80,8 @@ public class GetLateFarmersInClusterQueryHandler : IRequestHandler<GetLateFarmer
             }
 
             // Build farmer query
-            var farmerQuery = _unitOfWork.FarmerRepository.GetQueryable()
+            var farmerQuery = _context.Farmers
                 .AsNoTracking()
-                .Include(f => f.OwnedPlots)
                 .Where(f => farmerIdsWithLateRecords.Contains(f.Id) && f.IsActive);
 
             // Apply search filter if provided
@@ -99,32 +95,49 @@ public class GetLateFarmersInClusterQueryHandler : IRequestHandler<GetLateFarmer
             // Get total count
             var totalCount = await farmerQuery.CountAsync(cancellationToken);
 
-            // Get paged farmers
+            // Get paged farmers without loading PostGIS plot geometry columns
             var farmers = await farmerQuery
                 .OrderBy(f => f.FullName)
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.FullName,
+                    f.Address,
+                    f.PhoneNumber,
+                    f.IsActive,
+                    f.IsVerified,
+                    f.LastActivityAt,
+                    f.FarmCode,
+                    PlotCount = f.OwnedPlots.Count
+                })
                 .ToListAsync(cancellationToken);
 
-            // Get late counts for each farmer
-            var result = new List<FarmerWithLateCountDTO>();
-            foreach (var farmer in farmers)
+            // Batch fetch late counts for the paged farmers
+            var pagedFarmerIds = farmers.Select(f => f.Id).ToList();
+            var lateCounts = await _context.LateFarmerRecords
+                .AsNoTracking()
+                .Where(l => pagedFarmerIds.Contains(l.FarmerId)
+                    && l.CultivationTask.Version != null
+                    && l.CultivationTask.Version.IsActive)
+                .GroupBy(l => l.FarmerId)
+                .Select(g => new { FarmerId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.FarmerId, x => x.Count, cancellationToken);
+
+            var result = farmers.Select(farmer => new FarmerWithLateCountDTO
             {
-                var lateCount = await _unitOfWork.LateFarmerRecordRepository.GetLateCountByFarmerIdAsync(farmer.Id, cancellationToken);
-                result.Add(new FarmerWithLateCountDTO
-                {
-                    FarmerId = farmer.Id,
-                    FullName = farmer.FullName,
-                    Address = farmer.Address,
-                    PhoneNumber = farmer.PhoneNumber,
-                    IsActive = farmer.IsActive,
-                    IsVerified = farmer.IsVerified,
-                    LastActivityAt = farmer.LastActivityAt,
-                    FarmCode = farmer.FarmCode,
-                    PlotCount = farmer.OwnedPlots?.Count ?? 0,
-                    LateCount = lateCount
-                });
-            }
+                FarmerId = farmer.Id,
+                FullName = farmer.FullName,
+                Address = farmer.Address,
+                PhoneNumber = farmer.PhoneNumber,
+                IsActive = farmer.IsActive,
+                IsVerified = farmer.IsVerified,
+                LastActivityAt = farmer.LastActivityAt,
+                FarmCode = farmer.FarmCode,
+                PlotCount = farmer.PlotCount,
+                LateCount = lateCounts.GetValueOrDefault(farmer.Id, 0)
+            }).ToList();
 
             return PagedResult<IEnumerable<FarmerWithLateCountDTO>>.Success(
                 data: result,

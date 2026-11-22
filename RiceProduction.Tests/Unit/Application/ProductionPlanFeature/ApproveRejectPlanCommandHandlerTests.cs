@@ -1,13 +1,13 @@
 using FluentAssertions;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.CultivationFeature.Event;
 using RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejectPlan;
 using RiceProduction.Domain.Entities;
-using RiceProduction.Domain.Enums;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Tests.Unit.Application.ProductionPlanFeature;
@@ -17,31 +17,14 @@ namespace RiceProduction.Tests.Unit.Application.ProductionPlanFeature;
 /// </summary>
 public class ApproveRejectPlanCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<ProductionPlan>> _mockProductionPlanRepo;
-    private readonly Mock<ILogger<ApproveRejectPlanCommandHandler>> _mockLogger;
-    private readonly Mock<IMediator> _mockMediator;
-    private readonly ApproveRejectPlanCommandHandler _handler;
-
-    public ApproveRejectPlanCommandHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockProductionPlanRepo = new Mock<IGenericRepository<ProductionPlan>>();
-        _mockLogger = new Mock<ILogger<ApproveRejectPlanCommandHandler>>();
-        _mockMediator = new Mock<IMediator>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<ProductionPlan>()).Returns(_mockProductionPlanRepo.Object);
-
-        _handler = new ApproveRejectPlanCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockLogger.Object,
-            _mockMediator.Object);
-    }
+    private readonly Mock<ILogger<ApproveRejectPlanCommandHandler>> _mockLogger = new();
+    private readonly Mock<IMediator> _mockMediator = new();
 
     [Fact]
     public async Task Handle_ApprovePlan_UpdatesStatusToApproved()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
         var plan = new ProductionPlan
         {
@@ -49,6 +32,10 @@ public class ApproveRejectPlanCommandHandlerTests
             PlanName = "Test Plan",
             Status = TaskStatus.PendingApproval
         };
+        context.ProductionPlans.Add(plan);
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var command = new ApproveRejectPlanCommand
         {
@@ -58,29 +45,21 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.Update(It.IsAny<ProductionPlan>()))
-            .Verifiable();
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().Be(planId);
-        _mockProductionPlanRepo.Verify(r => r.Update(It.Is<ProductionPlan>(
-            p => p.Id == planId && p.Status == TaskStatus.Approved)), Times.Once);
+        var updatedPlan = await context.ProductionPlans.FirstAsync(p => p.Id == planId);
+        updatedPlan.Status.Should().Be(TaskStatus.Approved);
     }
 
     [Fact]
     public async Task Handle_RejectPlan_UpdatesStatusToRejected()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
         var plan = new ProductionPlan
         {
@@ -88,6 +67,10 @@ public class ApproveRejectPlanCommandHandlerTests
             PlanName = "Test Plan",
             Status = TaskStatus.PendingApproval
         };
+        context.ProductionPlans.Add(plan);
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var command = new ApproveRejectPlanCommand
         {
@@ -97,25 +80,22 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        _mockProductionPlanRepo.Verify(r => r.Update(It.Is<ProductionPlan>(
-            p => p.Status == TaskStatus.Cancelled)), Times.Once);
+        var updatedPlan = await context.ProductionPlans.FirstAsync(p => p.Id == planId);
+        updatedPlan.Status.Should().Be(TaskStatus.Cancelled);
     }
 
     [Fact]
     public async Task Handle_PlanNotFound_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
+
         var command = new ApproveRejectPlanCommand
         {
             PlanId = Guid.NewGuid(),
@@ -123,11 +103,8 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync((ProductionPlan?)null);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -138,13 +115,17 @@ public class ApproveRejectPlanCommandHandlerTests
     public async Task Handle_ApproveWithReviewerNotes_StoresNotes()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
-        var plan = new ProductionPlan
+        context.ProductionPlans.Add(new ProductionPlan
         {
             Id = planId,
             PlanName = "Test Plan",
             Status = TaskStatus.PendingApproval
-        };
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var reviewNotes = "Approved with recommendations for water management improvements";
         var command = new ApproveRejectPlanCommand
@@ -155,14 +136,8 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -172,13 +147,17 @@ public class ApproveRejectPlanCommandHandlerTests
     public async Task Handle_AlreadyApprovedPlan_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
-        var plan = new ProductionPlan
+        context.ProductionPlans.Add(new ProductionPlan
         {
             Id = planId,
             PlanName = "Already Approved Plan",
             Status = TaskStatus.Approved
-        };
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var command = new ApproveRejectPlanCommand
         {
@@ -188,14 +167,8 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -206,13 +179,17 @@ public class ApproveRejectPlanCommandHandlerTests
     public async Task Handle_RejectPreviouslyApprovedPlan_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
-        var plan = new ProductionPlan
+        context.ProductionPlans.Add(new ProductionPlan
         {
             Id = planId,
             PlanName = "Previously Approved Plan",
             Status = TaskStatus.Approved
-        };
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var command = new ApproveRejectPlanCommand
         {
@@ -222,14 +199,8 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -240,13 +211,18 @@ public class ApproveRejectPlanCommandHandlerTests
     public async Task Handle_DatabaseError_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
-        var plan = new ProductionPlan
+        context.ProductionPlans.Add(new ProductionPlan
         {
             Id = planId,
             PlanName = "Test Plan",
             Status = TaskStatus.PendingApproval
-        };
+        });
+        await context.SaveChangesAsync();
+        context.SaveChangesException = new Exception("Database connection failed");
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var command = new ApproveRejectPlanCommand
         {
@@ -255,14 +231,8 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ThrowsAsync(new Exception("Database connection failed"));
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -273,13 +243,17 @@ public class ApproveRejectPlanCommandHandlerTests
     public async Task Handle_ApproveWithoutNotes_SucceedsWithoutNotes()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
-        var plan = new ProductionPlan
+        context.ProductionPlans.Add(new ProductionPlan
         {
             Id = planId,
             PlanName = "Test Plan",
             Status = TaskStatus.PendingApproval
-        };
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var command = new ApproveRejectPlanCommand
         {
@@ -289,14 +263,8 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -306,13 +274,17 @@ public class ApproveRejectPlanCommandHandlerTests
     public async Task Handle_RejectWithDetailedNotes_StoresLongNotes()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
-        var plan = new ProductionPlan
+        context.ProductionPlans.Add(new ProductionPlan
         {
             Id = planId,
             PlanName = "Complex Plan",
             Status = TaskStatus.PendingApproval
-        };
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var longNotes = string.Join(" ", Enumerable.Repeat(
             "The plan requires revision due to various factors including resource allocation, timing concerns, and coordination issues.", 10));
@@ -325,14 +297,8 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -342,13 +308,17 @@ public class ApproveRejectPlanCommandHandlerTests
     public async Task Handle_ApprovedPlan_PublishesEvent()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var planId = Guid.NewGuid();
-        var plan = new ProductionPlan
+        context.ProductionPlans.Add(new ProductionPlan
         {
             Id = planId,
             PlanName = "Event Test Plan",
             Status = TaskStatus.PendingApproval
-        };
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ApproveRejectPlanCommandHandler(context, _mockLogger.Object, _mockMediator.Object);
 
         var command = new ApproveRejectPlanCommand
         {
@@ -357,18 +327,14 @@ public class ApproveRejectPlanCommandHandlerTests
             ExpertId = Guid.NewGuid()
         };
 
-        _mockProductionPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ProductionPlan, bool>>>()))
-            .ReturnsAsync(plan);
-
-        _mockProductionPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        // Note: Event publishing verification would depend on actual implementation
+        _mockMediator.Verify(m => m.Publish(
+            It.Is<ProductionPlanApprovalEvent>(e => e.PlanId == planId),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }
 

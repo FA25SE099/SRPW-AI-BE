@@ -18,22 +18,19 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
 {
     public class CreateFarmersCommandHandler : IRequestHandler<CreateFarmersCommand, Result<FarmerDTO>>
     {
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly ILogger<CreateFarmersCommand> _logger;
-        private readonly IFarmerRepository _farmerRepository;
+        private readonly IApplicationDbContext _context;
+        private readonly ILogger<CreateFarmersCommandHandler> _logger;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IMediator _mediator;
         
         public CreateFarmersCommandHandler(
-            IUnitOfWork unitOfWork, 
-            ILogger<CreateFarmersCommand> logger, 
-            IFarmerRepository farmerRepository, 
+            IApplicationDbContext context, 
+            ILogger<CreateFarmersCommandHandler> logger, 
             UserManager<ApplicationUser> userManager,
             IMediator mediator)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
-            _farmerRepository = farmerRepository;
             _userManager = userManager;
             _mediator = mediator;
         }
@@ -45,8 +42,10 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 _logger.LogInformation("Creating farmer: {FullName}", request.FullName);
                 
                 // Check if phone number already exists
-                var phoneNumberExist = await _unitOfWork.FarmerRepository.GetFarmerByPhoneNumber(request.PhoneNumber);
-                if (phoneNumberExist != null)
+                var phoneNumberExist = await _context.Farmers
+                    .AsNoTracking()
+                    .AnyAsync(f => f.PhoneNumber != null && f.PhoneNumber == request.PhoneNumber, cancellationToken);
+                if (phoneNumberExist)
                 {
                     _logger.LogError("Phone number {PhoneNumber} already exist", request.PhoneNumber);
                     return Result<FarmerDTO>.Failure($"Số điện thoại {request.PhoneNumber} đã tồn tại.");
@@ -63,9 +62,11 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 var clusterManagerId = request.ClusterManagerId;
                 if (clusterManagerId.HasValue)
                 {
-                    var clusterManager = await _unitOfWork.ClusterManagerRepository
-                        .GetClusterManagerByIdAsync(clusterManagerId.Value, cancellationToken);
-                    clusterId = clusterManager?.ClusterId;
+                    clusterId = await _context.ClusterManagers
+                        .AsNoTracking()
+                        .Where(cm => cm.Id == clusterManagerId.Value)
+                        .Select(cm => cm.ClusterId)
+                        .FirstOrDefaultAsync(cancellationToken);
                 }
 
                 const string TEMP_PASSWORD = "123456";

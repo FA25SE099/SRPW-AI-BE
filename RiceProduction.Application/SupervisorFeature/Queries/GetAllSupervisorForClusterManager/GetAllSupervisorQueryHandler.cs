@@ -1,33 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Claims;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Identity;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorForClusterManager
 {
     public class GetAllSupervisorQueryHandler : IRequestHandler<GetAllSupervisorQuery, PagedResult<List<SupervisorResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IIdentityService _identityService;
+        private readonly IApplicationDbContext _context;
         private readonly IUser _currentUser;
 
-        public GetAllSupervisorQueryHandler(IUnitOfWork unitOfWork, IIdentityService identityService, IUser currentUser)
+        public GetAllSupervisorQueryHandler(IApplicationDbContext context, IUser currentUser)
         {
-            _unitOfWork = unitOfWork;
-            _identityService = identityService;
+            _context = context;
             _currentUser = currentUser;
         }
 
         public async Task<PagedResult<List<SupervisorResponse>>> Handle(GetAllSupervisorQuery request, CancellationToken cancellationToken)
         {
-            try 
+            try
             {
                 if (!_currentUser.Id.HasValue || _currentUser.Id.Value == Guid.Empty)
                 {
@@ -37,24 +34,72 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorF
 
                 var userId = _currentUser.Id.Value;
 
-                var supervisorResponses = new List<SupervisorResponse>();
-                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(userId, cancellationToken);
+                var clusterManager = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(cm => cm.Id == userId)
+                    .Select(cm => new
+                    {
+                        cm.ClusterId,
+                        ClusterName = cm.ManagedCluster != null ? cm.ManagedCluster.ClusterName : null
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
+
                 if (clusterManager == null)
-                    return PagedResult<List<SupervisorResponse>>.Failure(
-                                        $"Cluster Manager with ID {userId} not found");
-                var groupListBelongToCluster = await _unitOfWork.Repository<Group>().ListAsync(g => g.ClusterId == clusterManager.ClusterId);
-                foreach (var group in groupListBelongToCluster)
                 {
-                    Guid supId;
-                    if(group.SupervisorId == null)
-                        continue;
-                    else 
-                        supId = group.SupervisorId.Value;
-                    var supervisor = await _unitOfWork.SupervisorRepository.GetSupervisorByIdAsync(supId);
-                    if (supervisor == null)
-                        return PagedResult<List<SupervisorResponse>>.Failure(
-                                            $"Error retrieving supervisor list");
-                    supervisorResponses.Add(new SupervisorResponse
+                    return PagedResult<List<SupervisorResponse>>.Failure(
+                        $"Cluster Manager with ID {userId} not found");
+                }
+
+                if (!clusterManager.ClusterId.HasValue)
+                {
+                    return PagedResult<List<SupervisorResponse>>.Failure(
+                        $"No supervisors found with {userId} cluster id = {clusterManager.ClusterId}");
+                }
+
+                var targetClusterId = clusterManager.ClusterId.Value;
+                var clusterName = clusterManager.ClusterName ?? "N/A";
+
+                var query = _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => s.ClusterId == targetClusterId ||
+                                s.SupervisedGroups.Any(g => g.ClusterId == targetClusterId));
+
+                if (!await query.AnyAsync(cancellationToken))
+                {
+                    return PagedResult<List<SupervisorResponse>>.Failure(
+                        $"No supervisors found with {userId} cluster id = {clusterManager.ClusterId}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.SearchNameOrEmail))
+                {
+                    var search = request.SearchNameOrEmail.Trim().ToLower();
+                    query = query.Where(s =>
+                        (s.FullName != null && s.FullName.ToLower().Contains(search)) ||
+                        (s.Email != null && s.Email.ToLower().Contains(search)));
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.SearchPhoneNumber))
+                {
+                    var phone = request.SearchPhoneNumber.Trim();
+                    query = query.Where(s => s.PhoneNumber != null && s.PhoneNumber.Contains(phone));
+                }
+
+                var totalCount = await query.CountAsync(cancellationToken);
+
+                var pagedQuery = query
+                    .OrderBy(s => s.FullName)
+                    .ThenBy(s => s.Id)
+                    .AsQueryable();
+
+                if (request.PageSize > 0)
+                {
+                    pagedQuery = pagedQuery
+                        .Skip((request.CurrentPage - 1) * request.PageSize)
+                        .Take(request.PageSize);
+                }
+
+                var supervisorResponses = await pagedQuery
+                    .Select(supervisor => new SupervisorResponse
                     {
                         SupervisorId = supervisor.Id,
                         FullName = supervisor.FullName,
@@ -63,50 +108,16 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetAllSupervisorF
                         Address = supervisor.Address,
                         CurrentFarmerCount = supervisor.CurrentFarmerCount,
                         LastActivityAt = supervisor.LastActivityAt,
-                        ClusterName = clusterManager.ManagedCluster?.ClusterName ?? "N/A",
-                        ClusterId = supervisor.ManagedCluster?.Id
-                    });
-                }
-                if (!supervisorResponses.Any())
-                {
-                    return PagedResult<List<SupervisorResponse>>.Failure(
-                        $"No supervisors found with {userId} cluster id = {clusterManager.ClusterId}");
-                }
-                if (!string.IsNullOrEmpty(request.SearchNameOrEmail) || !string.IsNullOrEmpty(request.SearchPhoneNumber))
-                {
-                    supervisorResponses = supervisorResponses
-                        .Where(s =>
-                        {
-                            // Name or Email filter
-                            bool nameOrEmailMatch = true; // Default to true if no filter
-                            if (!string.IsNullOrEmpty(request.SearchNameOrEmail))
-                            {
-                                nameOrEmailMatch =
-                                    s.FullName != null && s.FullName.Contains(request.SearchNameOrEmail, StringComparison.OrdinalIgnoreCase) ||
-                                    s.Email != null && s.Email.Contains(request.SearchNameOrEmail, StringComparison.OrdinalIgnoreCase);
-                            }
+                        ClusterName = clusterName,
+                        ClusterId = supervisor.ClusterId ?? targetClusterId
+                    })
+                    .ToListAsync(cancellationToken);
 
-                            // Phone number filter
-                            bool phoneMatch = true; // Default to true if no filter
-                            if (!string.IsNullOrEmpty(request.SearchPhoneNumber))
-                            {
-                                phoneMatch = s.PhoneNumber != null && s.PhoneNumber.Contains(request.SearchPhoneNumber);
-                            }
-
-                            // Both conditions must be true (AND logic)
-                            return nameOrEmailMatch && phoneMatch;
-                        })
-                        .ToList();
-                }
-                supervisorResponses = supervisorResponses
-                    .Skip((request.CurrentPage - 1) * request.PageSize)
-                    .Take(request.PageSize)
-                    .ToList();
                 return PagedResult<List<SupervisorResponse>>.Success(
                     supervisorResponses,
-                    supervisorResponses.Count(),
                     request.CurrentPage,
-                    request.PageSize);
+                    request.PageSize,
+                    totalCount);
             }
             catch (Exception ex)
             {

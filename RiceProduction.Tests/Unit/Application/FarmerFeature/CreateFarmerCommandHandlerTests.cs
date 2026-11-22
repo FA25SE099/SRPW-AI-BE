@@ -1,13 +1,14 @@
 using FluentAssertions;
+using MediatR;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.FarmerFeature.Command.CreateFarmer;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.FarmerFeature;
 
@@ -17,55 +18,27 @@ namespace RiceProduction.Tests.Unit.Application.FarmerFeature;
 public class CreateFarmerCommandHandlerTests
 {
     private readonly Mock<UserManager<ApplicationUser>> _mockUserManager;
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IFarmerRepository> _mockFarmerRepo;
-    private readonly Mock<IClusterManagerRepository> _mockClusterManagerRepo;
-    private readonly Mock<IGenericRepository<Plot>> _mockPlotRepo;
-    private readonly Mock<ILogger<CreateFarmerCommandHandler>> _mockLogger;
     private readonly Mock<IMediator> _mockMediator;
-    private readonly CreateFarmerCommandHandler _handler;
 
     public CreateFarmerCommandHandlerTests()
     {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockFarmerRepo = new Mock<IFarmerRepository>();
-        _mockClusterManagerRepo = new Mock<IClusterManagerRepository>();
-        _mockPlotRepo = new Mock<IGenericRepository<Plot>>();
-        _mockLogger = new Mock<ILogger<CreateFarmerCommandHandler>>();
         _mockMediator = new Mock<IMediator>();
 
-        // Setup UserManager mock (requires special setup for constructor)
         var userStoreMock = new Mock<IUserStore<ApplicationUser>>();
         _mockUserManager = new Mock<UserManager<ApplicationUser>>(
-            userStoreMock.Object, null, null, null, null, null, null, null, null);
-
-        _mockUnitOfWork.Setup(u => u.FarmerRepository).Returns(_mockFarmerRepo.Object);
-        _mockUnitOfWork.Setup(u => u.ClusterManagerRepository).Returns(_mockClusterManagerRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<Plot>()).Returns(_mockPlotRepo.Object);
-
-        _handler = new CreateFarmerCommandHandler(
-            _mockUserManager.Object,
-            _mockUnitOfWork.Object,
-            _mockLogger.Object,
-            _mockMediator.Object);
+            userStoreMock.Object, null!, null!, null!, null!, null!, null!, null!, null!);
     }
 
-    [Fact]
-    public async Task Handle_ValidFarmerData_CreatesSuccessfully()
+    private CreateFarmerCommandHandler CreateHandler(TestApplicationDbContext context) =>
+        new(
+            _mockUserManager.Object,
+            context,
+            Mock.Of<ILogger<CreateFarmerCommandHandler>>(),
+            _mockMediator.Object);
+
+    private void SetupUserManagerSuccess()
     {
-        // Arrange
-        var command = new CreateFarmerCommand
-        {
-            FullName = "Nguyen Van A",
-            FarmCode = "FARM001",
-            PhoneNumber = "0901234567",
-            Address = "123 Main St, District 1, HCMC"
-        };
-
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
-
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
+        _mockUserManager.Setup(um => um.FindByNameAsync(It.IsAny<string>()))
             .ReturnsAsync((ApplicationUser?)null);
 
         _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
@@ -74,15 +47,29 @@ public class CreateFarmerCommandHandlerTests
 
         _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
             .ReturnsAsync(IdentityResult.Success);
+    }
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+    [Fact]
+    public async Task Handle_ValidFarmerData_CreatesSuccessfully()
+    {
+        await using var context = TestApplicationDbContext.Create();
+        SetupUserManagerSuccess();
+        var handler = CreateHandler(context);
 
-        // Assert
+        var command = new CreateFarmerCommand
+        {
+            FullName = "Nguyen Van A",
+            FarmCode = "FARM001",
+            PhoneNumber = "0901234567",
+            Address = "123 Main St, District 1, HCMC"
+        };
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
         result.Succeeded.Should().BeTrue();
         result.Data.Should().NotBe(Guid.Empty);
         _mockUserManager.Verify(um => um.CreateAsync(It.Is<Farmer>(
-            f => f.FullName == "Nguyen Van A" && 
+            f => f.FullName == "Nguyen Van A" &&
                  f.FarmCode == "FARM001" &&
                  f.PhoneNumber == command.PhoneNumber), It.IsAny<string>()), Times.Once);
     }
@@ -90,17 +77,16 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_DuplicatePhoneNumber_ReturnsFailure()
     {
-        // Arrange
-        var existingFarmer = new Farmer
+        await using var context = TestApplicationDbContext.Create();
+        context.Farmers.Add(new Farmer
         {
             Id = Guid.NewGuid(),
             PhoneNumber = "0901234567",
             FullName = "Existing Farmer"
-        };
+        });
+        await context.SaveChangesAsync();
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber("0901234567", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existingFarmer);
-
+        var handler = CreateHandler(context);
         var command = new CreateFarmerCommand
         {
             FullName = "New Farmer",
@@ -108,10 +94,8 @@ public class CreateFarmerCommandHandlerTests
             PhoneNumber = "0901234567"
         };
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("already exists"));
         _mockUserManager.Verify(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()), Times.Never);
@@ -120,7 +104,9 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_MissingFullName_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
+
         var command = new CreateFarmerCommand
         {
             FullName = "",
@@ -128,10 +114,8 @@ public class CreateFarmerCommandHandlerTests
             PhoneNumber = "0901234567"
         };
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Full name is required"));
     }
@@ -139,7 +123,9 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_MissingPhoneNumber_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
+
         var command = new CreateFarmerCommand
         {
             FullName = "Test Farmer",
@@ -147,10 +133,8 @@ public class CreateFarmerCommandHandlerTests
             PhoneNumber = ""
         };
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Phone number is required"));
     }
@@ -158,7 +142,10 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_WithOptionalFields_StoresAllData()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        SetupUserManagerSuccess();
+        var handler = CreateHandler(context);
+
         var command = new CreateFarmerCommand
         {
             FullName = "Tran Van B",
@@ -167,22 +154,8 @@ public class CreateFarmerCommandHandlerTests
             Address = "456 Rural Road, District 9"
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
         _mockUserManager.Verify(um => um.CreateAsync(It.Is<Farmer>(
             f => f.Address == "456 Rural Road, District 9"), It.IsAny<string>()), Times.Once);
@@ -191,7 +164,13 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_UserManagerCreateFails_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        _mockUserManager.Setup(um => um.FindByNameAsync("0901111111"))
+            .ReturnsAsync((ApplicationUser?)null);
+        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
+            .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "User creation failed" }));
+
+        var handler = CreateHandler(context);
         var command = new CreateFarmerCommand
         {
             FullName = "Test Farmer",
@@ -199,19 +178,8 @@ public class CreateFarmerCommandHandlerTests
             PhoneNumber = "0901111111"
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "User creation failed" }));
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Failed to create farmer"));
     }
@@ -219,7 +187,10 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_ValidPhoneNumberFormat_AcceptsVariousFormats()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        SetupUserManagerSuccess();
+        var handler = CreateHandler(context);
+
         var command = new CreateFarmerCommand
         {
             FullName = "Le Thi C",
@@ -227,22 +198,8 @@ public class CreateFarmerCommandHandlerTests
             PhoneNumber = "+84901234567"
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
         _mockUserManager.Verify(um => um.CreateAsync(It.Is<Farmer>(
             f => f.PhoneNumber == "+84901234567"), It.IsAny<string>()), Times.Once);
@@ -251,7 +208,10 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_LongAddress_StoresFullAddress()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        SetupUserManagerSuccess();
+        var handler = CreateHandler(context);
+
         var longAddress = "Building 5, Apartment 12B, 789 Long Street Name, Ward 15, District 10, Ho Chi Minh City, Vietnam";
         var command = new CreateFarmerCommand
         {
@@ -261,22 +221,8 @@ public class CreateFarmerCommandHandlerTests
             Address = longAddress
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
         _mockUserManager.Verify(um => um.CreateAsync(It.Is<Farmer>(
             f => f.Address == longAddress), It.IsAny<string>()), Times.Once);
@@ -285,7 +231,10 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_SpecialCharactersInName_StoresCorrectly()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        SetupUserManagerSuccess();
+        var handler = CreateHandler(context);
+
         var command = new CreateFarmerCommand
         {
             FullName = "Nguyễn Văn Đức",
@@ -293,22 +242,8 @@ public class CreateFarmerCommandHandlerTests
             PhoneNumber = "0904444444"
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
         _mockUserManager.Verify(um => um.CreateAsync(It.Is<Farmer>(
             f => f.FullName == "Nguyễn Văn Đức"), It.IsAny<string>()), Times.Once);
@@ -317,7 +252,10 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_WithPlots_CreatesPlotsToo()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        SetupUserManagerSuccess();
+        var handler = CreateHandler(context);
+
         var command = new CreateFarmerCommand
         {
             FullName = "Farmer with Plots",
@@ -331,42 +269,25 @@ public class CreateFarmerCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockPlotRepo.Setup(r => r.AddAsync(It.IsAny<Plot>()))
-            .Returns(Task.CompletedTask);
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<System.Linq.Expressions.Expression<System.Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockPlotRepo.Verify(r => r.AddAsync(It.IsAny<Plot>()), Times.Exactly(2));
+        var plots = await context.Plots.ToListAsync();
+        plots.Should().HaveCount(2);
+        plots.Should().AllSatisfy(p => p.FarmerId.Should().Be(result.Data));
     }
 
     [Fact]
     public async Task Handle_WithClusterManagerId_AssignsClusterId()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var clusterManagerId = Guid.NewGuid();
         var clusterId = Guid.NewGuid();
-        var clusterManager = new ClusterManager { Id = clusterManagerId, ClusterId = clusterId };
+        context.ClusterManagers.Add(new ClusterManager { Id = clusterManagerId, ClusterId = clusterId });
+        await context.SaveChangesAsync();
+
+        SetupUserManagerSuccess();
+        var handler = CreateHandler(context);
 
         var command = new CreateFarmerCommand
         {
@@ -376,25 +297,8 @@ public class CreateFarmerCommandHandlerTests
             ClusterManagerId = clusterManagerId
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockClusterManagerRepo.Setup(r => r.GetClusterManagerByIdAsync(clusterManagerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(clusterManager);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
         _mockUserManager.Verify(um => um.CreateAsync(It.Is<Farmer>(
             f => f.ClusterId == clusterId), It.IsAny<string>()), Times.Once);
@@ -403,7 +307,17 @@ public class CreateFarmerCommandHandlerTests
     [Fact]
     public async Task Handle_RoleAssignmentFails_DeletesUserAndReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        _mockUserManager.Setup(um => um.FindByNameAsync("0907777777"))
+            .ReturnsAsync((ApplicationUser?)null);
+        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
+            .ReturnsAsync(IdentityResult.Success);
+        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
+            .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "Role assignment failed" }));
+        _mockUserManager.Setup(um => um.DeleteAsync(It.IsAny<Farmer>()))
+            .ReturnsAsync(IdentityResult.Success);
+
+        var handler = CreateHandler(context);
         var command = new CreateFarmerCommand
         {
             FullName = "Test Farmer",
@@ -411,25 +325,8 @@ public class CreateFarmerCommandHandlerTests
             PhoneNumber = "0907777777"
         };
 
-        _mockFarmerRepo.Setup(r => r.GetFarmerByPhoneNumber(command.PhoneNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Farmer?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUserManager.Setup(um => um.FindByNameAsync(command.PhoneNumber))
-            .ReturnsAsync((ApplicationUser?)null);
-
-        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        _mockUserManager.Setup(um => um.AddToRoleAsync(It.IsAny<Farmer>(), It.IsAny<string>()))
-            .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "Role assignment failed" }));
-
-        _mockUserManager.Setup(um => um.DeleteAsync(It.IsAny<Farmer>()))
-            .ReturnsAsync(IdentityResult.Success);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Failed to assign role"));
         _mockUserManager.Verify(um => um.DeleteAsync(It.IsAny<Farmer>()), Times.Once);

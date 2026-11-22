@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -14,13 +9,16 @@ namespace RiceProduction.Application.NotificationFeature.Command.PushNotificatio
     public class SendPushNotificationCommandHandler : IRequestHandler<SendPushNotificationCommand, SendPushNotificationResult>
     {
         private readonly INotificationService _notificationService;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<SendPushNotificationCommandHandler> _logger;
 
-        public SendPushNotificationCommandHandler(INotificationService notificationService, IUnitOfWork unitOfWork, ILogger<SendPushNotificationCommandHandler> logger)
+        public SendPushNotificationCommandHandler(
+            INotificationService notificationService,
+            IApplicationDbContext context,
+            ILogger<SendPushNotificationCommandHandler> logger)
         {
             _notificationService = notificationService;
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -56,8 +54,8 @@ namespace RiceProduction.Application.NotificationFeature.Command.PushNotificatio
                     PushStatus = "pending",
                     DataPayload = System.Text.Json.JsonSerializer.Serialize(data)
                 };
-                await _unitOfWork.Repository<Notification>().AddAsync(notification);
-                await _unitOfWork.CompleteAsync();
+                _context.Notifications.Add(notification);
+                await _context.SaveChangesAsync(cancellationToken);
             }
             try
             {
@@ -75,7 +73,9 @@ namespace RiceProduction.Application.NotificationFeature.Command.PushNotificatio
                 if (notification != null)
                 {
                     await _notificationService.UpdateNotification(notification, success, success ? null : "Push Failed");
-                    var updateNotification = await _unitOfWork.Repository<Notification>().FindAsync(n => n.Id == notification.Id);
+                    var updateNotification = await _context.Notifications
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(n => n.Id == notification.Id, cancellationToken);
                     result.NotificationId = updateNotification?.Id ?? notification.Id;
                     result.ErrorMessage = updateNotification?.PushError;
                     result.RetryCount = updateNotification?.RetryCount ?? 0;
@@ -94,8 +94,9 @@ namespace RiceProduction.Application.NotificationFeature.Command.PushNotificatio
                 if (notification != null)
                 {
                     await _notificationService.UpdateNotification(notification, false, ex.Message);
-                    var updatedNotification = await _unitOfWork.Repository<Notification>()
-                        .FindAsync(n => n.Id == notification.Id);
+                    var updatedNotification = await _context.Notifications
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(n => n.Id == notification.Id, cancellationToken);
 
                     result.NotificationId = updatedNotification?.Id ?? notification.Id;
                     result.RetryCount = updatedNotification?.RetryCount;

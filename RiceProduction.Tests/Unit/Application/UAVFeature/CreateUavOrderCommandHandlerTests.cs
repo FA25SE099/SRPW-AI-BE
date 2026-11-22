@@ -1,14 +1,12 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.UAVFeature.Commands.CreateUavOrder;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using RiceProduction.Tests.Fixtures;
-using System.Linq.Expressions;
 using Xunit;
-using Microsoft.EntityFrameworkCore.Query;
 
 namespace RiceProduction.Tests.Unit.Application.UAVFeature;
 
@@ -17,38 +15,20 @@ namespace RiceProduction.Tests.Unit.Application.UAVFeature;
 /// </summary>
 public class CreateUavOrderCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<Group>> _mockGroupRepo;
-    private readonly Mock<IGenericRepository<Cluster>> _mockClusterRepo;
-    private readonly Mock<IGenericRepository<CultivationTask>> _mockCultivationTaskRepo;
-    private readonly Mock<IGenericRepository<UavServiceOrder>> _mockUavOrderRepo;
-    private readonly Mock<IUavVendorRepository> _mockUavVendorRepo;
     private readonly Mock<ILogger<CreateUavOrderCommandHandler>> _mockLogger;
-    private readonly CreateUavOrderCommandHandler _handler;
 
     public CreateUavOrderCommandHandlerTests()
     {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockGroupRepo = new Mock<IGenericRepository<Group>>();
-        _mockClusterRepo = new Mock<IGenericRepository<Cluster>>();
-        _mockCultivationTaskRepo = new Mock<IGenericRepository<CultivationTask>>();
-        _mockUavOrderRepo = new Mock<IGenericRepository<UavServiceOrder>>();
-        _mockUavVendorRepo = new Mock<IUavVendorRepository>();
         _mockLogger = new Mock<ILogger<CreateUavOrderCommandHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Group>()).Returns(_mockGroupRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<Cluster>()).Returns(_mockClusterRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<CultivationTask>()).Returns(_mockCultivationTaskRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<UavServiceOrder>()).Returns(_mockUavOrderRepo.Object);
-        _mockUnitOfWork.Setup(u => u.UavVendorRepository).Returns(_mockUavVendorRepo.Object);
-
-        _handler = new CreateUavOrderCommandHandler(_mockUnitOfWork.Object, _mockLogger.Object);
     }
 
     [Fact]
     public async Task Handle_MissingClusterManagerId_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreateUavOrderCommandHandler(context, _mockLogger.Object);
+
         var command = new CreateUavOrderCommand
         {
             GroupId = Guid.NewGuid(),
@@ -59,7 +39,7 @@ public class CreateUavOrderCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -70,10 +50,8 @@ public class CreateUavOrderCommandHandlerTests
     public async Task Handle_GroupNotFound_ReturnsFailure()
     {
         // Arrange
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync((Group?)null);
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreateUavOrderCommandHandler(context, _mockLogger.Object);
 
         var command = new CreateUavOrderCommand
         {
@@ -85,7 +63,7 @@ public class CreateUavOrderCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -96,17 +74,15 @@ public class CreateUavOrderCommandHandlerTests
     public async Task Handle_VendorNotFound_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var groupId = Guid.NewGuid();
         var group = MockDataBuilder.CreateGroup(id: groupId);
         group.TotalArea = 5000M;
 
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync(group);
+        context.Groups.Add(group);
+        await context.SaveChangesAsync();
 
-        _mockUavVendorRepo.Setup(r => r.GetUavVendorByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((UavVendor?)null);
+        var handler = new CreateUavOrderCommandHandler(context, _mockLogger.Object);
 
         var command = new CreateUavOrderCommand
         {
@@ -118,7 +94,7 @@ public class CreateUavOrderCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -129,14 +105,10 @@ public class CreateUavOrderCommandHandlerTests
     public async Task Handle_InvalidGroupArea_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var groupId = Guid.NewGuid();
         var group = MockDataBuilder.CreateGroup(id: groupId);
         group.TotalArea = 0M; // Invalid area
-
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync(group);
 
         var vendor = new UavVendor
         {
@@ -145,8 +117,11 @@ public class CreateUavOrderCommandHandlerTests
             ServiceRatePerHa = 500000M
         };
 
-        _mockUavVendorRepo.Setup(r => r.GetUavVendorByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(vendor);
+        context.Groups.Add(group);
+        context.UavVendors.Add(vendor);
+        await context.SaveChangesAsync();
+
+        var handler = new CreateUavOrderCommandHandler(context, _mockLogger.Object);
 
         var command = new CreateUavOrderCommand
         {
@@ -158,7 +133,7 @@ public class CreateUavOrderCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -169,6 +144,7 @@ public class CreateUavOrderCommandHandlerTests
     public async Task Handle_NoActiveTasks_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var groupId = Guid.NewGuid();
         var plotId = Guid.NewGuid();
         var plotCultivationId = Guid.NewGuid();
@@ -201,20 +177,14 @@ public class CreateUavOrderCommandHandlerTests
             ServiceRatePerHa = 500000M
         };
 
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync(group);
+        context.Plots.Add(plot);
+        context.PlotCultivations.Add(plotCultivation);
+        context.Groups.Add(group);
+        context.GroupPlots.Add(groupPlot);
+        context.UavVendors.Add(vendor);
+        await context.SaveChangesAsync();
 
-        _mockUavVendorRepo.Setup(r => r.GetUavVendorByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(vendor);
-
-        // No active tasks
-        _mockCultivationTaskRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<CultivationTask, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<CultivationTask>());
+        var handler = new CreateUavOrderCommandHandler(context, _mockLogger.Object);
 
         var command = new CreateUavOrderCommand
         {
@@ -226,7 +196,7 @@ public class CreateUavOrderCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -237,6 +207,7 @@ public class CreateUavOrderCommandHandlerTests
     public async Task Handle_ValidCommand_CreatesUavOrderSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var groupId = Guid.NewGuid();
         var plotId = Guid.NewGuid();
         var plotCultivationId = Guid.NewGuid();
@@ -253,7 +224,7 @@ public class CreateUavOrderCommandHandlerTests
 
         var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000M, status: PlotStatus.Active);
         plot.Coordinate = new NetTopologySuite.Geometries.Point(105.123, 10.456) { SRID = 4326 };
-        
+
         var plotCultivation = MockDataBuilder.CreatePlotCultivation(
             id: plotCultivationId,
             plotId: plotId,
@@ -261,7 +232,7 @@ public class CreateUavOrderCommandHandlerTests
             riceVarietyId: Guid.NewGuid(),
             status: CultivationStatus.InProgress);
         plotCultivation.Area = 1000M;
-        
+
         plot.PlotCultivations = new List<PlotCultivation> { plotCultivation };
 
         var groupPlot = new GroupPlot
@@ -294,34 +265,16 @@ public class CreateUavOrderCommandHandlerTests
             ServiceRatePerHa = 500000M
         };
 
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync(group);
+        context.Clusters.Add(cluster);
+        context.Plots.Add(plot);
+        context.PlotCultivations.Add(plotCultivation);
+        context.Groups.Add(group);
+        context.GroupPlots.Add(groupPlot);
+        context.CultivationTasks.Add(cultivationTask);
+        context.UavVendors.Add(vendor);
+        await context.SaveChangesAsync();
 
-        _mockClusterRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Cluster, bool>>>()))
-            .ReturnsAsync(cluster);
-
-        _mockUavVendorRepo.Setup(r => r.GetUavVendorByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(vendor);
-
-        _mockCultivationTaskRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<CultivationTask, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<CultivationTask> { cultivationTask });
-
-        var savedOrderId = Guid.Empty;
-        _mockUavOrderRepo.Setup(r => r.AddAsync(It.IsAny<UavServiceOrder>()))
-            .Callback<UavServiceOrder>(order => 
-            {
-                order.Id = Guid.NewGuid();
-                savedOrderId = order.Id;
-            })
-            .Returns(Task.CompletedTask);
-        
-        _mockUavOrderRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
+        var handler = new CreateUavOrderCommandHandler(context, _mockLogger.Object);
 
         var command = new CreateUavOrderCommand
         {
@@ -334,26 +287,31 @@ public class CreateUavOrderCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue($"Expected success but got errors: {string.Join(", ", result.Errors)}");
         result.Data.Should().NotBe(Guid.Empty);
-        
-        _mockUavOrderRepo.Verify(r => r.AddAsync(It.Is<UavServiceOrder>(
-            o => o.GroupId == groupId && 
-                 o.UavVendorId == vendor.Id &&
-                 o.Priority == TaskPriority.High)), 
-            Times.Once);
-        
-        _mockUavOrderRepo.Verify(r => r.SaveChangesAsync(), Times.Once);
+
+        var savedOrder = await context.UavServiceOrders
+            .Include(o => o.PlotAssignments)
+            .FirstOrDefaultAsync(o => o.Id == result.Data);
+        savedOrder.Should().NotBeNull();
+        savedOrder!.GroupId.Should().Be(groupId);
+        savedOrder.UavVendorId.Should().Be(vendor.Id);
+        savedOrder.Priority.Should().Be(TaskPriority.High);
+        savedOrder.PlotAssignments.Should().ContainSingle(a => a.PlotId == plotId && a.CultivationTaskId == cultivationTaskId);
+
+        var updatedTask = await context.CultivationTasks.FirstOrDefaultAsync(t => t.Id == cultivationTaskId);
+        updatedTask!.AssignedToVendorId.Should().Be(vendor.Id);
     }
 
     [Fact]
-    public void Constructor_InitializesAllDependencies()
+    public async Task Constructor_InitializesAllDependencies()
     {
         // Arrange & Act
-        var handler = new CreateUavOrderCommandHandler(_mockUnitOfWork.Object, _mockLogger.Object);
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreateUavOrderCommandHandler(context, _mockLogger.Object);
 
         // Assert
         handler.Should().NotBeNull();

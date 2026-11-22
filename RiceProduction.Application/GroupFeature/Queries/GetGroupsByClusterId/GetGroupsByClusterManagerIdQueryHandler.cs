@@ -1,28 +1,28 @@
-﻿using NetTopologySuite.IO;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using NetTopologySuite.IO;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.GroupResponses;
-using RiceProduction.Application.Common.Models.Response.SupervisorResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId
 {
     public class GetGroupsByClusterManagerIdQueryHandler : IRequestHandler<GetGroupsByClusterManagerIdQuery, PagedResult<List<GroupResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly WKTWriter _wktWriter;
         private readonly IUser _currentUser;
+        private readonly ILogger<GetGroupsByClusterManagerIdQueryHandler> _logger;
 
-        public GetGroupsByClusterManagerIdQueryHandler(IUnitOfWork unitOfWork, IUser currentUser)
+        public GetGroupsByClusterManagerIdQueryHandler(
+            IApplicationDbContext context,
+            IUser currentUser,
+            ILogger<GetGroupsByClusterManagerIdQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _wktWriter = new WKTWriter();
             _currentUser = currentUser;
+            _logger = logger;
         }
 
         public async Task<PagedResult<List<GroupResponse>>> Handle(GetGroupsByClusterManagerIdQuery request, CancellationToken cancellationToken)
@@ -37,19 +37,62 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId
 
                 var userId = _currentUser.Id.Value;
 
-                var clusterManager = await _unitOfWork.ClusterManagerRepository.GetClusterManagerByIdAsync(userId, cancellationToken);
+                var clusterManager = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(m => m.Id == userId)
+                    .Select(m => new { m.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
+
                 if (clusterManager == null)
+                {
                     return PagedResult<List<GroupResponse>>.Failure(
-                                        $"Cluster Manager with ID {userId} not found");
-                var groupListBelongToCluster = await _unitOfWork.Repository<Group>().ListAsync(g => g.ClusterId == clusterManager.ClusterId);
-                var supervisorRepo = _unitOfWork.SupervisorRepository;
-                var groupResponses = groupListBelongToCluster.Select(g => new GroupResponse
+                        $"Cluster Manager with ID {userId} not found");
+                }
+
+                if (!clusterManager.ClusterId.HasValue)
+                {
+                    return PagedResult<List<GroupResponse>>.Success(
+                        new List<GroupResponse>(),
+                        request.CurrentPage,
+                        request.PageSize,
+                        0);
+                }
+
+                var clusterId = clusterManager.ClusterId.Value;
+                var groupsQuery = _context.Groups
+                    .AsNoTracking()
+                    .Where(g => g.ClusterId == clusterId);
+
+                var totalCount = await groupsQuery.CountAsync(cancellationToken);
+
+                var groups = await groupsQuery
+                    .OrderByDescending(g => g.CreatedAt)
+                    .Skip((request.CurrentPage - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(g => new
+                    {
+                        g.ClusterId,
+                        g.SupervisorId,
+                        SupervisorName = g.Supervisor != null ? g.Supervisor.FullName : null,
+                        RiceVarietyId = g.YearSeason != null ? (Guid?)g.YearSeason.RiceVarietyId : null,
+                        SeasonId = g.YearSeason != null ? (Guid?)g.YearSeason.SeasonId : null,
+                        g.PlantingDate,
+                        g.Status,
+                        g.IsException,
+                        g.ExceptionReason,
+                        g.ReadyForUavDate,
+                        g.Area,
+                        g.TotalArea
+                    })
+                    .ToListAsync(cancellationToken);
+
+                var groupResponses = groups.Select(g => new GroupResponse
                 {
                     ClusterId = g.ClusterId,
                     SupervisorId = g.SupervisorId,
-                    SupervisorName = supervisorRepo.FindAsync(s => s.Id == g.SupervisorId).Result.FirstOrDefault().FullName ?? "No name",
-                    RiceVarietyId = g.YearSeason?.RiceVarietyId,
-                    SeasonId = g.YearSeason?.SeasonId,
+                    SupervisorName = g.SupervisorName ?? "No name",
+                    RiceVarietyId = g.RiceVarietyId,
+                    SeasonId = g.SeasonId,
                     PlantingDate = g.PlantingDate,
                     Status = g.Status,
                     IsException = g.IsException,
@@ -58,18 +101,16 @@ namespace RiceProduction.Application.GroupFeature.Queries.GetGroupsByClusterId
                     Area = g.Area != null ? _wktWriter.Write(g.Area) : null,
                     TotalArea = g.TotalArea
                 }).ToList();
-                groupResponses = groupResponses
-                    .Skip((request.CurrentPage - 1) * request.PageSize)
-                    .Take(request.PageSize)
-                    .ToList();
+
                 return PagedResult<List<GroupResponse>>.Success(
                     groupResponses,
-                    groupResponses.Count(),
                     request.CurrentPage,
-                    request.PageSize);
+                    request.PageSize,
+                    totalCount);
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error occurred while retrieving groups for cluster manager");
                 return PagedResult<List<GroupResponse>>.Failure($"An error occurred while retrieving groups: {ex.Message}");
             }
         }

@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Domain.Entities;
@@ -7,14 +8,14 @@ namespace RiceProduction.Application.PlotFeature.Events;
 
 public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<PlotImportedEventHandler> _logger;
 
     public PlotImportedEventHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<PlotImportedEventHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -42,16 +43,19 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
         }
 
         var plotIds = notification.ImportedPlots.Select(p => p.PlotId).ToList();
-        var plots = await _unitOfWork.Repository<Plot>()
-            .ListAsync(p => plotIds.Contains(p.Id));
+        var plots = await _context.Plots
+            .AsNoTracking()
+            .Where(p => plotIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.SoThua, p.SoTo, p.Area })
+            .ToListAsync(cancellationToken);
 
-        var polygonTaskRepo = _unitOfWork.Repository<PlotPolygonTask>();
-        var notificationRepo = _unitOfWork.Repository<Notification>();
-
-        var existingTasks = await polygonTaskRepo
-            .ListAsync(t => plotIds.Contains(t.PlotId) &&
-                           (t.Status == "Pending" || t.Status == "InProgress"));
-        var plotsWithExistingTasks = existingTasks.Select(t => t.PlotId).ToHashSet();
+        var plotsWithExistingTasks = (await _context.PlotPolygonTasks
+            .AsNoTracking()
+            .Where(t => plotIds.Contains(t.PlotId) &&
+                        (t.Status == "Pending" || t.Status == "InProgress"))
+            .Select(t => t.PlotId)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
 
         _logger.LogInformation(
             "Found {ExistingTaskCount} plots with existing polygon tasks, will skip assignment",
@@ -85,7 +89,7 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
                 Notes = $"Auto-assigned: Draw polygon boundary for Plot - SoThua: {plot.SoThua}, SoTo: {plot.SoTo}, Area: {plot.Area} ha (imported via Excel)"
             };
 
-            await polygonTaskRepo.AddAsync(polygonTask);
+            _context.PlotPolygonTasks.Add(polygonTask);
 
             var supervisorNotification = new Notification
             {
@@ -98,13 +102,13 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
                 Status = "pending"
             };
 
-            await notificationRepo.AddAsync(supervisorNotification);
+            _context.Notifications.Add(supervisorNotification);
 
             supervisorIndex++;
             tasksCreated++;
         }
 
-        await _unitOfWork.CompleteAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Created {TaskCount} polygon assignment tasks distributed across {SupervisorCount} supervisors ({SkippedCount} plots skipped - already assigned)",
@@ -117,29 +121,34 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
         Guid? clusterManagerId,
         CancellationToken cancellationToken)
     {
-        ClusterManager? clusterManager = null;
+        Guid? clusterId = null;
         if (clusterManagerId.HasValue)
         {
-            clusterManager = await _unitOfWork.ClusterManagerRepository
-                .GetClusterManagerByIdAsync(clusterManagerId.Value, cancellationToken);
+            clusterId = await _context.ClusterManagers
+                .AsNoTracking()
+                .Where(cm => cm.Id == clusterManagerId.Value)
+                .Select(cm => cm.ClusterId)
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
-        if (clusterManager?.ClusterId == null)
+        if (clusterId == null)
         {
             _logger.LogInformation("No cluster context available, searching for supervisors system-wide");
-            return await _unitOfWork.SupervisorRepository
-                .ListAsync(s => s.CurrentFarmerCount < s.MaxFarmerCapacity);
+            return await _context.Supervisors
+                .AsNoTracking()
+                .Where(s => s.CurrentFarmerCount < s.MaxFarmerCapacity)
+                .ToListAsync(cancellationToken);
         }
-
-        var clusterId = clusterManager.ClusterId;
 
         // Strategy 1: Supervisors directly assigned to the cluster
         _logger.LogInformation(
             "Attempting to find supervisors for cluster {ClusterId} using direct cluster relationship",
             clusterId);
 
-        var directSupervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => s.ClusterId == clusterId);
+        var directSupervisors = await _context.Supervisors
+            .AsNoTracking()
+            .Where(s => s.ClusterId == clusterId)
+            .ToListAsync(cancellationToken);
 
         if (directSupervisors.Any())
         {
@@ -154,15 +163,20 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
             "No supervisors directly assigned to cluster {ClusterId}, trying group-based lookup",
             clusterId);
 
-        var groups = await _unitOfWork.Repository<Group>()
-            .ListAsync(g => g.ClusterId == clusterId && g.SupervisorId != null);
-        var supervisorIds = groups.Select(g => g.SupervisorId!.Value).Distinct().ToList();
+        var supervisorIds = await _context.Groups
+            .AsNoTracking()
+            .Where(g => g.ClusterId == clusterId && g.SupervisorId != null)
+            .Select(g => g.SupervisorId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
         if (supervisorIds.Any())
         {
-            var groupSupervisors = await _unitOfWork.SupervisorRepository
-                .ListAsync(s => supervisorIds.Contains(s.Id) &&
-                               s.CurrentFarmerCount < s.MaxFarmerCapacity);
+            var groupSupervisors = await _context.Supervisors
+                .AsNoTracking()
+                .Where(s => supervisorIds.Contains(s.Id) &&
+                            s.CurrentFarmerCount < s.MaxFarmerCapacity)
+                .ToListAsync(cancellationToken);
 
             if (groupSupervisors.Any())
             {
@@ -188,8 +202,10 @@ public class PlotImportedEventHandler : INotificationHandler<PlotImportedEvent>
             "No cluster-specific supervisors available for cluster {ClusterId}, falling back to system-wide search",
             clusterId);
 
-        var systemSupervisors = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => s.CurrentFarmerCount < s.MaxFarmerCapacity);
+        var systemSupervisors = await _context.Supervisors
+            .AsNoTracking()
+            .Where(s => s.CurrentFarmerCount < s.MaxFarmerCapacity)
+            .ToListAsync(cancellationToken);
 
         if (systemSupervisors.Any())
         {

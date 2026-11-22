@@ -8,12 +8,12 @@ namespace RiceProduction.Application.LateFarmerRecordFeature.Queries.GetLatePlot
 
 public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInClusterQuery, PagedResult<IEnumerable<PlotWithLateCountDTO>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetLatePlotsInClusterQueryHandler> _logger;
 
-    public GetLatePlotsInClusterQueryHandler(IUnitOfWork unitOfWork, ILogger<GetLatePlotsInClusterQueryHandler> logger)
+    public GetLatePlotsInClusterQueryHandler(IApplicationDbContext context, ILogger<GetLatePlotsInClusterQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,12 +23,16 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
         {
             _logger.LogInformation("Getting plots with late records in cluster");
 
-            List<Guid> plotIds = new List<Guid>();
+            List<Guid> plotIds;
 
             if (request.AgronomyExpertId.HasValue)
             {
                 // Get all plots in the cluster that the agronomy expert manages
-                var expert = await _unitOfWork.AgronomyExpertRepository.GetAgronomyExpertByIdAsync(request.AgronomyExpertId.Value, cancellationToken);
+                var expert = await _context.AgronomyExperts
+                    .AsNoTracking()
+                    .Where(e => e.Id == request.AgronomyExpertId.Value)
+                    .Select(e => new { e.Id, e.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
                 if (expert == null)
                 {
                     return PagedResult<IEnumerable<PlotWithLateCountDTO>>.Failure("Agronomy Expert not found");
@@ -39,31 +43,25 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                     return PagedResult<IEnumerable<PlotWithLateCountDTO>>.Failure("Agronomy Expert is not assigned to any cluster");
                 }
 
-                // Get all late records in the cluster by navigating through relationships
-                // Only get records from active versions
-                var lateRecordsInCluster = await _unitOfWork.LateFarmerRecordRepository.GetQueryable()
+                // Get all late records in the cluster from active versions
+                plotIds = await _context.LateFarmerRecords
                     .AsNoTracking()
-                    .Include(lr => lr.CultivationTask)
-                        .ThenInclude(ct => ct.PlotCultivation)
-                            .ThenInclude(pc => pc.Plot)
-                                .ThenInclude(p => p.GroupPlots)
-                                    .ThenInclude(gp => gp.Group)
-                    .Include(lr => lr.CultivationTask)
-                        .ThenInclude(ct => ct.Version) // Include version to check if active
                     .Where(lr => lr.CultivationTask.PlotCultivation.Plot.GroupPlots
                         .Any(gp => gp.Group.ClusterId == expert.ClusterId.Value)
                         && lr.CultivationTask.Version != null
-                        && lr.CultivationTask.Version.IsActive) // Only active versions
+                        && lr.CultivationTask.Version.IsActive)
                     .Select(lr => lr.CultivationTask.PlotCultivation.PlotId)
                     .Distinct()
                     .ToListAsync(cancellationToken);
-
-                plotIds = lateRecordsInCluster;
             }
             else if (request.SupervisorId.HasValue)
             {
                 // Get plots only from groups that the supervisor is currently managing
-                var supervisor = await _unitOfWork.SupervisorRepository.GetSupervisorByIdAsync(request.SupervisorId.Value, cancellationToken);
+                var supervisor = await _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => s.Id == request.SupervisorId.Value)
+                    .Select(s => new { s.Id, s.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
                 if (supervisor == null)
                 {
                     return PagedResult<IEnumerable<PlotWithLateCountDTO>>.Failure("Supervisor not found");
@@ -75,14 +73,13 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 }
 
                 // Get groups managed by this supervisor
-                var groupIds = await _unitOfWork.Repository<Domain.Entities.Group>()
-                    .GetQueryable()
+                var groupIds = await _context.Groups
                     .AsNoTracking()
                     .Where(g => g.SupervisorId == request.SupervisorId.Value)
                     .Select(g => g.Id)
                     .ToListAsync(cancellationToken);
 
-                if (!groupIds.Any())
+                if (groupIds.Count == 0)
                 {
                     return PagedResult<IEnumerable<PlotWithLateCountDTO>>.Success(
                         data: new List<PlotWithLateCountDTO>(),
@@ -93,20 +90,13 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                     );
                 }
 
-                // Get plots with late records in these groups
-                // Only get records from active versions
-                plotIds = await _unitOfWork.LateFarmerRecordRepository.GetQueryable()
+                // Get plots with late records in these groups from active versions
+                plotIds = await _context.LateFarmerRecords
                     .AsNoTracking()
-                    .Include(lr => lr.CultivationTask)
-                        .ThenInclude(ct => ct.PlotCultivation)
-                            .ThenInclude(pc => pc.Plot)
-                                .ThenInclude(p => p.GroupPlots)
-                    .Include(lr => lr.CultivationTask)
-                        .ThenInclude(ct => ct.Version) // Include version to check if active
                     .Where(lr => lr.CultivationTask.PlotCultivation.Plot.GroupPlots
                         .Any(gp => groupIds.Contains(gp.GroupId))
                         && lr.CultivationTask.Version != null
-                        && lr.CultivationTask.Version.IsActive) // Only active versions
+                        && lr.CultivationTask.Version.IsActive)
                     .Select(lr => lr.CultivationTask.PlotCultivation.PlotId)
                     .Distinct()
                     .ToListAsync(cancellationToken);
@@ -116,7 +106,7 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
                 return PagedResult<IEnumerable<PlotWithLateCountDTO>>.Failure("Either AgronomyExpertId or SupervisorId must be provided");
             }
 
-            if (!plotIds.Any())
+            if (plotIds.Count == 0)
             {
                 return PagedResult<IEnumerable<PlotWithLateCountDTO>>.Success(
                     data: new List<PlotWithLateCountDTO>(),
@@ -128,9 +118,8 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
             }
 
             // Build plot query
-            var plotQuery = _unitOfWork.PlotRepository.PlotQueryable()
+            var plotQuery = _context.Plots
                 .AsNoTracking()
-                .Include(p => p.Farmer)
                 .Where(p => plotIds.Contains(p.Id));
 
             // Apply search filter if provided
@@ -145,43 +134,53 @@ public class GetLatePlotsInClusterQueryHandler : IRequestHandler<GetLatePlotsInC
             // Get total count
             var totalCount = await plotQuery.CountAsync(cancellationToken);
 
-            // Get paged plots
+            // Project paged plots (avoiding PostGIS Boundary/Coordinate columns)
             var plots = await plotQuery
                 .OrderBy(p => p.Farmer.FullName)
                 .ThenBy(p => p.SoThua)
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
+                .Select(p => new
+                {
+                    p.Id,
+                    p.FarmerId,
+                    FarmerName = p.Farmer != null ? p.Farmer.FullName : null,
+                    GroupId = p.GroupPlots
+                        .OrderByDescending(gp => gp.CreatedAt)
+                        .Select(gp => (Guid?)gp.GroupId)
+                        .FirstOrDefault(),
+                    p.SoThua,
+                    p.SoTo,
+                    p.Area,
+                    p.SoilType,
+                    p.Status
+                })
                 .ToListAsync(cancellationToken);
 
-            // Get late counts for each plot
-            var result = new List<PlotWithLateCountDTO>();
-            foreach (var plot in plots)
-            {
-                var lateCount = await _unitOfWork.LateFarmerRecordRepository.GetLateCountByPlotIdAsync(plot.Id, cancellationToken);
-                
-                // Get group ID (get the most recent group assignment)
-                var groupId = await _unitOfWork.Repository<Domain.Entities.GroupPlot>()
-                    .GetQueryable()
-                    .AsNoTracking()
-                    .Where(gp => gp.PlotId == plot.Id)
-                    .OrderByDescending(gp => gp.CreatedAt)
-                    .Select(gp => (Guid?)gp.GroupId)
-                    .FirstOrDefaultAsync(cancellationToken);
+            // Batch fetch late counts for the paged plots
+            var pagedPlotIds = plots.Select(p => p.Id).ToList();
+            var lateCounts = await _context.LateFarmerRecords
+                .AsNoTracking()
+                .Where(l => pagedPlotIds.Contains(l.CultivationTask.PlotCultivation.PlotId)
+                    && l.CultivationTask.Version != null
+                    && l.CultivationTask.Version.IsActive)
+                .GroupBy(l => l.CultivationTask.PlotCultivation.PlotId)
+                .Select(g => new { PlotId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.PlotId, x => x.Count, cancellationToken);
 
-                result.Add(new PlotWithLateCountDTO
-                {
-                    PlotId = plot.Id,
-                    FarmerId = plot.FarmerId,
-                    FarmerName = plot.Farmer?.FullName,
-                    GroupId = groupId,
-                    SoThua = plot.SoThua,
-                    SoTo = plot.SoTo,
-                    Area = plot.Area,
-                    SoilType = plot.SoilType,
-                    Status = plot.Status,
-                    LateCount = lateCount
-                });
-            }
+            var result = plots.Select(plot => new PlotWithLateCountDTO
+            {
+                PlotId = plot.Id,
+                FarmerId = plot.FarmerId,
+                FarmerName = plot.FarmerName,
+                GroupId = plot.GroupId,
+                SoThua = plot.SoThua,
+                SoTo = plot.SoTo,
+                Area = plot.Area,
+                SoilType = plot.SoilType,
+                Status = plot.Status,
+                LateCount = lateCounts.GetValueOrDefault(plot.Id, 0)
+            }).ToList();
 
             return PagedResult<IEnumerable<PlotWithLateCountDTO>>.Success(
                 data: result,

@@ -1,25 +1,19 @@
-﻿using Microsoft.Extensions.Logging;
-using RiceProduction.Application.ClusterFeature.Commands.CreateCluster;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 {
     public class UpdateClusterCommandHandler : IRequestHandler<UpdateClusterCommand, Result<Guid>>
     {
-        private readonly IClusterRepository _clusterRepo;
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly ILogger<CreateClusterCommandHandler> _logger;
+        private readonly IApplicationDbContext _context;
+        private readonly ILogger<UpdateClusterCommandHandler> _logger;
 
-        public UpdateClusterCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateClusterCommandHandler> logger)
+        public UpdateClusterCommandHandler(IApplicationDbContext context, ILogger<UpdateClusterCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
-            _clusterRepo = _unitOfWork.ClusterRepository;
+            _context = context;
             _logger = logger;
         }
 
@@ -27,10 +21,18 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
         {
             try
             {
-                var cluster = await _clusterRepo.GetClusterByIdAsync(request.ClusterId, cancellationToken);
+                var cluster = await _context.Clusters
+                    .Include(c => c.SupervisorsInCluster)
+                    .FirstOrDefaultAsync(c => c.Id == request.ClusterId, cancellationToken);
                 if (cluster == null)
                 {
                     return Result<Guid>.Failure("Cluster not found");
+                }
+
+                var duplicateError = await ValidateUniquenessAsync(request, cluster.Id, cancellationToken);
+                if (duplicateError != null)
+                {
+                    return Result<Guid>.Failure(duplicateError);
                 }
 
                 var oldClusterManagerId = cluster.ClusterManagerId;
@@ -40,17 +42,11 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
                 cluster.ClusterManagerId = request.ClusterManagerId;
                 cluster.AgronomyExpertId = request.AgronomyExpertId;
 
-                var duplicateError = await ValidateUniquenessAsync(request, cluster.Id);
-                if (duplicateError != null)
-                {
-                    return Result<Guid>.Failure(duplicateError);
-                }
-
-                await UpdateClusterManagerAssignmentAsync(cluster.Id, oldClusterManagerId, request.ClusterManagerId);
+                await UpdateClusterManagerAssignmentAsync(cluster.Id, oldClusterManagerId, request.ClusterManagerId, cancellationToken);
                 await UpdateAgronomyExpertAssignmentAsync(cluster.Id, oldAgronomyExpertId, request.AgronomyExpertId, cancellationToken);
                 await UpdateSupervisorAssignmentsAsync(cluster, request.SupervisorIds, cancellationToken);
 
-                await _clusterRepo.UpdateCluster(request.ClusterId, cluster, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return Result<Guid>.Success(cluster.Id, "Cluster updated successfully");
             }
@@ -61,32 +57,53 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
             }
         }
 
-        private async Task<string?> ValidateUniquenessAsync(UpdateClusterCommand request, Guid clusterId)
+        private async Task<string?> ValidateUniquenessAsync(
+            UpdateClusterCommand request,
+            Guid clusterId,
+            CancellationToken cancellationToken)
         {
-            var clusterRepo = _unitOfWork.Repository<Cluster>();
-
-            var duplicateName = await clusterRepo.FindAsync(m => m.ClusterName == request.ClusterName);
-            if (duplicateName != null && duplicateName.Id != clusterId)
+            var duplicateName = await _context.Clusters
+                .AsNoTracking()
+                .AnyAsync(m => m.ClusterName == request.ClusterName && m.Id != clusterId, cancellationToken);
+            if (duplicateName)
             {
                 return $"Cluster with name '{request.ClusterName}' already exists";
             }
 
-            var duplicateMan = await clusterRepo.FindAsync(m => m.ClusterManagerId == request.ClusterManagerId);
-            if (duplicateMan != null && duplicateMan.Id != clusterId)
+            if (request.ClusterManagerId.HasValue)
             {
-                return $"Cluster manager ID = '{request.ClusterManagerId}' already managing another cluster with ID = '{duplicateMan.Id}'";
+                var duplicateManagerClusterId = await _context.Clusters
+                    .AsNoTracking()
+                    .Where(m => m.ClusterManagerId == request.ClusterManagerId && m.Id != clusterId)
+                    .Select(m => (Guid?)m.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (duplicateManagerClusterId.HasValue)
+                {
+                    return $"Cluster manager ID = '{request.ClusterManagerId}' already managing another cluster with ID = '{duplicateManagerClusterId.Value}'";
+                }
             }
 
-            var duplicateExpert = await clusterRepo.FindAsync(m => m.AgronomyExpertId == request.AgronomyExpertId);
-            if (duplicateExpert != null && duplicateExpert.Id != clusterId)
+            if (request.AgronomyExpertId.HasValue)
             {
-                return $"Agronomy Expert ID = '{request.AgronomyExpertId}' already managing another cluster with ID = '{duplicateExpert.Id}'";
+                var duplicateExpertClusterId = await _context.Clusters
+                    .AsNoTracking()
+                    .Where(m => m.AgronomyExpertId == request.AgronomyExpertId && m.Id != clusterId)
+                    .Select(m => (Guid?)m.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (duplicateExpertClusterId.HasValue)
+                {
+                    return $"Agronomy Expert ID = '{request.AgronomyExpertId}' already managing another cluster with ID = '{duplicateExpertClusterId.Value}'";
+                }
             }
 
             return null;
         }
 
-        private async Task UpdateClusterManagerAssignmentAsync(Guid clusterId, Guid? oldManagerId, Guid? newManagerId)
+        private async Task UpdateClusterManagerAssignmentAsync(
+            Guid clusterId,
+            Guid? oldManagerId,
+            Guid? newManagerId,
+            CancellationToken cancellationToken)
         {
             if (oldManagerId == newManagerId)
             {
@@ -95,12 +112,12 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 
             if (oldManagerId.HasValue)
             {
-                var oldManager = await _unitOfWork.ClusterManagerRepository.GetEntityByIdAsync(c => c.Id == oldManagerId.Value);
+                var oldManager = await _context.ClusterManagers
+                    .FirstOrDefaultAsync(c => c.Id == oldManagerId.Value, cancellationToken);
                 if (oldManager != null)
                 {
                     oldManager.ClusterId = null;
                     oldManager.AssignedDate = null;
-                    _unitOfWork.ClusterManagerRepository.Update(oldManager);
                 }
             }
 
@@ -109,7 +126,8 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
                 return;
             }
 
-            var newManager = await _unitOfWork.ClusterManagerRepository.GetEntityByIdAsync(c => c.Id == newManagerId.Value);
+            var newManager = await _context.ClusterManagers
+                .FirstOrDefaultAsync(c => c.Id == newManagerId.Value, cancellationToken);
             if (newManager == null)
             {
                 _logger.LogWarning("Cannot find cluster manager with id: {ClusterManagerId}", newManagerId);
@@ -118,7 +136,6 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 
             newManager.ClusterId = clusterId;
             newManager.AssignedDate = DateTime.UtcNow;
-            _unitOfWork.ClusterManagerRepository.Update(newManager);
         }
 
         private async Task UpdateAgronomyExpertAssignmentAsync(
@@ -134,12 +151,12 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 
             if (oldExpertId.HasValue)
             {
-                var oldExpert = await _unitOfWork.AgronomyExpertRepository.GetAgronomyExpertByIdAsync(oldExpertId.Value, cancellationToken);
+                var oldExpert = await _context.AgronomyExperts
+                    .FirstOrDefaultAsync(e => e.Id == oldExpertId.Value, cancellationToken);
                 if (oldExpert != null)
                 {
                     oldExpert.ClusterId = null;
                     oldExpert.AssignedDate = null;
-                    _unitOfWork.AgronomyExpertRepository.Update(oldExpert);
                 }
             }
 
@@ -148,7 +165,8 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
                 return;
             }
 
-            var newExpert = await _unitOfWork.AgronomyExpertRepository.GetAgronomyExpertByIdAsync(newExpertId.Value, cancellationToken);
+            var newExpert = await _context.AgronomyExperts
+                .FirstOrDefaultAsync(e => e.Id == newExpertId.Value, cancellationToken);
             if (newExpert == null)
             {
                 _logger.LogWarning("Cannot find agronomy expert with id: {AgronomyExpertId}", newExpertId);
@@ -157,7 +175,6 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 
             newExpert.ClusterId = clusterId;
             newExpert.AssignedDate = DateTime.UtcNow;
-            _unitOfWork.AgronomyExpertRepository.Update(newExpert);
         }
 
         private async Task UpdateSupervisorAssignmentsAsync(
@@ -174,7 +191,6 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
             {
                 supervisor.ClusterId = null;
                 supervisor.AssignedDate = null;
-                _unitOfWork.SupervisorRepository.Update(supervisor);
                 _logger.LogInformation("Removed supervisor {SupervisorId} from cluster {ClusterId}",
                     supervisor.Id, cluster.Id);
             }
@@ -186,7 +202,8 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 
             foreach (var supervisorId in newSupervisorIds.Where(id => !currentSupervisorIds.Contains(id)))
             {
-                var supervisor = await _unitOfWork.SupervisorRepository.GetSupervisorByIdAsync(supervisorId, cancellationToken);
+                var supervisor = await _context.Supervisors
+                    .FirstOrDefaultAsync(s => s.Id == supervisorId, cancellationToken);
                 if (supervisor == null)
                 {
                     _logger.LogWarning("Cannot find supervisor with id: {SupervisorId}", supervisorId);
@@ -202,7 +219,6 @@ namespace RiceProduction.Application.ClusterFeature.Commands.UpdateCluster
 
                 supervisor.ClusterId = cluster.Id;
                 supervisor.AssignedDate = DateTime.UtcNow;
-                _unitOfWork.SupervisorRepository.Update(supervisor);
                 _logger.LogInformation("Assigned supervisor {SupervisorId} to cluster {ClusterId}",
                     supervisorId, cluster.Id);
             }

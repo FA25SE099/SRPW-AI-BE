@@ -1,17 +1,9 @@
 ﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using RiceProduction.Application.ClusterFeature.Commands.CreateCluster;
-using RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.UavVendorFeature.Events;
 using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
 {
@@ -19,15 +11,15 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILogger<CreateUavVendorCommandHandler> _logger;
-        private readonly IPublisher _publisher;
-        private readonly IUnitOfWork _unitOfWork;
         private readonly IMediator _mediator;
-        public CreateUavVendorCommandHandler(UserManager<ApplicationUser> userManager, ILogger<CreateUavVendorCommandHandler> logger, IPublisher publisher, IUnitOfWork unitOfWork, IMediator mediator)
+
+        public CreateUavVendorCommandHandler(
+            UserManager<ApplicationUser> userManager,
+            ILogger<CreateUavVendorCommandHandler> logger,
+            IMediator mediator)
         {
             _userManager = userManager;
             _logger = logger;
-            _publisher = publisher;
-            _unitOfWork = unitOfWork;
             _mediator = mediator;
         }
         public async Task<Result<Guid>> Handle(CreateUavVendorCommand request, CancellationToken cancellationToken)
@@ -41,7 +33,8 @@ namespace RiceProduction.Application.UavVendorFeature.Commands.CreateUavVendor
                     return Result<Guid>.Failure($"User with email '{request.Email}' already exists");
                 }
                 // Check if phone number already exists
-                var existingPhone = _userManager.Users.Any(u => u.PhoneNumber == request.PhoneNumber);
+                var existingPhone = await _userManager.Users
+                    .AnyAsync(u => u.PhoneNumber == request.PhoneNumber, cancellationToken);
                 if (existingPhone)
                 {
                     return Result<Guid>.Failure($"User with phone number '{request.PhoneNumber}' already exists");

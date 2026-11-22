@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
@@ -10,16 +11,16 @@ namespace RiceProduction.Application.FarmLogFeature.Commands.CreateFarmLog;
 
 public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IStorageService _storageService;
     private readonly ILogger<CreateFarmLogCommandHandler> _logger;
 
     public CreateFarmLogCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IStorageService storageService,
         ILogger<CreateFarmLogCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _storageService = storageService;
         _logger = logger;
     }
@@ -28,20 +29,21 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
     {
         try
         {
-            var task = await _unitOfWork.Repository<CultivationTask>()
-                .FindAsync(t => t.Id == request.CultivationTaskId && t.PlotCultivationId == request.PlotCultivationId);
+            var task = await _context.CultivationTasks
+                .FirstOrDefaultAsync(t => t.Id == request.CultivationTaskId && t.PlotCultivationId == request.PlotCultivationId, cancellationToken);
 
             if (task == null)
             {
                 return Result<Guid>.Failure("Cultivation Task not found or does not match Plot.", "TaskNotFound");
             }
 
-            var plotCultivation = await _unitOfWork.Repository<PlotCultivation>().FindAsync(
-                pc => pc.Id == task.PlotCultivationId,
-                includeProperties: q => q.Include(pc => pc.CultivationVersions.Where(v => v.IsActive)));
+            var activeVersionId = await _context.CultivationVersions
+                .AsNoTracking()
+                .Where(v => v.PlotCultivationId == task.PlotCultivationId && v.IsActive)
+                .Select(v => (Guid?)v.Id)
+                .FirstOrDefaultAsync(cancellationToken);
 
-            var activeVersion = plotCultivation?.CultivationVersions.FirstOrDefault();
-            if (activeVersion == null || task.VersionId != activeVersion.Id)
+            if (activeVersionId == null || task.VersionId != activeVersionId)
             {
                 return Result<Guid>.Failure("Task does not belong to the active plan version. Please refresh.", "VersionConflict");
             }
@@ -51,6 +53,7 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
 
             var farmLog = new FarmLog
             {
+                Id = Guid.NewGuid(),
                 CultivationTaskId = request.CultivationTaskId,
                 PlotCultivationId = request.PlotCultivationId,
                 LoggedBy = request.FarmerId!.Value,
@@ -65,7 +68,7 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
                 InterruptionReason = request.InterruptionReason
             };
 
-            var (logMaterials, totalLogMaterialCost) = await BuildFarmLogMaterialsAsync(request, farmLog, now.Date);
+            var (logMaterials, totalLogMaterialCost) = await BuildFarmLogMaterialsAsync(request, farmLog, now, cancellationToken);
             farmLog.FarmLogMaterials = logMaterials;
 
             // Emergency tasks require supervisor approval before being marked completed
@@ -84,9 +87,8 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
             task.ActualServiceCost += request.ServiceCost.GetValueOrDefault(0);
             task.ActualStartDate ??= task.CreatedAt.UtcDateTime;
 
-            await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
-            _unitOfWork.Repository<CultivationTask>().Update(task);
-            await _unitOfWork.Repository<FarmLog>().SaveChangesAsync();
+            _context.FarmLogs.Add(farmLog);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Farm log created for Task {TaskId} by Farmer {FarmerId}. Images: {ImgCount}",
@@ -117,7 +119,8 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
     private async Task<(List<FarmLogMaterial> Materials, decimal TotalCost)> BuildFarmLogMaterialsAsync(
         CreateFarmLogCommand request,
         FarmLog farmLog,
-        DateTime today)
+        DateTime now,
+        CancellationToken cancellationToken)
     {
         var logMaterials = new List<FarmLogMaterial>();
         decimal totalCost = 0;
@@ -128,12 +131,18 @@ public class CreateFarmLogCommandHandler : IRequestHandler<CreateFarmLogCommand,
         }
 
         var materialIds = request.Materials.Select(m => m.MaterialId).Distinct().ToList();
-        var prices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-            filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom <= today);
+        var prices = await _context.MaterialPrices
+            .AsNoTracking()
+            .Where(p => materialIds.Contains(p.MaterialId)
+                     && p.ValidFrom <= now
+                     && (!p.ValidTo.HasValue || p.ValidTo > now))
+            .OrderByDescending(p => p.ValidFrom)
+            .Select(p => new { p.MaterialId, p.PricePerMaterial })
+            .ToListAsync(cancellationToken);
 
         var priceMap = prices
             .GroupBy(p => p.MaterialId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.ValidFrom).FirstOrDefault()?.PricePerMaterial ?? 0);
+            .ToDictionary(g => g.Key, g => g.First().PricePerMaterial);
 
         foreach (var matRequest in request.Materials)
         {

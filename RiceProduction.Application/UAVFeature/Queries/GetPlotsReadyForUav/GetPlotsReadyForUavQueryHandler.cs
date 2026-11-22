@@ -5,22 +5,21 @@ using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using System.Linq;
-using System.Linq.Expressions;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using TaskStatus = RiceProduction.Domain.Enums.TaskStatus;
 
 namespace RiceProduction.Application.UAVFeature.Queries.GetPlotsReadyForUav;
 
 public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForUavQuery, Result<List<UavPlotReadinessResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlotsReadyForUavQueryHandler> _logger;
 
-    public GetPlotsReadyForUavQueryHandler(IUnitOfWork unitOfWork, ILogger<GetPlotsReadyForUavQueryHandler> logger)
+    public GetPlotsReadyForUavQueryHandler(IApplicationDbContext context, ILogger<GetPlotsReadyForUavQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -30,21 +29,33 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
         {
             var todayUtc = DateTime.UtcNow.Date;
             
-            // 1. Tải Group và các Plots trực tiếp của nó
-            var group = await _unitOfWork.Repository<Group>()
-                .FindAsync(
-                    match: g => g.Id == request.GroupId,
-                    includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.PlotCultivations)
-                );
+            // 1. Load Group and its Plots without PostGIS geometry columns
+            var groupData = await _context.Groups
+                .AsNoTracking()
+                .Where(g => g.Id == request.GroupId)
+                .Select(g => new
+                {
+                    g.Id,
+                    Plots = g.GroupPlots.Select(gp => new
+                    {
+                        gp.Plot.Id,
+                        gp.Plot.SoThua,
+                        gp.Plot.SoTo,
+                        PlotCultivations = gp.Plot.PlotCultivations
+                            .Select(pc => new { pc.Id, pc.Area })
+                            .ToList()
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (group == null)
+            if (groupData == null)
             {
                 return Result<List<UavPlotReadinessResponse>>.Failure("Group not found.", "GroupNotFound");
             }
             
-            var allPlotsInGroup = group.GroupPlots.Select(gp => gp.Plot).ToList();
+            var allPlotsInGroup = groupData.Plots;
             
-            if (!allPlotsInGroup.Any())
+            if (allPlotsInGroup.Count == 0)
             {
                 return Result<List<UavPlotReadinessResponse>>.Success(new List<UavPlotReadinessResponse>(), $"No plots found in Group {request.GroupId}.");
             }
@@ -56,10 +67,11 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                 .Select(pc => pc.Id)
                 .ToList();
 
-            var latestVersions = await _unitOfWork.Repository<CultivationVersion>()
-                .ListAsync(
-                    filter: v => plotCultivationIds.Contains(v.PlotCultivationId),
-                    orderBy: q => q.OrderByDescending(v => v.VersionOrder));
+            var latestVersions = await _context.CultivationVersions
+                .AsNoTracking()
+                .Where(v => plotCultivationIds.Contains(v.PlotCultivationId))
+                .OrderByDescending(v => v.VersionOrder)
+                .ToListAsync(cancellationToken);
 
             var latestVersionMap = latestVersions
                 .GroupBy(v => v.PlotCultivationId)
@@ -71,13 +83,15 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                 "Found {PlotCultivationCount} plot cultivations with {VersionCount} versions. Latest versions mapped: {MappedCount}",
                 plotCultivationIds.Count, latestVersions.Count, latestVersionMap.Count);
 
-            var busyAssignments = await _unitOfWork.Repository<UavOrderPlotAssignment>()
-                .ListAsync(
-                    filter: a =>
-                        allPlotIdsInGroup.Contains(a.PlotId) &&
-                        (a.Status == TaskStatus.Draft ||
-                         a.Status == TaskStatus.PendingApproval ||
-                         a.Status == TaskStatus.InProgress));
+            var busyAssignments = await _context.UavOrderPlotAssignments
+                .AsNoTracking()
+                .Where(a =>
+                    allPlotIdsInGroup.Contains(a.PlotId) &&
+                    (a.Status == TaskStatus.Draft ||
+                     a.Status == TaskStatus.PendingApproval ||
+                     a.Status == TaskStatus.InProgress))
+                .Select(a => new { a.CultivationTaskId, a.PlotId })
+                .ToListAsync(cancellationToken);
 
             // Track both specific tasks and plots with active orders
             var busyTaskIdSet = busyAssignments.Select(a => a.CultivationTaskId).ToHashSet();
@@ -85,19 +99,18 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
 
             var latestVersionIds = latestVersionMap.Values.Select(v => v.Id).ToList();
 
-            Expression<Func<CultivationTask, bool>> taskFilter = ct =>
-                plotCultivationIds.Contains(ct.PlotCultivationId) &&
-                ct.VersionId.HasValue &&
-                latestVersionIds.Contains(ct.VersionId.Value) &&
-                ct.TaskType == request.RequiredTaskType;
-
-            var potentialTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: taskFilter,
-                includeProperties: q => q
-                    .Include(ct => ct.PlotCultivation).ThenInclude(pc => pc.Plot)
-                    .Include(ct => ct.ProductionPlanTask)
-                        .ThenInclude(ppt => ppt.ProductionPlanTaskMaterials)
-                    .Include(ct => ct.Version));
+            var potentialTasks = await _context.CultivationTasks
+                .AsNoTracking()
+                .Include(ct => ct.PlotCultivation)
+                .Include(ct => ct.ProductionPlanTask)
+                    .ThenInclude(ppt => ppt!.ProductionPlanTaskMaterials)
+                .Include(ct => ct.Version)
+                .Where(ct =>
+                    plotCultivationIds.Contains(ct.PlotCultivationId) &&
+                    ct.VersionId.HasValue &&
+                    latestVersionIds.Contains(ct.VersionId.Value) &&
+                    ct.TaskType == request.RequiredTaskType)
+                .ToListAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Loaded {TaskCount} potential tasks from latest versions (Type: {TaskType})",
@@ -129,7 +142,7 @@ public class GetPlotsReadyForUavQueryHandler : IRequestHandler<GetPlotsReadyForU
                     .Select(g => g.First())
                     .ToList();
 
-                if (!uniqueTasks.Any())
+                if (uniqueTasks.Count == 0)
                 {
                     plotResponses.Add(new UavPlotReadinessResponse
                     {

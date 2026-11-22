@@ -12,20 +12,14 @@ namespace RiceProduction.Application.WeatherProtocolFeature.Commands.CreateWeath
 
 public class CreateWeatherProtocolCommandHandler : IRequestHandler<CreateWeatherProtocolCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IUser _currentUser;
-    private readonly IMediator _mediator;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CreateWeatherProtocolCommandHandler> _logger;
 
     public CreateWeatherProtocolCommandHandler(
-        IUnitOfWork unitOfWork,
-        IUser currentUser,
-        IMediator mediator,
+        IApplicationDbContext context,
         ILogger<CreateWeatherProtocolCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
-        _currentUser = currentUser;
-        _mediator = mediator;
+        _context = context;
         _logger = logger;
     }
 
@@ -35,8 +29,9 @@ public class CreateWeatherProtocolCommandHandler : IRequestHandler<CreateWeather
         try
         {
             // 2. Check for duplicate weather protocol name
-            var duplicateExists = await _unitOfWork.Repository<WeatherProtocol>()
-                .ExistsAsync(w => w.Name.ToLower() == request.Name.ToLower());
+            var duplicateExists = await _context.WeatherProtocols
+                .AsNoTracking()
+                .AnyAsync(w => w.Name.ToLower() == request.Name.ToLower(), cancellationToken);
 
             if (duplicateExists)
             {
@@ -60,8 +55,8 @@ public class CreateWeatherProtocolCommandHandler : IRequestHandler<CreateWeather
             };
 
             // 4. Add and save
-            await _unitOfWork.Repository<WeatherProtocol>().AddAsync(weatherProtocol);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.WeatherProtocols.Add(weatherProtocol);
+            await _context.SaveChangesAsync(cancellationToken);
 
 
             _logger.LogInformation(

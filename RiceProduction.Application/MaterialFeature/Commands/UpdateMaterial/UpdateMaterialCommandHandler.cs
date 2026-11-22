@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,13 +10,13 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
 {
     public class UpdateMaterialCommandHandler : IRequestHandler<UpdateMaterialCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<UpdateMaterialCommandHandler> _logger;
 
-        public UpdateMaterialCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<UpdateMaterialCommandHandler> logger)
+        public UpdateMaterialCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<UpdateMaterialCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,10 +25,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
         {
             try
             {
-                var materialRepo = _unitOfWork.Repository<Material>();
-                var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
-
-                var material = await materialRepo.FindAsync(m => m.Id == request.MaterialId);
+                var material = await _context.Materials
+                    .FirstOrDefaultAsync(m => m.Id == request.MaterialId, cancellationToken);
                 if (material == null)
                 {
                     return Result<Guid>.Failure($"Material with ID {request.MaterialId} not found");
@@ -43,22 +42,24 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
                 material.IsActive = request.IsActive;
                 material.IsPartition = request.IsPartition;
 
-                materialRepo.Update(material);
+                _context.Materials.Update(material);
 
                 if (request.PricePerMaterial.HasValue)
                 {
                     var currentDate = request.PriceValidFrom ?? DateTime.UtcNow;
-                    var currentPrice = (await materialPriceRepo.ListAsync(
-                        p => p.MaterialId == request.MaterialId &&
-                             (p.ValidFrom.CompareTo(currentDate) <= 0) &&
-                             (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))))
+                    var candidatePrices = await _context.MaterialPrices
+                        .Where(p => p.MaterialId == request.MaterialId && p.ValidFrom <= currentDate)
+                        .ToListAsync(cancellationToken);
+
+                    var currentPrice = candidatePrices
+                        .Where(p => !p.ValidTo.HasValue || p.ValidTo.Value.Date >= currentDate.Date)
                         .OrderByDescending(p => p.ValidFrom)
                         .FirstOrDefault();
 
                     if (currentPrice != null && currentPrice.PricePerMaterial != request.PricePerMaterial.Value)
                     {
                         currentPrice.ValidTo = currentDate;
-                        materialPriceRepo.Update(currentPrice);
+                        _context.MaterialPrices.Update(currentPrice);
 
                         var newPrice = new MaterialPrice
                         {
@@ -67,7 +68,7 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
                             ValidFrom = currentDate,
                             ValidTo = null
                         };
-                        await materialPriceRepo.AddAsync(newPrice);
+                        _context.MaterialPrices.Add(newPrice);
                     }
                     else if (currentPrice == null)
                     {
@@ -78,11 +79,11 @@ namespace RiceProduction.Application.MaterialFeature.Commands.UpdateMaterial
                             ValidFrom = currentDate,
                             ValidTo = null
                         };
-                        await materialPriceRepo.AddAsync(newPrice);
+                        _context.MaterialPrices.Add(newPrice);
                     }
                 }
 
-                await _unitOfWork.CompleteAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new MaterialChangedEvent(request.MaterialId, ChangeType.Updated), cancellationToken);
 

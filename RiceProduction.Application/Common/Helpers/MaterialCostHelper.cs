@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Domain.Entities;
@@ -7,12 +8,15 @@ namespace RiceProduction.Application.Common.Helpers;
 public static class MaterialCostHelper
 {
     public static async Task<Dictionary<Guid, MaterialPrice>> GetCurrentPricesAsync(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         List<Guid> materialIds,
-        DateTime currentDate)
+        DateTime currentDate,
+        CancellationToken cancellationToken = default)
     {
-        var allPrices = await unitOfWork.Repository<MaterialPrice>().ListAsync(
-            filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom <= currentDate);
+        var allPrices = await context.MaterialPrices
+            .AsNoTracking()
+            .Where(p => materialIds.Contains(p.MaterialId) && p.ValidFrom <= currentDate)
+            .ToListAsync(cancellationToken);
 
         return allPrices
             .Where(p => !p.ValidTo.HasValue || p.ValidTo.Value.Date >= currentDate.Date)

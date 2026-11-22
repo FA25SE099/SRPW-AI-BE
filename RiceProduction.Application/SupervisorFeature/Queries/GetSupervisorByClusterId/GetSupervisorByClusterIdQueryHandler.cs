@@ -1,5 +1,10 @@
-﻿// GetSupervisorsByClusterIdQueryHandler.cs
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
@@ -11,16 +16,16 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorsByC
     public class GetSupervisorsByClusterIdQueryHandler
         : IRequestHandler<GetSupervisorByClusterIdQuery, List<SupervisorDTO>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetSupervisorsByClusterIdQueryHandler> _logger;
 
         public GetSupervisorsByClusterIdQueryHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<GetSupervisorsByClusterIdQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
-        }        
+        }
 
         public async Task<List<SupervisorDTO>> Handle(GetSupervisorByClusterIdQuery request, CancellationToken cancellationToken)
         {
@@ -28,9 +33,17 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetSupervisorsByC
             {
                 _logger.LogInformation("Retrieving supervisors for ClusterId: {ClusterId}", request.ClusterId);
 
-                var supervisors = await _unitOfWork.SupervisorRepository.GetSupervisorsByClusterIdAsync(request.ClusterId);
+                var supervisors = await _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => s.ClusterId == request.ClusterId)
+                    .Include(s => s.SupervisedGroups).ThenInclude(g => g.ProductionPlans)
+                    .Include(s => s.AssignedTasks)
+                    .Include(s => s.SupervisorAssignments)
+                    .AsSplitQuery()
+                    .OrderBy(s => s.FullName)
+                    .ToListAsync(cancellationToken);
 
-                if (supervisors == null || !supervisors.Any())
+                if (!supervisors.Any())
                 {
                     _logger.LogWarning("No supervisors found for cluster id: {ClusterId}", request.ClusterId);
                     return new List<SupervisorDTO>();

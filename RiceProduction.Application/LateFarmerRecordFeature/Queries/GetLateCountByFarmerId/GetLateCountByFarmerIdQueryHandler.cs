@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -6,12 +7,12 @@ namespace RiceProduction.Application.LateFarmerRecordFeature.Queries.GetLateCoun
 
 public class GetLateCountByFarmerIdQueryHandler : IRequestHandler<GetLateCountByFarmerIdQuery, Result<FarmerLateCountDTO>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetLateCountByFarmerIdQueryHandler> _logger;
 
-    public GetLateCountByFarmerIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetLateCountByFarmerIdQueryHandler> logger)
+    public GetLateCountByFarmerIdQueryHandler(IApplicationDbContext context, ILogger<GetLateCountByFarmerIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -21,13 +22,21 @@ public class GetLateCountByFarmerIdQueryHandler : IRequestHandler<GetLateCountBy
         {
             _logger.LogInformation("Getting late count for farmer {FarmerId}", request.FarmerId);
 
-            var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.FarmerId, cancellationToken);
-            if (farmer == null)
+            var farmerExists = await _context.Farmers
+                .AsNoTracking()
+                .AnyAsync(f => f.Id == request.FarmerId, cancellationToken);
+            if (!farmerExists)
             {
                 return Result<FarmerLateCountDTO>.Failure($"Farmer with ID {request.FarmerId} not found");
             }
 
-            var lateCount = await _unitOfWork.LateFarmerRecordRepository.GetLateCountByFarmerIdAsync(request.FarmerId, cancellationToken);
+            var lateCount = await _context.LateFarmerRecords
+                .AsNoTracking()
+                .CountAsync(
+                    l => l.FarmerId == request.FarmerId
+                        && l.CultivationTask.Version != null
+                        && l.CultivationTask.Version.IsActive,
+                    cancellationToken);
 
             var result = new FarmerLateCountDTO
             {

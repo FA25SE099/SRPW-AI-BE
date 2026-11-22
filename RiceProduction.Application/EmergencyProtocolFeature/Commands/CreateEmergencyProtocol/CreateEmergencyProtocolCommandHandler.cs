@@ -10,20 +10,17 @@ namespace RiceProduction.Application.EmergencyProtocolFeature.Commands.CreateEme
 
 public class CreateEmergencyProtocolCommandHandler : IRequestHandler<CreateEmergencyProtocolCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _currentUser;
-    private readonly IMediator _mediator;
     private readonly ILogger<CreateEmergencyProtocolCommandHandler> _logger;
 
     public CreateEmergencyProtocolCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser currentUser,
-        IMediator mediator,
         ILogger<CreateEmergencyProtocolCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _currentUser = currentUser;
-        _mediator = mediator;
         _logger = logger;
     }
 
@@ -37,8 +34,9 @@ public class CreateEmergencyProtocolCommandHandler : IRequestHandler<CreateEmerg
 
         try
         {
-            var expertExists = await _unitOfWork.AgronomyExpertRepository
-                .ExistAsync(expertId.Value, cancellationToken);
+            var expertExists = await _context.AgronomyExperts
+                .AsNoTracking()
+                .AnyAsync(f => f.Id == expertId.Value, cancellationToken);
 
             if (!expertExists)
             {
@@ -47,8 +45,9 @@ public class CreateEmergencyProtocolCommandHandler : IRequestHandler<CreateEmerg
                     "NotAnExpert");
             }
 
-            var categoryExists = await _unitOfWork.Repository<RiceVarietyCategory>()
-                .ExistsAsync(c => c.Id == request.CategoryId);
+            var categoryExists = await _context.RiceVarietyCategories
+                .AsNoTracking()
+                .AnyAsync(c => c.Id == request.CategoryId, cancellationToken);
 
             if (!categoryExists)
             {
@@ -87,9 +86,11 @@ public class CreateEmergencyProtocolCommandHandler : IRequestHandler<CreateEmerg
                 return varietyValidation;
             }
 
-            var duplicateExists = await _unitOfWork.Repository<EmergencyProtocol>()
-                .ExistsAsync(p => p.CategoryId == request.CategoryId &&
-                              p.PlanName.ToLower() == request.PlanName.ToLower());
+            var duplicateExists = await _context.EmergencyProtocols
+                .AsNoTracking()
+                .AnyAsync(p => p.CategoryId == request.CategoryId &&
+                              p.PlanName.ToLower() == request.PlanName.ToLower(),
+                    cancellationToken);
 
             if (duplicateExists)
             {
@@ -110,8 +111,8 @@ public class CreateEmergencyProtocolCommandHandler : IRequestHandler<CreateEmerg
 
             var emergencyProtocol = BuildEmergencyProtocol(request, expertId.Value);
 
-            await _unitOfWork.Repository<EmergencyProtocol>().AddAsync(emergencyProtocol);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.EmergencyProtocols.Add(emergencyProtocol);
+            await _context.SaveChangesAsync(cancellationToken);
 
             var totalTasks = emergencyProtocol.StandardPlanStages.Sum(s => s.StandardPlanTasks.Count);
             var totalMaterials = emergencyProtocol.StandardPlanStages
@@ -162,8 +163,8 @@ public class CreateEmergencyProtocolCommandHandler : IRequestHandler<CreateEmerg
             return null;
         }
 
-        var existingIds = await _unitOfWork.Repository<TEntity>()
-            .GetQueryable()
+        var existingIds = await _context.Set<TEntity>()
+            .AsNoTracking()
             .Where(e => distinctIds.Contains(e.Id))
             .Select(e => e.Id)
             .ToListAsync(cancellationToken);

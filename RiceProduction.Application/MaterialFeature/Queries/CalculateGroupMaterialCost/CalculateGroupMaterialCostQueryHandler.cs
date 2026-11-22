@@ -9,12 +9,12 @@ namespace RiceProduction.Application.MaterialFeature.Queries.CalculateGroupMater
 
 public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateGroupMaterialCostQuery, Result<CalculateGroupMaterialCostResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CalculateGroupMaterialCostQueryHandler> _logger;
 
-    public CalculateGroupMaterialCostQueryHandler(IUnitOfWork unitOfWork, ILogger<CalculateGroupMaterialCostQueryHandler> logger)
+    public CalculateGroupMaterialCostQueryHandler(IApplicationDbContext context, ILogger<CalculateGroupMaterialCostQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -24,10 +24,15 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
         {
             var today = DateTime.UtcNow;
 
-            var group = await _unitOfWork.Repository<Group>().FindAsync(
-                match: g => g.Id == request.GroupId,
-                includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot)
-            );
+            var group = await _context.Groups
+                .AsNoTracking()
+                .Where(g => g.Id == request.GroupId)
+                .Select(g => new GroupCostInfo(
+                    g.TotalArea,
+                    g.GroupPlots
+                        .Select(gp => new PlotCostInfo(gp.Plot.Id, gp.Plot.Area, gp.Plot.SoThua, gp.Plot.SoTo))
+                        .ToList()))
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (group == null)
             {
@@ -46,17 +51,13 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
                 .Distinct()
                 .ToList();
 
-            var materialDetails = await _unitOfWork.Repository<Material>()
-                .ListAsync(filter: m => allMaterialIds.Contains(m.Id));
+            var materialDetails = await _context.Materials
+                .AsNoTracking()
+                .Where(m => allMaterialIds.Contains(m.Id))
+                .ToListAsync(cancellationToken);
             var materialDetailsMap = materialDetails.ToDictionary(m => m.Id, m => m);
 
-            var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => allMaterialIds.Contains(p.MaterialId) && p.ValidFrom <= today
-            );
-            var materialPriceMap = potentialPrices
-                .GroupBy(p => p.MaterialId)
-                .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
-                .ToDictionary(p => p.MaterialId, p => p);
+            var materialPriceMap = await MaterialCostHelper.GetCurrentPricesAsync(_context, allMaterialIds, today, cancellationToken);
 
             decimal totalGroupCost = 0M;
             var priceWarnings = new List<string>();
@@ -86,7 +87,7 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
                 );
             }
 
-            var plotCostDetails = BuildPlotCostDetails(group.GroupPlots, effectiveTotalArea, totalGroupCost);
+            var plotCostDetails = BuildPlotCostDetails(group.Plots, effectiveTotalArea, totalGroupCost);
             AppendAggregatedMaterialCosts(materialCostDetails, materialAggregation, materialDetailsMap, materialPriceMap);
 
             var response = new CalculateGroupMaterialCostResponse
@@ -115,8 +116,11 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
         }
     }
 
+    private sealed record PlotCostInfo(Guid Id, decimal Area, int? SoThua, int? SoTo);
+    private sealed record GroupCostInfo(decimal? TotalArea, List<PlotCostInfo> Plots);
+
     private static List<PlotCostDetailResponse> BuildPlotCostDetails(
-        IEnumerable<GroupPlot> groupPlots,
+        IEnumerable<PlotCostInfo> groupPlots,
         decimal effectiveTotalArea,
         decimal totalGroupCost)
     {
@@ -124,7 +128,7 @@ public class CalculateGroupMaterialCostQueryHandler : IRequestHandler<CalculateG
 
         foreach (var groupPlot in groupPlots)
         {
-            var plot = groupPlot.Plot;
+            var plot = groupPlot;
             var plotArea = plot.Area;
             if (plotArea <= 0) continue;
 

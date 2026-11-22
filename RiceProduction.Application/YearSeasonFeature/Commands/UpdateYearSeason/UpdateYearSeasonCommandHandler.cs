@@ -1,21 +1,21 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.YearSeasonFeature.Commands.UpdateYearSeason;
 
 public class UpdateYearSeasonCommandHandler : IRequestHandler<UpdateYearSeasonCommand, Result<bool>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<UpdateYearSeasonCommandHandler> _logger;
 
     public UpdateYearSeasonCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<UpdateYearSeasonCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,8 +23,8 @@ public class UpdateYearSeasonCommandHandler : IRequestHandler<UpdateYearSeasonCo
     {
         try
         {
-            var yearSeasonRepo = _unitOfWork.Repository<YearSeason>();
-            var yearSeason = await yearSeasonRepo.GetEntityByIdAsync(request.Id);
+            var yearSeason = await _context.YearSeasons
+                .FirstOrDefaultAsync(ys => ys.Id == request.Id, cancellationToken);
 
             if (yearSeason == null)
             {
@@ -33,8 +33,9 @@ public class UpdateYearSeasonCommandHandler : IRequestHandler<UpdateYearSeasonCo
 
             if (request.RiceVarietyId.HasValue)
             {
-                var riceVariety = await _unitOfWork.Repository<RiceVariety>().GetEntityByIdAsync(request.RiceVarietyId.Value);
-                if (riceVariety == null)
+                var riceVarietyExists = await _context.RiceVarieties
+                    .AnyAsync(rv => rv.Id == request.RiceVarietyId.Value, cancellationToken);
+                if (!riceVarietyExists)
                 {
                     return Result<bool>.Failure("Rice variety not found");
                 }
@@ -62,8 +63,7 @@ public class UpdateYearSeasonCommandHandler : IRequestHandler<UpdateYearSeasonCo
             if (request.Notes != null)
                 yearSeason.Notes = request.Notes;
 
-            yearSeasonRepo.Update(yearSeason);
-            await _unitOfWork.CompleteAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Updated YearSeason with ID: {YearSeasonId}", request.Id);
             return Result<bool>.Success(true, "YearSeason updated successfully");

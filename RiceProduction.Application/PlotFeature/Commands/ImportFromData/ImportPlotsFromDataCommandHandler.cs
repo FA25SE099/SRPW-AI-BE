@@ -14,16 +14,16 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportFromData;
 public class ImportPlotsFromDataCommandHandler
     : IRequestHandler<ImportPlotsFromDataCommand, Result<List<PlotResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IMediator _mediator;
     private readonly ILogger<ImportPlotsFromDataCommandHandler> _logger;
 
     public ImportPlotsFromDataCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IMediator mediator,
         ILogger<ImportPlotsFromDataCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _mediator = mediator;
         _logger = logger;
     }
@@ -37,7 +37,7 @@ public class ImportPlotsFromDataCommandHandler
             return await PlotImportHelper.ExecuteImportAsync(
                 request.PlotRows,
                 request.ClusterManagerId,
-                _unitOfWork,
+                _context,
                 _mediator,
                 _logger,
                 PlotImportHelper.DataImportProfile,

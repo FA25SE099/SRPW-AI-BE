@@ -9,14 +9,14 @@ namespace RiceProduction.Application.GroupFeature.Commands.CreateGroupManually;
 
 public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManuallyCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CreateGroupManuallyCommandHandler> _logger;
 
     public CreateGroupManuallyCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<CreateGroupManuallyCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,28 +27,31 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
         try
         {
             // Validate cluster exists
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
+            var clusterExists = await _context.Clusters
+                .AsNoTracking()
+                .AnyAsync(c => c.Id == request.ClusterId, cancellationToken);
 
-            if (cluster == null)
+            if (!clusterExists)
             {
                 return Result<Guid>.Failure($"Cluster {request.ClusterId} not found");
             }
 
             // Validate season exists
-            var season = await _unitOfWork.Repository<Season>()
-                .FindAsync(s => s.Id == request.SeasonId);
+            var seasonExists = await _context.Seasons
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == request.SeasonId, cancellationToken);
 
-            if (season == null)
+            if (!seasonExists)
             {
                 return Result<Guid>.Failure($"Season {request.SeasonId} not found");
             }
 
             // Validate rice variety exists
-            var riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                .FindAsync(rv => rv.Id == request.RiceVarietyId);
+            var riceVarietyExists = await _context.RiceVarieties
+                .AsNoTracking()
+                .AnyAsync(rv => rv.Id == request.RiceVarietyId, cancellationToken);
 
-            if (riceVariety == null)
+            if (!riceVarietyExists)
             {
                 return Result<Guid>.Failure($"Rice variety {request.RiceVarietyId} not found");
             }
@@ -56,9 +59,11 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
             // Validate supervisor if provided
             if (request.SupervisorId.HasValue)
             {
-                var supervisors = await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => s.Id == request.SupervisorId.Value);
-                var supervisor = supervisors.FirstOrDefault();
+                var supervisor = await _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => s.Id == request.SupervisorId.Value)
+                    .Select(s => new { s.Id, s.IsActive })
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 if (supervisor == null)
                 {
@@ -77,9 +82,10 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
                 return Result<Guid>.Failure("At least one plot is required");
             }
 
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => request.PlotIds.Contains(p.Id));
-            var plotsList = plots.ToList();
+            var plotsList = await _context.Plots
+                .AsNoTracking()
+                .Where(p => request.PlotIds.Contains(p.Id))
+                .ToListAsync(cancellationToken);
 
             if (plotsList.Count != request.PlotIds.Count)
             {
@@ -88,19 +94,20 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
 
             // Check if any plot is already in a group for THIS SEASON
             // Business rule: A plot can belong to multiple groups, but only one group per season
-            var alreadyGrouped = new List<Plot>();
-            foreach (var plot in plotsList)
-            {
-                var isGroupedForSeason = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
-                if (isGroupedForSeason)
-                {
-                    alreadyGrouped.Add(plot);
-                }
-            }
-            if (alreadyGrouped.Any())
+            var plotIds = plotsList.Select(p => p.Id).ToList();
+            var alreadyGroupedCount = await _context.GroupPlots
+                .AsNoTracking()
+                .Where(gp => plotIds.Contains(gp.PlotId) &&
+                             gp.Group.YearSeason != null &&
+                             gp.Group.YearSeason.SeasonId == request.SeasonId)
+                .Select(gp => gp.PlotId)
+                .Distinct()
+                .CountAsync(cancellationToken);
+
+            if (alreadyGroupedCount > 0)
             {
                 return Result<Guid>.Failure(
-                    $"{alreadyGrouped.Count} plot(s) are already assigned to a group for this season. " +
+                    $"{alreadyGroupedCount} plot(s) are already assigned to a group for this season. " +
                     "A plot can only belong to one group per season. Remove them from existing groups for this season first.");
             }
 
@@ -132,10 +139,13 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
             }
 
             // Get or verify YearSeason exists
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .FindAsync(ys => ys.ClusterId == request.ClusterId && 
-                                ys.SeasonId == request.SeasonId && 
-                                ys.Year == request.Year);
+            var yearSeason = await _context.YearSeasons
+                .AsNoTracking()
+                .Where(ys => ys.ClusterId == request.ClusterId && 
+                             ys.SeasonId == request.SeasonId && 
+                             ys.Year == request.Year)
+                .Select(ys => new { ys.Id })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (yearSeason == null)
             {
@@ -159,7 +169,7 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
                 Area = groupBoundary
             };
 
-            await _unitOfWork.Repository<Group>().AddAsync(group);
+            _context.Groups.Add(group);
 
             // Assign plots to group using many-to-many relationship
             foreach (var plot in plotsList)
@@ -169,10 +179,10 @@ public class CreateGroupManuallyCommandHandler : IRequestHandler<CreateGroupManu
                     GroupId = group.Id,
                     PlotId = plot.Id
                 };
-                await _unitOfWork.Repository<GroupPlot>().AddAsync(groupPlot);
+                _context.GroupPlots.Add(groupPlot);
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Manually created group {GroupId} for cluster {ClusterId} with {PlotCount} plots, total area {Area} ha",

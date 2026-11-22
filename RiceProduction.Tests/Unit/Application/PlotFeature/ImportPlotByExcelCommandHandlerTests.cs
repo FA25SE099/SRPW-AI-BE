@@ -1,5 +1,7 @@
 using FluentAssertions;
+using MediatR;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RiceProduction.Application.Common.Interfaces;
@@ -8,9 +10,8 @@ using RiceProduction.Application.PlotFeature.Commands.ImportExcel;
 using RiceProduction.Application.PlotFeature.Events;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.PlotFeature;
 
@@ -19,56 +20,21 @@ namespace RiceProduction.Tests.Unit.Application.PlotFeature;
 /// </summary>
 public class ImportPlotByExcelCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericExcel> _mockGenericExcel;
-    private readonly Mock<IMediator> _mockMediator;
-    private readonly Mock<ILogger<ImportPlotByExcelCommandHandler>> _mockLogger;
-    private readonly Mock<IGenericRepository<Plot>> _mockPlotRepo;
-    private readonly Mock<IFarmerRepository> _mockFarmerRepo;
-    private readonly Mock<IGenericRepository<RiceVariety>> _mockRiceVarietyRepo;
-    private readonly Mock<IGenericRepository<Season>> _mockSeasonRepo;
-    private readonly Mock<IGenericRepository<PlotCultivation>> _mockPlotCultivationRepo;
-    private readonly Mock<IGenericRepository<CultivationVersion>> _mockCultivationVersionRepo;
-    private readonly ImportPlotByExcelCommandHandler _handler;
-
-    public ImportPlotByExcelCommandHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockGenericExcel = new Mock<IGenericExcel>();
-        _mockMediator = new Mock<IMediator>();
-        _mockLogger = new Mock<ILogger<ImportPlotByExcelCommandHandler>>();
-        _mockPlotRepo = new Mock<IGenericRepository<Plot>>();
-        _mockFarmerRepo = new Mock<IFarmerRepository>();
-        _mockRiceVarietyRepo = new Mock<IGenericRepository<RiceVariety>>();
-        _mockSeasonRepo = new Mock<IGenericRepository<Season>>();
-        _mockPlotCultivationRepo = new Mock<IGenericRepository<PlotCultivation>>();
-        _mockCultivationVersionRepo = new Mock<IGenericRepository<CultivationVersion>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Plot>()).Returns(_mockPlotRepo.Object);
-        _mockUnitOfWork.Setup(u => u.FarmerRepository).Returns(_mockFarmerRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<RiceVariety>()).Returns(_mockRiceVarietyRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<Season>()).Returns(_mockSeasonRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<PlotCultivation>()).Returns(_mockPlotCultivationRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<CultivationVersion>()).Returns(_mockCultivationVersionRepo.Object);
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer>());
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _handler = new ImportPlotByExcelCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockGenericExcel.Object,
-            _mockMediator.Object,
-            _mockLogger.Object);
-    }
+    private readonly Mock<IGenericExcel> _mockGenericExcel = new();
+    private readonly Mock<IMediator> _mockMediator = new();
+    private readonly Mock<ILogger<ImportPlotByExcelCommandHandler>> _mockLogger = new();
 
     [Fact]
     public async Task Handle_EmptyExcelFile_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var mockFile = new Mock<IFormFile>();
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(new List<PlotImportRow>());
@@ -80,7 +46,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -91,11 +57,18 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_MissingFarmCode_ReturnsValidationError()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
             {
-                FarmCode = null,
+                FarmCode = null!,
                 SoThua = 1,
                 SoTo = 1,
                 Area = 1000m
@@ -113,7 +86,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -124,6 +97,13 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_FarmerNotFound_ReturnsValidationError()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
@@ -139,9 +119,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer>());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -149,7 +126,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -160,6 +137,16 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_InvalidSoThua_ReturnsValidationError()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        context.Farmers.Add(new Farmer { Id = Guid.NewGuid(), FarmCode = "FARM001", FullName = "John Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
@@ -175,10 +162,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = Guid.NewGuid(), FarmCode = "FARM001" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -186,7 +169,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -197,6 +180,16 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_InvalidArea_ReturnsValidationError()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        context.Farmers.Add(new Farmer { Id = Guid.NewGuid(), FarmCode = "FARM001", FullName = "John Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
@@ -212,10 +205,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = Guid.NewGuid(), FarmCode = "FARM001" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -223,7 +212,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -234,7 +223,17 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_ValidPlotData_WithoutRiceVariety_CreatesPlotSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
+        context.Farmers.Add(new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
@@ -251,22 +250,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(farmer);
-
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync((Plot?)null);
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(() => Guid.NewGuid());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -274,26 +257,45 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().HaveCount(1);
-        result.Data.First().Area.Should().Be(1000m);
-        result.Data.First().Status.Should().Be(PlotStatus.PendingPolygon);
-        
-        _mockPlotRepo.Verify(r => r.AddRangeAsync(It.Is<List<Plot>>(
-            plots => plots.Count == 1 && plots[0].Area == 1000m)), Times.Once);
+        result.Data!.First().Area.Should().Be(1000m);
+        result.Data!.First().Status.Should().Be(PlotStatus.PendingPolygon);
+
+        var savedPlots = await context.Plots.ToListAsync();
+        savedPlots.Should().ContainSingle(p => p.Area == 1000m && p.FarmerId == farmerId);
     }
 
     [Fact]
     public async Task Handle_ValidPlotData_WithRiceVariety_CreatesPlotAndCultivation()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
         var riceVarietyId = Guid.NewGuid();
         var seasonId = Guid.NewGuid();
-        
+
+        context.Farmers.Add(new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" });
+        context.RiceVarieties.Add(new RiceVariety { Id = riceVarietyId, VarietyName = "IR64" });
+        context.Seasons.Add(new Season
+        {
+            Id = seasonId,
+            SeasonName = "Winter-Spring",
+            StartDate = "01/01",
+            EndDate = "12/31",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
@@ -310,34 +312,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(farmer);
-
-        var riceVariety = new RiceVariety { Id = riceVarietyId, VarietyName = "IR64" };
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety> { riceVariety });
-
-        var season = new Season 
-        { 
-            Id = seasonId, 
-            SeasonName = "Winter-Spring",
-            StartDate = "01/01",
-            EndDate = "12/31",
-            IsActive = true
-        };
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season> { season });
-
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync((Plot?)null);
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(() => Guid.NewGuid());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -345,26 +319,42 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().HaveCount(1);
-        
-        _mockPlotCultivationRepo.Verify(r => r.AddRangeAsync(It.Is<List<PlotCultivation>>(
-            cultivations => cultivations.Count == 1 && 
-                           cultivations[0].RiceVarietyId == riceVarietyId)), Times.Once);
-                           
-        _mockCultivationVersionRepo.Verify(r => r.AddRangeAsync(It.Is<List<CultivationVersion>>(
-            versions => versions.Count == 1 && 
-                       versions[0].IsActive == true)), Times.Once);
+
+        var savedCultivations = await context.PlotCultivations.ToListAsync();
+        savedCultivations.Should().ContainSingle(c => c.RiceVarietyId == riceVarietyId);
+
+        var savedVersions = await context.CultivationVersions.ToListAsync();
+        savedVersions.Should().ContainSingle(v => v.IsActive);
     }
 
     [Fact]
     public async Task Handle_DuplicatePlot_SkipsDuplicate()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
+        context.Farmers.Add(new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" });
+        context.Plots.Add(new Plot
+        {
+            Id = Guid.NewGuid(),
+            FarmerId = farmerId,
+            SoThua = 1,
+            SoTo = 1,
+            Area = 1000m
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
@@ -380,24 +370,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = farmerId, FarmCode = "FARM001" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        // Existing plot
-        var existingPlot = new Plot 
-        { 
-            Id = Guid.NewGuid(), 
-            FarmerId = farmerId,
-            SoThua = 1,
-            SoTo = 1
-        };
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(existingPlot);
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -405,18 +377,28 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        result.Data.Should().BeEmpty(); // No plots created
-        _mockPlotRepo.Verify(r => r.AddRangeAsync(It.IsAny<List<Plot>>()), Times.Never);
+        result.Data.Should().BeEmpty(); // No new plots created
+        (await context.Plots.CountAsync()).Should().Be(1);
     }
 
     [Fact]
     public async Task Handle_RiceVarietyNotFound_ReturnsValidationError()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        context.Farmers.Add(new Farmer { Id = Guid.NewGuid(), FarmCode = "FARM001", FullName = "John Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow
@@ -433,13 +415,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = Guid.NewGuid(), FarmCode = "FARM001" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -447,7 +422,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -458,7 +433,17 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_MultipleValidPlots_CreatesAllPlots()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
+        context.Farmers.Add(new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow { FarmCode = "FARM001", SoThua = 1, SoTo = 1, Area = 1000m },
@@ -470,22 +455,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(farmer);
-
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync((Plot?)null);
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(() => Guid.NewGuid());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -493,18 +462,26 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().HaveCount(3);
         result.Message.Should().Contain("Successfully imported 3 plots");
+        (await context.Plots.CountAsync()).Should().Be(3);
     }
 
     [Fact]
     public async Task Handle_ExceptionDuringProcessing_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var mockFile = new Mock<IFormFile>();
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ThrowsAsync(new Exception("Excel processing error"));
@@ -516,7 +493,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -527,7 +504,17 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_EmptyRowsSkipped_CountsCorrectly()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
+        context.Farmers.Add(new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow { FarmCode = "FARM001", SoThua = 1, SoTo = 1, Area = 1000m },
@@ -539,22 +526,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(farmer);
-
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync((Plot?)null);
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(() => Guid.NewGuid());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -562,7 +533,7 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -574,8 +545,18 @@ public class ImportPlotByExcelCommandHandlerTests
     public async Task Handle_SuccessfulImport_PublishesEvent()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
         var clusterManagerId = Guid.NewGuid();
+        context.Farmers.Add(new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new ImportPlotByExcelCommandHandler(
+            context,
+            _mockGenericExcel.Object,
+            _mockMediator.Object,
+            _mockLogger.Object);
+
         var plotImportRows = new List<PlotImportRow>
         {
             new PlotImportRow { FarmCode = "FARM001", SoThua = 1, SoTo = 1, Area = 1000m }
@@ -585,22 +566,6 @@ public class ImportPlotByExcelCommandHandlerTests
         _mockGenericExcel.Setup(e => e.ExcelToListT<PlotImportRow>(It.IsAny<IFormFile>()))
             .ReturnsAsync(plotImportRows);
 
-        var farmer = new Farmer { Id = farmerId, FarmCode = "FARM001", FullName = "John Farmer" };
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockFarmerRepo.Setup(r => r.GetFarmerByIdAsync(farmerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(farmer);
-
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync((Plot?)null);
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(() => Guid.NewGuid());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
         var command = new ImportPlotByExcelCommand
         {
             ExcelFile = mockFile.Object,
@@ -608,14 +573,14 @@ public class ImportPlotByExcelCommandHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        
+
         _mockMediator.Verify(m => m.Publish(
-            It.Is<PlotImportedEvent>(e => 
-                e.ClusterManagerId == clusterManagerId && 
+            It.Is<PlotImportedEvent>(e =>
+                e.ClusterManagerId == clusterManagerId &&
                 e.TotalPlotsImported == 1),
             It.IsAny<CancellationToken>()), Times.Once);
     }

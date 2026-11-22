@@ -1,24 +1,24 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.StandardPlanFeature.Events;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.StandardPlanFeature.Commands.UpdateStandardPlan;
 
 public class UpdateStandardPlanCommandHandler : IRequestHandler<UpdateStandardPlanCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IMediator _mediator;
     private readonly ILogger<UpdateStandardPlanCommandHandler> _logger;
 
     public UpdateStandardPlanCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IMediator mediator,
         ILogger<UpdateStandardPlanCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _mediator = mediator;
         _logger = logger;
     }
@@ -31,8 +31,8 @@ public class UpdateStandardPlanCommandHandler : IRequestHandler<UpdateStandardPl
         {
             _logger.LogInformation("Updating standard plan {StandardPlanId}", request.StandardPlanId);
 
-            var standardPlan = await _unitOfWork.Repository<StandardPlan>()
-                .FindAsync(sp => sp.Id == request.StandardPlanId);
+            var standardPlan = await _context.StandardPlans
+                .FirstOrDefaultAsync(sp => sp.Id == request.StandardPlanId, cancellationToken);
 
             if (standardPlan == null)
             {
@@ -45,12 +45,11 @@ public class UpdateStandardPlanCommandHandler : IRequestHandler<UpdateStandardPl
             standardPlan.PlanName = request.PlanName;
             standardPlan.Description = request.Description;
             standardPlan.TotalDurationDays = request.TotalDurationDays;
-            
+
             var statusChanged = standardPlan.IsActive != request.IsActive;
             standardPlan.IsActive = request.IsActive;
 
-            _unitOfWork.Repository<StandardPlan>().Update(standardPlan);
-            await _unitOfWork.Repository<StandardPlan>().SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             var changeType = statusChanged ? ChangeType.StatusChanged : ChangeType.Updated;
             await _mediator.Publish(

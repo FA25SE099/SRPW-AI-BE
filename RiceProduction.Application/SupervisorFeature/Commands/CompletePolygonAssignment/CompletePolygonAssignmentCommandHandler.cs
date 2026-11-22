@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
@@ -13,14 +14,14 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
 {
     private const int TolerancePercent = 10;
 
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CompletePolygonAssignmentCommandHandler> _logger;
 
     public CompletePolygonAssignmentCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<CompletePolygonAssignmentCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -28,8 +29,8 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
     {
         try
         {
-            var polygonTask = await _unitOfWork.Repository<PlotPolygonTask>()
-                .FindAsync(t => t.Id == request.TaskId);
+            var polygonTask = await _context.PlotPolygonTasks
+                .FirstOrDefaultAsync(t => t.Id == request.TaskId, cancellationToken);
 
             if (polygonTask == null)
             {
@@ -46,8 +47,8 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
                 return Result<bool>.Failure("Task is already completed");
             }
 
-            var targetPlot = await _unitOfWork.Repository<Plot>()
-                .FindAsync(p => p.Id == polygonTask.PlotId);
+            var targetPlot = await _context.Plots
+                .FirstOrDefaultAsync(p => p.Id == polygonTask.PlotId, cancellationToken);
 
             if (targetPlot == null)
             {
@@ -67,8 +68,6 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
 
             targetPlot.AssignBoundary(polygon!);
 
-            _unitOfWork.Repository<Plot>().Update(targetPlot);
-
             polygonTask.Status = "Completed";
             polygonTask.CompletedAt = DateTime.UtcNow;
             if (!string.IsNullOrEmpty(request.Notes))
@@ -76,9 +75,7 @@ public class CompletePolygonAssignmentCommandHandler : IRequestHandler<CompleteP
                 polygonTask.Notes = request.Notes;
             }
 
-            _unitOfWork.Repository<PlotPolygonTask>().Update(polygonTask);
-
-            await _unitOfWork.CompleteAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Supervisor {SupervisorId} completed polygon assignment for Plot {PlotId}",

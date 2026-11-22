@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
@@ -8,16 +9,16 @@ using RiceProduction.Domain.Entities;
 namespace RiceProduction.Application.UAVFeature.Commands.ReportServiceOrder;
 public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<ReportServiceOrderCompletionCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IStorageService _storageService;
     private readonly ILogger<ReportServiceOrderCompletionCommandHandler> _logger;
     
     public ReportServiceOrderCompletionCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IStorageService storageService,
         ILogger<ReportServiceOrderCompletionCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _storageService = storageService;
         _logger = logger;
     }
@@ -27,17 +28,14 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
         try
         {
             // 1. Tải Order và Plot Assignment
-            var assignmentRepo = _unitOfWork.Repository<UavOrderPlotAssignment>();
-            var orderRepo = _unitOfWork.Repository<UavServiceOrder>();
-
-            var order = await orderRepo.FindAsync(o => o.Id == request.OrderId && o.UavVendorId == request.VendorId);
+            var order = await _context.UavServiceOrders
+                .FirstOrDefaultAsync(o => o.Id == request.OrderId && o.UavVendorId == request.VendorId, cancellationToken);
             if (order == null) return Result<Guid>.Failure("UAV Service Order not found or unauthorized.", "OrderNotFound");
 
             // 1b. Tìm Assignment cụ thể cho Plot
-            var assignment = await assignmentRepo.FindAsync(
-                a => a.UavServiceOrderId == request.OrderId && a.PlotId == request.PlotId,
-                includeProperties: q => q.Include(q=>q.CultivationTask)
-            );
+            var assignment = await _context.UavOrderPlotAssignments
+                .Include(a => a.CultivationTask)
+                .FirstOrDefaultAsync(a => a.UavServiceOrderId == request.OrderId && a.PlotId == request.PlotId, cancellationToken);
 
             if (assignment == null)
             {
@@ -68,32 +66,29 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
             assignment.ServicedArea = request.ActualAreaCovered;
             assignment.ProofUrlsJson = JsonSerializer.Serialize(uploadedUrls); // Lưu URLs
 
-            assignmentRepo.Update(assignment);
-
             var cultivationTask = assignment.CultivationTask;
 
             if (cultivationTask != null)
             {
-                //cultivationTask.Status = RiceProduction.Domain.Enums.TaskStatus.Completed;
                 cultivationTask.ActualEndDate = DateTime.UtcNow;
-                
-                //cultivationTask.ActualServiceCost += request.ActualCost; 
-
-                _unitOfWork.Repository<CultivationTask>().Update(cultivationTask);
                 _logger.LogInformation("CultivationTask {TaskId} status updated to Completed via UAV report.", cultivationTask.Id);
-                
-                // Update next task to InProgress
-                //await UpdateNextTaskToInProgress(cultivationTask.PlotCultivationId, cultivationTask.VersionId, cultivationTask.ExecutionOrder);
             }
+
             // 4. Tổng hợp và Cập nhật Order (Aggregate Logic)
-            await _unitOfWork.Repository<UavOrderPlotAssignment>().SaveChangesAsync(); // Lưu Assignment trước
+            await _context.SaveChangesAsync(cancellationToken); // Lưu Assignment trước
 
             // Tải tất cả Assignments để tính toán tổng
-            var allAssignments = await assignmentRepo.ListAsync(a => a.UavServiceOrderId == request.OrderId);
+            var allAssignments = await _context.UavOrderPlotAssignments
+                .AsNoTracking()
+                .Where(a => a.UavServiceOrderId == request.OrderId)
+                .Select(a => new { a.Status, a.ActualCost })
+                .ToListAsync(cancellationToken);
 
             var totalCompletedPlots = allAssignments.Count(a => a.Status == RiceProduction.Domain.Enums.TaskStatus.Completed);
             var totalActualCost = allAssignments.Sum(a => a.ActualCost.GetValueOrDefault(0M));
-            var completionPercentage = (int)Math.Round((double)totalCompletedPlots / order.TotalPlots * 100);
+            var completionPercentage = order.TotalPlots > 0
+                ? (int)Math.Round((double)totalCompletedPlots / order.TotalPlots * 100)
+                : 0;
 
             order.ActualCost = totalActualCost;
             order.CompletionPercentage = completionPercentage;
@@ -112,8 +107,7 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
                 order.StartedAt = DateTime.UtcNow;
             }
             
-            orderRepo.Update(order);
-            await orderRepo.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Plot {PlotId} reported completed for Order {OrderId}. Overall Completion: {Percent}%", request.PlotId, order.Id, completionPercentage);
             
@@ -125,7 +119,7 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
             return Result<Guid>.Failure("Failed to submit service report.", "ReportCompletionFailed");
         }
     }
-    private async Task UpdateNextTaskToInProgress(Guid plotCultivationId, Guid? versionId, int? currentExecutionOrder)
+    private async Task UpdateNextTaskToInProgress(Guid plotCultivationId, Guid? versionId, int? currentExecutionOrder, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -136,24 +130,20 @@ public class ReportServiceOrderCompletionCommandHandler : IRequestHandler<Report
             }
 
             // Find the next task with higher ExecutionOrder for the same PlotCultivation and Version
-            var nextTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                filter: t => t.PlotCultivationId == plotCultivationId 
+            var nextTask = await _context.CultivationTasks
+                .Where(t => t.PlotCultivationId == plotCultivationId
                           && t.VersionId == versionId
                           && t.ExecutionOrder.HasValue
                           && t.ExecutionOrder > currentExecutionOrder
-                          && (t.Status == RiceProduction.Domain.Enums.TaskStatus.Approved 
-                              || t.Status == RiceProduction.Domain.Enums.TaskStatus.Draft),
-                orderBy: q => q.OrderBy(t => t.ExecutionOrder)
-            );
-
-            var nextTask = nextTasks.FirstOrDefault();
+                          && (t.Status == RiceProduction.Domain.Enums.TaskStatus.Approved
+                              || t.Status == RiceProduction.Domain.Enums.TaskStatus.Draft))
+                .OrderBy(t => t.ExecutionOrder)
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (nextTask != null)
             {
                 nextTask.Status = RiceProduction.Domain.Enums.TaskStatus.InProgress;
                 nextTask.ActualStartDate = DateTime.UtcNow;
-                
-                _unitOfWork.Repository<CultivationTask>().Update(nextTask);
                 
                 _logger.LogInformation(
                     "Next task {NextTaskId} (Order: {Order}) automatically updated to InProgress after completing current task.",

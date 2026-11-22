@@ -1,26 +1,22 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll
 {
     public class GetAllFarmerQueriesHandler : IRequestHandler<GetAllFarmerQueries, PagedResult<IEnumerable<FarmerDTO>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetAllFarmerQueriesHandler> _logger;
 
-        public GetAllFarmerQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetAllFarmerQueriesHandler> logger)
+        public GetAllFarmerQueriesHandler(IApplicationDbContext context, ILogger<GetAllFarmerQueriesHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -31,29 +27,49 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetAll
                 _logger.LogInformation("Getting all Page: {PageNumber}, PageSize:{PageSize}",
                     request.PageNumber, request.PageSize);
 
-                Expression<Func<Farmer, bool>>? predicate = null;
                 Guid? clusterId = null;
                 var clusterManagerId = request.ClusterManagerId;
                 if (clusterManagerId.HasValue)
                 {
-                    var clusterManager = await _unitOfWork.ClusterManagerRepository
-                        .GetClusterManagerByIdAsync(clusterManagerId.Value, cancellationToken);
-                    clusterId = clusterManager?.ClusterId;
+                    clusterId = await _context.ClusterManagers
+                        .AsNoTracking()
+                        .Where(cm => cm.Id == clusterManagerId.Value)
+                        .Select(cm => cm.ClusterId)
+                        .FirstOrDefaultAsync(cancellationToken);
                 }
+
+                var query = _context.Farmers
+                    .AsNoTracking()
+                    .Where(f => f.IsActive && f.ClusterId == clusterId);
 
                 if (!string.IsNullOrWhiteSpace(request.SearchTerm))
                 {
-                    predicate = f => f.IsActive && (f.FullName.Contains(request.SearchTerm) || f.PhoneNumber != null && f.PhoneNumber.Contains(request.SearchTerm)) && f.ClusterId == clusterId;
-                }
-                else
-                {
-                    predicate = f => f.IsActive && f.ClusterId == clusterId;
+                    var searchTerm = request.SearchTerm;
+                    query = query.Where(f =>
+                        (f.FullName != null && f.FullName.Contains(searchTerm)) ||
+                        (f.PhoneNumber != null && f.PhoneNumber.Contains(searchTerm)));
                 }
 
-                var (items, totalCount) = await _unitOfWork.FarmerRepository
-                    .GetPagedAsync(request.PageNumber, request.PageSize, predicate, cancellationToken);
+                var totalCount = await query.CountAsync(cancellationToken);
 
-                var farmerDTOs = items.Select(f => f.ToDto()).ToList();
+                var farmerDTOs = await query
+                    .OrderBy(f => f.FullName)
+                    .Skip((request.PageNumber - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(f => new FarmerDTO
+                    {
+                        FarmerId = f.Id,
+                        FullName = f.FullName,
+                        Address = f.Address,
+                        PhoneNumber = f.PhoneNumber,
+                        IsActive = f.IsActive,
+                        IsVerified = f.IsVerified,
+                        LastActivityAt = f.LastActivityAt,
+                        FarmCode = f.FarmCode,
+                        PlotCount = f.OwnedPlots.Count
+                    })
+                    .ToListAsync(cancellationToken);
+
                 return PagedResult<IEnumerable<FarmerDTO>>.Success
                     (
                     data: farmerDTOs,

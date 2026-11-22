@@ -1,3 +1,8 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
@@ -8,14 +13,14 @@ namespace RiceProduction.Application.SupervisorFeature.Queries.GetFarmersBySuper
 
 public class GetFarmersBySupervisorQueryHandler : IRequestHandler<GetFarmersBySupervisorQuery, PagedResult<List<FarmerDTO>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetFarmersBySupervisorQueryHandler> _logger;
 
     public GetFarmersBySupervisorQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetFarmersBySupervisorQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -25,8 +30,11 @@ public class GetFarmersBySupervisorQueryHandler : IRequestHandler<GetFarmersBySu
     {
         try
         {
-            // Verify supervisor exists using SupervisorRepository
-            var supervisor = await _unitOfWork.SupervisorRepository.GetSupervisorByIdAsync(request.SupervisorId, cancellationToken);
+            var supervisor = await _context.Supervisors
+                .AsNoTracking()
+                .Where(s => s.Id == request.SupervisorId)
+                .Select(s => new { s.Id, s.ClusterId })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (supervisor == null)
             {
@@ -35,26 +43,19 @@ public class GetFarmersBySupervisorQueryHandler : IRequestHandler<GetFarmersBySu
                     "NotFound");
             }
 
-            IReadOnlyList<Farmer> farmers;
+            IQueryable<Farmer> farmersQuery = _context.Farmers
+                .AsNoTracking()
+                .Where(f => f.IsActive);
 
             if (request.OnlyAssigned)
             {
-                // Get farmers from plots in groups supervised by this supervisor
-                // Supervisor -> Groups -> GroupPlots -> Plots -> Farmers
-                var groups = await _unitOfWork.Repository<Group>()
-                    .ListAsync(
-                        filter: g => g.SupervisorId == request.SupervisorId,
-                        includeProperties: q => q.Include(g => g.GroupPlots)
-                            .ThenInclude(gp => gp.Plot)
-                                .ThenInclude(p => p.Farmer)
-                    );
-
-                // Extract unique farmers from all groups
-                var farmerIds = groups
-                    .SelectMany(g => g.GroupPlots)
+                // Supervisor -> Groups -> GroupPlots -> Plots -> FarmerId
+                var farmerIds = await _context.GroupPlots
+                    .AsNoTracking()
+                    .Where(gp => gp.Group.SupervisorId == request.SupervisorId)
                     .Select(gp => gp.Plot.FarmerId)
                     .Distinct()
-                    .ToList();
+                    .ToListAsync(cancellationToken);
 
                 if (!farmerIds.Any())
                 {
@@ -66,18 +67,10 @@ public class GetFarmersBySupervisorQueryHandler : IRequestHandler<GetFarmersBySu
                         "No farmers found in supervised groups.");
                 }
 
-                farmers = await _unitOfWork.FarmerRepository.ListAsync(
-                    filter: f => farmerIds.Contains(f.Id) && f.IsActive &&
-                        (!string.IsNullOrWhiteSpace(request.SearchTerm)
-                            ? f.FullName.Contains(request.SearchTerm) ||
-                              (f.PhoneNumber != null && f.PhoneNumber.Contains(request.SearchTerm))
-                            : true),
-                    includeProperties: q => q.Include(f => f.OwnedPlots)
-                );
+                farmersQuery = farmersQuery.Where(f => farmerIds.Contains(f.Id));
             }
             else
             {
-                // Get all farmers in the supervisor's cluster
                 if (!supervisor.ClusterId.HasValue)
                 {
                     return PagedResult<List<FarmerDTO>>.Success(
@@ -88,37 +81,39 @@ public class GetFarmersBySupervisorQueryHandler : IRequestHandler<GetFarmersBySu
                         "Supervisor is not assigned to any cluster.");
                 }
 
-                farmers = await _unitOfWork.FarmerRepository.ListAsync(
-                    filter: f => f.ClusterId == supervisor.ClusterId && f.IsActive &&
-                        (!string.IsNullOrWhiteSpace(request.SearchTerm)
-                            ? f.FullName.Contains(request.SearchTerm) ||
-                              (f.PhoneNumber != null && f.PhoneNumber.Contains(request.SearchTerm))
-                            : true),
-                    includeProperties: q => q.Include(f => f.OwnedPlots)
-                );
+                var clusterId = supervisor.ClusterId.Value;
+                farmersQuery = farmersQuery.Where(f => f.ClusterId == clusterId);
             }
 
-            var totalCount = farmers.Count;
+            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+            {
+                var search = request.SearchTerm.Trim();
+                var searchLower = search.ToLower();
+                farmersQuery = farmersQuery.Where(f =>
+                    (f.FullName != null && f.FullName.ToLower().Contains(searchLower)) ||
+                    (f.PhoneNumber != null && f.PhoneNumber.Contains(search)));
+            }
 
-            // Apply pagination
-            var pagedFarmers = farmers
+            var totalCount = await farmersQuery.CountAsync(cancellationToken);
+
+            var farmerDTOs = await farmersQuery
+                .OrderBy(f => f.FullName)
+                .ThenBy(f => f.Id)
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
-
-            // Map to DTO
-            var farmerDTOs = pagedFarmers.Select(f => new FarmerDTO
-            {
-                FarmerId = f.Id,
-                FullName = f.FullName,
-                Address = f.Address,
-                PhoneNumber = f.PhoneNumber,
-                IsActive = f.IsActive,
-                IsVerified = f.EmailConfirmed,
-                LastActivityAt = f.LastActivityAt,
-                FarmCode = f.FarmCode,
-                PlotCount = f.OwnedPlots?.Count ?? 0
-            }).ToList();
+                .Select(f => new FarmerDTO
+                {
+                    FarmerId = f.Id,
+                    FullName = f.FullName,
+                    Address = f.Address,
+                    PhoneNumber = f.PhoneNumber,
+                    IsActive = f.IsActive,
+                    IsVerified = f.EmailConfirmed,
+                    LastActivityAt = f.LastActivityAt,
+                    FarmCode = f.FarmCode,
+                    PlotCount = f.OwnedPlots.Count
+                })
+                .ToListAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Retrieved {Count} farmers for supervisor {SupervisorId} (OnlyAssigned: {OnlyAssigned})",

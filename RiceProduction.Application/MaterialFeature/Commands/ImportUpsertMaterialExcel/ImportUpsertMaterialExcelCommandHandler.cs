@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -11,18 +12,18 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
 {
     public class ImportUpsertMaterialExcelCommandHandler : IRequestHandler<ImportUpsertMaterialExcelCommand, Result<MaterialUpsertResult>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly IGenericExcel _genericExcel;
         private readonly ILogger<ImportUpsertMaterialExcelCommandHandler> _logger;
 
         public ImportUpsertMaterialExcelCommandHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             IMediator mediator,
             IGenericExcel genericExcel,
             ILogger<ImportUpsertMaterialExcelCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _genericExcel = genericExcel;
             _logger = logger;
@@ -45,9 +46,6 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                         $"Validation failed:{string.Join("\n", validationErrors)}");
                 }
 
-                var materialRepo = _unitOfWork.Repository<Material>();
-                var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
-
                 var result = new MaterialUpsertResult();
                 var materialsToCreate = new List<Material>();
                 var materialsToUpdate = new List<Material>();
@@ -56,17 +54,19 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
 
                 foreach (var materialInput in materialListInput)
                 {
-                    var existingMaterial = await FindExistingMaterialAsync(materialInput);
+                    var existingMaterial = await FindExistingMaterialAsync(materialInput, cancellationToken);
 
                     if (existingMaterial != null)
                     {
                         ApplyMaterialFields(existingMaterial, materialInput);
                         materialsToUpdate.Add(existingMaterial);
 
-                        var currentPrice = (await materialPriceRepo.ListAsync(
-                            p => p.MaterialId == existingMaterial.Id &&
-                                 p.ValidFrom.CompareTo(request.ImportDate) <= 0 &&
-                                 (!p.ValidTo.HasValue || p.ValidTo.Value.Date.CompareTo(request.ImportDate) >= 0)))
+                        var candidatePrices = await _context.MaterialPrices
+                            .Where(p => p.MaterialId == existingMaterial.Id && p.ValidFrom <= request.ImportDate)
+                            .ToListAsync(cancellationToken);
+
+                        var currentPrice = candidatePrices
+                            .Where(p => !p.ValidTo.HasValue || p.ValidTo.Value.Date >= request.ImportDate.Date)
                             .OrderByDescending(p => p.ValidFrom)
                             .FirstOrDefault();
 
@@ -85,7 +85,7 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
                     }
                     else
                     {
-                        var newId = await materialRepo.GenerateNewGuid(Guid.NewGuid());
+                        var newId = Guid.NewGuid();
                         var newMaterial = new Material
                         {
                             Id = newId,
@@ -103,29 +103,33 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
 
                 if (priceUpdates.Any())
                 {
-                    materialPriceRepo.UpdateRange(priceUpdates);
+                    _context.MaterialPrices.UpdateRange(priceUpdates);
                 }
 
                 if (materialsToUpdate.Any())
                 {
-                    materialRepo.UpdateRange(materialsToUpdate);
+                    _context.Materials.UpdateRange(materialsToUpdate);
                 }
 
                 if (priceCreates.Any())
                 {
-                    await materialPriceRepo.AddRangeAsync(priceCreates);
+                    _context.MaterialPrices.AddRange(priceCreates);
                 }
 
                 if (materialsToCreate.Any())
                 {
-                    await materialRepo.AddRangeAsync(materialsToCreate);
+                    _context.Materials.AddRange(materialsToCreate);
                 }
 
-                await _unitOfWork.CompleteAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 var allMaterials = materialsToCreate.Concat(materialsToUpdate).ToList();
-                var allMaterialPrices = await materialPriceRepo.ListAsync();
-                var currentDate = DateTime.Now;
+                var allMaterialIds = allMaterials.Select(m => m.Id).ToList();
+                var allMaterialPrices = await _context.MaterialPrices
+                    .AsNoTracking()
+                    .Where(p => allMaterialIds.Contains(p.MaterialId))
+                    .ToListAsync(cancellationToken);
+                var currentDate = DateTime.UtcNow;
 
                 result.Materials = allMaterials.Select(m => new MaterialResponse
                 {
@@ -204,22 +208,23 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
             return validationErrors;
         }
 
-        private async Task<Material?> FindExistingMaterialAsync(MaterialUpsertRequest materialInput)
+        private async Task<Material?> FindExistingMaterialAsync(MaterialUpsertRequest materialInput, CancellationToken cancellationToken)
         {
-            var materialRepo = _unitOfWork.Repository<Material>();
-
             if (materialInput.MaterialId.HasValue && materialInput.MaterialId.Value != Guid.Empty)
             {
-                var byId = await materialRepo.FindAsync(m => m.Id == materialInput.MaterialId.Value);
+                var byId = await _context.Materials
+                    .FirstOrDefaultAsync(m => m.Id == materialInput.MaterialId.Value, cancellationToken);
                 if (byId != null)
                 {
                     return byId;
                 }
             }
 
-            return await materialRepo.FindAsync(m =>
-                m.Name == materialInput.Name &&
-                m.Type == materialInput.Type);
+            return await _context.Materials
+                .FirstOrDefaultAsync(m =>
+                    m.Name == materialInput.Name &&
+                    m.Type == materialInput.Type,
+                    cancellationToken);
         }
 
         private static void ApplyMaterialFields(Material target, MaterialUpsertRequest source)
@@ -253,8 +258,8 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpsertMateri
 
             return prices
                 .Where(p => p.MaterialId == material.Id
-                    && p.ValidFrom.CompareTo(currentDate) <= 0
-                    && (!p.ValidTo.HasValue || p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
+                    && p.ValidFrom <= currentDate
+                    && (!p.ValidTo.HasValue || p.ValidTo.Value.Date >= currentDate.Date))
                 .OrderByDescending(p => p.ValidFrom)
                 .FirstOrDefault()?.PricePerMaterial ?? 0;
         }

@@ -1,48 +1,68 @@
-﻿using Microsoft.Extensions.Logging;
-using RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerList;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 using RiceProduction.Application.Common.Models.Response.UavVendorResponses;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.UavVendorFeature.Queries.GetUavVendorList
 {
     public class GetUavVendorQueryHandler : IRequestHandler<GetUavVendorQuery, PagedResult<List<UavVendorResponse>>>
     {
-        private readonly IUavVendorRepository _uavVendorRepo;
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly ILogger<GetClusterManagersQueryHandler> _logger;
+        private readonly IApplicationDbContext _context;
+        private readonly ILogger<GetUavVendorQueryHandler> _logger;
 
-        public GetUavVendorQueryHandler(IUnitOfWork unitOfWork, ILogger<GetClusterManagersQueryHandler> logger)
+        public GetUavVendorQueryHandler(IApplicationDbContext context, ILogger<GetUavVendorQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
-            _uavVendorRepo = _unitOfWork.UavVendorRepository;
+            _context = context;
             _logger = logger;
         }
+
         public async Task<PagedResult<List<UavVendorResponse>>> Handle(GetUavVendorQuery request, CancellationToken cancellationToken)
         {
             try
             {
-                var (pagedUavVendors, totalCount) = await _uavVendorRepo.GetAllUavVendorByNameOrEmailAndPhoneNumberAndByGroupIdOrClusterIdOrNamePagingAsync(
-                    request.CurrentPage,
-                    request.PageSize,
-                    request.NameEmailSearch,
-                    request.GroupClusterSearch,
-                    request.PhoneNumber,
-                    cancellationToken);
-                var uavVendorResponse = pagedUavVendors.Select(uavVendor => new UavVendorResponse
+                var query = _context.UavVendors.AsNoTracking();
+
+
+                var search = request.NameEmailSearch?.ToLower();
+                if (!string.IsNullOrEmpty(search))
                 {
-                    UavVendorId = uavVendor.Id,
-                    UavVendorFullName = uavVendor.FullName,
-                    VendorName = uavVendor.VendorName,
-                    UavVendorPhoneNumber = uavVendor.PhoneNumber,
-                    Email = uavVendor.Email
-                }).ToList();
+                    query = query.Where(f => (f.FullName != null && f.FullName.ToLower().Contains(search)) ||
+                                             (f.Email != null && f.Email.ToLower().Contains(search)));
+                }
+
+                if (!string.IsNullOrEmpty(request.PhoneNumber))
+                {
+                    query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(request.PhoneNumber));
+                }
+
+                if (!string.IsNullOrEmpty(request.GroupClusterSearch))
+                {
+                    var groupSearch = request.GroupClusterSearch;
+                    query = query.Where(f => f.UavServiceOrders.Any(sv =>
+                        sv.GroupId.ToString().ToLower().Contains(groupSearch) ||
+                        sv.Group.Cluster.ClusterName.ToLower().Contains(groupSearch) ||
+                        sv.Group.Cluster.Id.ToString().ToLower().Contains(groupSearch)));
+                }
+
+                var totalCount = await query.CountAsync(cancellationToken);
+
+                var ordered = query.OrderBy(s => s.FullName);
+                var paged = request.PageSize == 0
+                    ? ordered
+                    : ordered.Skip((request.CurrentPage - 1) * request.PageSize).Take(request.PageSize);
+
+                var uavVendorResponse = await paged
+                    .Select(uavVendor => new UavVendorResponse
+                    {
+                        UavVendorId = uavVendor.Id,
+                        UavVendorFullName = uavVendor.FullName,
+                        VendorName = uavVendor.VendorName,
+                        UavVendorPhoneNumber = uavVendor.PhoneNumber,
+                        Email = uavVendor.Email
+                    })
+                    .ToListAsync(cancellationToken);
+
                 return PagedResult<List<UavVendorResponse>>.Success(
                     uavVendorResponse,
                     request.CurrentPage,

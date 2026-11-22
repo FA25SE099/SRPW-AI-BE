@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -6,12 +7,12 @@ namespace RiceProduction.Application.LateFarmerRecordFeature.Queries.GetLateCoun
 
 public class GetLateCountByPlotIdQueryHandler : IRequestHandler<GetLateCountByPlotIdQuery, Result<PlotLateCountDTO>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetLateCountByPlotIdQueryHandler> _logger;
 
-    public GetLateCountByPlotIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetLateCountByPlotIdQueryHandler> logger)
+    public GetLateCountByPlotIdQueryHandler(IApplicationDbContext context, ILogger<GetLateCountByPlotIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -21,13 +22,21 @@ public class GetLateCountByPlotIdQueryHandler : IRequestHandler<GetLateCountByPl
         {
             _logger.LogInformation("Getting late count for plot {PlotId}", request.PlotId);
 
-            var plot = await _unitOfWork.PlotRepository.GetPlotByIDAsync(request.PlotId, cancellationToken);
-            if (plot == null)
+            var plotExists = await _context.Plots
+                .AsNoTracking()
+                .AnyAsync(p => p.Id == request.PlotId, cancellationToken);
+            if (!plotExists)
             {
                 return Result<PlotLateCountDTO>.Failure($"Plot with ID {request.PlotId} not found");
             }
 
-            var lateCount = await _unitOfWork.LateFarmerRecordRepository.GetLateCountByPlotIdAsync(request.PlotId, cancellationToken);
+            var lateCount = await _context.LateFarmerRecords
+                .AsNoTracking()
+                .CountAsync(
+                    l => l.CultivationTask.PlotCultivation.PlotId == request.PlotId
+                        && l.CultivationTask.Version != null
+                        && l.CultivationTask.Version.IsActive,
+                    cancellationToken);
 
             var result = new PlotLateCountDTO
             {

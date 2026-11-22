@@ -10,14 +10,14 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmersForAdmin;
 
 public class GetFarmersForAdminQueryHandler : IRequestHandler<GetFarmersForAdminQuery, PagedResult<List<FarmerListResponse>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetFarmersForAdminQueryHandler> _logger;
 
     public GetFarmersForAdminQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetFarmersForAdminQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -31,84 +31,61 @@ public class GetFarmersForAdminQueryHandler : IRequestHandler<GetFarmersForAdmin
                 "Getting ALL farmers for admin - Page: {Page}, Size: {Size}, Search: {Search}",
                 request.CurrentPage, request.PageSize, request.Search);
 
-            // Get ALL farmers (no IsActive filter for admin - they should see everything)
-            var farmers = await _unitOfWork.FarmerRepository.ListAsync(
-                filter: f => true, // Get ALL farmers including inactive ones
-                includeProperties: q => q
-                    .Include(f => f.Cluster)
-                    .Include(f => f.OwnedPlots)
-            );
+            // Admin sees ALL farmers (no IsActive filter); optional filters are applied in the database
+            var query = _context.Farmers.AsNoTracking();
 
-            var farmersList = farmers.ToList();
-
-            _logger.LogInformation("Retrieved {Count} total farmers before filtering", farmersList.Count);
-
-            // Apply optional filters only if specified
             if (request.ClusterId.HasValue)
             {
-                farmersList = farmersList.Where(f => f.ClusterId == request.ClusterId.Value).ToList();
-                _logger.LogInformation("After cluster filter: {Count} farmers", farmersList.Count);
+                query = query.Where(f => f.ClusterId == request.ClusterId.Value);
             }
 
             if (!string.IsNullOrWhiteSpace(request.Search))
             {
                 var searchTerm = request.Search.ToLower().Trim();
-                farmersList = farmersList.Where(f =>
+                query = query.Where(f =>
                     (f.FullName != null && f.FullName.ToLower().Contains(searchTerm)) ||
                     (f.Email != null && f.Email.ToLower().Contains(searchTerm)) ||
-                    (f.FarmCode != null && f.FarmCode.ToLower().Contains(searchTerm))
-                ).ToList();
-                _logger.LogInformation("After search filter: {Count} farmers", farmersList.Count);
+                    (f.FarmCode != null && f.FarmCode.ToLower().Contains(searchTerm)));
             }
 
             if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
             {
                 var phoneNumber = request.PhoneNumber.Trim();
-                farmersList = farmersList.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber)).ToList();
-                _logger.LogInformation("After phone filter: {Count} farmers", farmersList.Count);
+                query = query.Where(f => f.PhoneNumber != null && f.PhoneNumber.Contains(phoneNumber));
             }
 
-            if (!string.IsNullOrWhiteSpace(request.FarmerStatus))
+            if (!string.IsNullOrWhiteSpace(request.FarmerStatus) &&
+                Enum.TryParse<FarmerStatus>(request.FarmerStatus, true, out var statusEnum))
             {
-                if (Enum.TryParse<FarmerStatus>(request.FarmerStatus, true, out var statusEnum))
-                {
-                    farmersList = farmersList.Where(f => f.Status == statusEnum).ToList();
-                    _logger.LogInformation("After status filter: {Count} farmers", farmersList.Count);
-                }
+                query = query.Where(f => f.Status == statusEnum);
             }
 
-            // Order by last activity (newest first), then by creation date
-            farmersList = farmersList
+            // Total count after filtering
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            // Order by last activity (newest first), then by id
+            var response = await query
                 .OrderByDescending(f => f.LastActivityAt ?? DateTime.MinValue)
                 .ThenByDescending(f => f.Id)
-                .ToList();
-
-            // Get total count after filtering
-            var totalCount = farmersList.Count;
-
-            // Apply pagination
-            var pagedFarmers = farmersList
                 .Skip((request.CurrentPage - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .ToList();
-
-            // Map to response
-            var response = pagedFarmers.Select(f => new FarmerListResponse
-            {
-                FarmerId = f.Id,
-                FullName = f.FullName,
-                Email = f.Email,
-                Address = f.Address,
-                PhoneNumber = f.PhoneNumber,
-                FarmCode = f.FarmCode,
-                IsActive = f.IsActive,
-                IsVerified = f.EmailConfirmed,
-                FarmerStatus = f.Status.ToString(),
-                LastActivityAt = f.LastActivityAt,
-                ClusterId = f.ClusterId,
-                ClusterName = f.Cluster?.ClusterName,
-                PlotCount = f.OwnedPlots?.Count ?? 0
-            }).ToList();
+                .Select(f => new FarmerListResponse
+                {
+                    FarmerId = f.Id,
+                    FullName = f.FullName,
+                    Email = f.Email,
+                    Address = f.Address,
+                    PhoneNumber = f.PhoneNumber,
+                    FarmCode = f.FarmCode,
+                    IsActive = f.IsActive,
+                    IsVerified = f.EmailConfirmed,
+                    FarmerStatus = f.Status.ToString(),
+                    LastActivityAt = f.LastActivityAt,
+                    ClusterId = f.ClusterId,
+                    ClusterName = f.Cluster != null ? f.Cluster.ClusterName : null,
+                    PlotCount = f.OwnedPlots.Count
+                })
+                .ToListAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Retrieved {Count} farmers out of {Total} total (Page {Page}/{TotalPages})",

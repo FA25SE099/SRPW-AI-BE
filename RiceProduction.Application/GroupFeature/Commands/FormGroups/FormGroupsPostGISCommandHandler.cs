@@ -14,17 +14,17 @@ namespace RiceProduction.Application.GroupFeature.Commands.FormGroups;
 /// </summary>
 public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand, Result<FormGroupsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<FormGroupsPostGISCommandHandler> _logger;
     private readonly IPostGISGroupFormationService _postGISService;
     private readonly WKTWriter _wktWriter;
 
     public FormGroupsPostGISCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<FormGroupsPostGISCommandHandler> logger,
         IPostGISGroupFormationService postGISService)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
         _postGISService = postGISService;
         _wktWriter = new WKTWriter();
@@ -39,24 +39,30 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
             _logger.LogInformation("Starting PostGIS-based group formation for cluster {ClusterId}, season {SeasonId}, year {Year}",
                 request.ClusterId, request.SeasonId, request.Year);
 
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
-            if (cluster == null)
+            var clusterExists = await _context.Clusters
+                .AsNoTracking()
+                .AnyAsync(c => c.Id == request.ClusterId, cancellationToken);
+            if (!clusterExists)
             {
                 return Result<FormGroupsResponse>.Failure($"Cluster {request.ClusterId} not found");
             }
 
-            var season = await _unitOfWork.Repository<Season>()
-                .FindAsync(s => s.Id == request.SeasonId);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .Where(s => s.Id == request.SeasonId)
+                .Select(s => new { s.Id, s.SeasonName })
+                .FirstOrDefaultAsync(cancellationToken);
             if (season == null)
             {
                 return Result<FormGroupsResponse>.Failure($"Season {request.SeasonId} not found");
             }
 
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .FindAsync(ys => ys.ClusterId == request.ClusterId &&
-                                ys.SeasonId == request.SeasonId &&
-                                ys.Year == request.Year);
+            var yearSeason = await _context.YearSeasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ys => ys.ClusterId == request.ClusterId &&
+                                           ys.SeasonId == request.SeasonId &&
+                                           ys.Year == request.Year,
+                    cancellationToken);
             if (yearSeason == null)
             {
                 return Result<FormGroupsResponse>.Failure(
@@ -64,13 +70,15 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                     "Please create a YearSeason first.");
             }
 
-            var groupRepo = _unitOfWork.Repository<Group>();
-            var existingGroups = await groupRepo.ListAsync(g =>
-                g.ClusterId == request.ClusterId &&
-                g.YearSeasonId == yearSeason.Id &&
-                g.Year == request.Year);
+            var existingGroupsExist = await _context.Groups
+                .AsNoTracking()
+                .AnyAsync(g =>
+                    g.ClusterId == request.ClusterId &&
+                    g.YearSeasonId == yearSeason.Id &&
+                    g.Year == request.Year,
+                    cancellationToken);
 
-            if (existingGroups.Any())
+            if (existingGroupsExist)
             {
                 return Result<FormGroupsResponse>.Failure(
                     $"Groups already exist for this cluster in {season.SeasonName} {request.Year}. " +
@@ -98,13 +106,18 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                 groupingResult.Groups.Count, groupingResult.UngroupedPlots.Count);
 
             var varietyIds = groupingResult.Groups.Select(g => g.RiceVarietyId).Distinct().ToList();
-            var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-                .ListAsync(rv => varietyIds.Contains(rv.Id));
+            if (yearSeason.RiceVarietyId.HasValue && !varietyIds.Contains(yearSeason.RiceVarietyId.Value))
+            {
+                varietyIds.Add(yearSeason.RiceVarietyId.Value);
+            }
+            var riceVarieties = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => varietyIds.Contains(rv.Id))
+                .ToListAsync(cancellationToken);
             var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
 
-            var availableSupervisors = await GetAvailableSupervisorsAsync(request.AutoAssignSupervisors);
+            var availableSupervisors = await GetAvailableSupervisorsAsync(request.AutoAssignSupervisors, cancellationToken);
 
-            var groupPlotRepo = _unitOfWork.Repository<GroupPlot>();
             var createdGroups = new List<Group>();
             var warnings = new List<string>();
             var supervisorIndex = 0;
@@ -137,12 +150,12 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                     }
                 }
 
-                await groupRepo.AddAsync(group);
+                _context.Groups.Add(group);
                 createdGroups.Add(group);
 
                 foreach (var plotId in proposedGroup.PlotIds)
                 {
-                    await groupPlotRepo.AddAsync(new GroupPlot
+                    _context.GroupPlots.Add(new GroupPlot
                     {
                         GroupId = group.Id,
                         PlotId = plotId
@@ -150,13 +163,13 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                 }
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Created {GroupCount} groups for cluster {ClusterId}, season {SeasonId}, year {Year}",
                 createdGroups.Count, request.ClusterId, request.SeasonId, request.Year);
 
-            var supervisorsForResponse = await GetSupervisorNamesAsync(createdGroups);
+            var supervisorsForResponse = await GetSupervisorNamesAsync(createdGroups, cancellationToken);
             var totalPlotsGrouped = createdGroups.Sum(g => g.GroupPlots.Count);
 
             var response = new FormGroupsResponse
@@ -170,14 +183,15 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
                 Groups = createdGroups.Select(g =>
                 {
                     var proposedGroup = groupingResult.Groups.First(pg => pg.PlotIds.SequenceEqual(g.GroupPlots.Select(gp => gp.PlotId)));
-                    var riceVarietyName = g.YearSeason?.RiceVarietyId is Guid varietyId
+                    var effectiveVarietyId = g.YearSeason?.RiceVarietyId ?? yearSeason.RiceVarietyId;
+                    var riceVarietyName = effectiveVarietyId is Guid varietyId
                         ? varietyDict.GetValueOrDefault(varietyId)?.VarietyName ?? "Unknown"
                         : "Not Set";
 
                     return new CreatedGroupDto
                     {
                         GroupId = g.Id,
-                        RiceVarietyId = (Guid)(g.YearSeason?.RiceVarietyId),
+                        RiceVarietyId = effectiveVarietyId ?? proposedGroup.RiceVarietyId,
                         RiceVarietyName = riceVarietyName,
                         SupervisorId = g.SupervisorId,
                         SupervisorName = g.SupervisorId.HasValue ? supervisorsForResponse.GetValueOrDefault(g.SupervisorId.Value) : null,
@@ -230,21 +244,21 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
             BorderBuffer = 10
         };
 
-    private async Task<List<Supervisor>> GetAvailableSupervisorsAsync(bool autoAssignSupervisors)
+    private async Task<List<Supervisor>> GetAvailableSupervisorsAsync(bool autoAssignSupervisors, CancellationToken cancellationToken)
     {
         if (!autoAssignSupervisors)
         {
             return new List<Supervisor>();
         }
 
-        var supervisors = await _unitOfWork.SupervisorRepository.ListAsync(s => s.IsActive);
-        return supervisors
-            .Where(s => s.CurrentFarmerCount < s.MaxFarmerCapacity)
+        return await _context.Supervisors
+            .AsNoTracking()
+            .Where(s => s.IsActive && s.CurrentFarmerCount < s.MaxFarmerCapacity)
             .OrderBy(s => s.CurrentFarmerCount)
-            .ToList();
+            .ToListAsync(cancellationToken);
     }
 
-    private async Task<Dictionary<Guid, string>> GetSupervisorNamesAsync(List<Group> createdGroups)
+    private async Task<Dictionary<Guid, string>> GetSupervisorNamesAsync(List<Group> createdGroups, CancellationToken cancellationToken)
     {
         var supervisorIds = createdGroups
             .Where(g => g.SupervisorId.HasValue)
@@ -257,9 +271,10 @@ public class FormGroupsPostGISCommandHandler : IRequestHandler<FormGroupsCommand
             return new Dictionary<Guid, string>();
         }
 
-        var supervisorsList = await _unitOfWork.SupervisorRepository
-            .ListAsync(s => supervisorIds.Contains(s.Id));
-        return supervisorsList.ToDictionary(s => s.Id, s => s.FullName ?? string.Empty);
+        return await _context.Supervisors
+            .AsNoTracking()
+            .Where(s => supervisorIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.FullName ?? string.Empty, cancellationToken);
     }
 }
 

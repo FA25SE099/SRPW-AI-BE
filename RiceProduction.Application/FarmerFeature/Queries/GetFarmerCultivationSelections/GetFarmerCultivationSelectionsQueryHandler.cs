@@ -10,14 +10,14 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmerCultivationS
 public class GetFarmerCultivationSelectionsQueryHandler 
     : IRequestHandler<GetFarmerCultivationSelectionsQuery, Result<FarmerCultivationSelectionsDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetFarmerCultivationSelectionsQueryHandler> _logger;
 
     public GetFarmerCultivationSelectionsQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetFarmerCultivationSelectionsQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -28,8 +28,7 @@ public class GetFarmerCultivationSelectionsQueryHandler
         try
         {
             // 1. Get YearSeason details
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
                 .AsNoTracking()
                 .Include(ys => ys.Season)
                 .FirstOrDefaultAsync(ys => ys.Id == request.YearSeasonId, cancellationToken);
@@ -40,8 +39,11 @@ public class GetFarmerCultivationSelectionsQueryHandler
             }
 
             // 2. Get the farmer to check their cluster
-            var farmer = await _unitOfWork.FarmerRepository
-                .GetFarmerByIdAsync(request.FarmerId, cancellationToken);
+            var farmer = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => f.Id == request.FarmerId)
+                .Select(f => new { f.Id, f.ClusterId })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (farmer == null)
             {
@@ -59,13 +61,13 @@ public class GetFarmerCultivationSelectionsQueryHandler
             }
 
             // 3. Get all plots belonging to the farmer (no group requirement)
-            var farmerPlots = await _unitOfWork.Repository<Plot>()
-                .GetQueryable()
+            var farmerPlots = await _context.Plots
                 .AsNoTracking()
                 .Where(p => p.FarmerId == request.FarmerId && p.Status == PlotStatus.Active)
+                .Select(p => new { p.Id, p.SoThua, p.SoTo, p.Area })
                 .ToListAsync(cancellationToken);
 
-            if (!farmerPlots.Any())
+            if (farmerPlots.Count == 0)
             {
                 return Result<FarmerCultivationSelectionsDto>.Failure(
                     "No plots found for this farmer");
@@ -73,13 +75,27 @@ public class GetFarmerCultivationSelectionsQueryHandler
 
             // 4. Get existing cultivations for these plots
             var plotIds = farmerPlots.Select(p => p.Id).ToList();
-            var cultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .GetQueryable()
+            var cultivations = await _context.PlotCultivations
                 .AsNoTracking()
-                .Include(pc => pc.Plot)
-                .Include(pc => pc.RiceVariety)
                 .Where(pc => plotIds.Contains(pc.PlotId) && 
                             pc.YearSeasonId == request.YearSeasonId)
+                .Select(pc => new
+                {
+                    pc.PlotId,
+                    pc.RiceVarietyId,
+                    VarietyName = pc.RiceVariety != null ? pc.RiceVariety.VarietyName : null,
+                    BaseGrowthDurationDays = pc.RiceVariety != null ? (int?)pc.RiceVariety.BaseGrowthDurationDays : null,
+                    pc.PlantingDate,
+                    pc.FarmerSelectionDate
+                })
+                .ToListAsync(cancellationToken);
+
+            // Expected yields for the selected varieties (one query instead of one per plot)
+            var varietyIds = cultivations.Select(c => c.RiceVarietyId).Distinct().ToList();
+            var yields = await _context.RiceVarietySeasons
+                .AsNoTracking()
+                .Where(rvs => varietyIds.Contains(rvs.RiceVarietyId) && rvs.SeasonId == yearSeason.SeasonId)
+                .Select(rvs => new { rvs.RiceVarietyId, rvs.ExpectedYieldPerHectare })
                 .ToListAsync(cancellationToken);
 
             // 5. Create selection DTOs
@@ -92,32 +108,30 @@ public class GetFarmerCultivationSelectionsQueryHandler
                 var selection = new PlotCultivationSelectionDto
                 {
                     PlotId = plot.Id,
-                    PlotName ="Thửa "+plot.SoThua+"/"+plot.SoTo,
+                    PlotName = "Thửa " + plot.SoThua + "/" + plot.SoTo,
                     PlotArea = plot.Area,
                     IsConfirmed = cultivation?.FarmerSelectionDate != null,
                     RiceVarietyId = cultivation?.RiceVarietyId,
-                    RiceVarietyName = cultivation?.RiceVariety?.VarietyName,
+                    RiceVarietyName = cultivation?.VarietyName,
                     PlantingDate = cultivation?.PlantingDate,
                     SelectionDate = cultivation?.FarmerSelectionDate
                 };
 
-                if (cultivation?.PlantingDate != null && cultivation.RiceVariety != null)
+                if (cultivation?.PlantingDate != null && cultivation.BaseGrowthDurationDays != null)
                 {
                     selection.EstimatedHarvestDate = cultivation.PlantingDate
-                        .AddDays((double)cultivation.RiceVariety.BaseGrowthDurationDays);
+                        .AddDays((double)cultivation.BaseGrowthDurationDays.Value);
                 }
 
-                if ( cultivation?.RiceVariety != null)
+                if (cultivation != null)
                 {
-                    var riceVarietySeason = await _unitOfWork.Repository<RiceVarietySeason>()
-                        .FindAsync(rvs => 
-                            rvs.RiceVarietyId == cultivation.RiceVarietyId && 
-                            rvs.SeasonId == yearSeason.SeasonId
-                            );
+                    var expectedYield = yields
+                        .FirstOrDefault(rvs => rvs.RiceVarietyId == cultivation.RiceVarietyId)
+                        ?.ExpectedYieldPerHectare;
 
-                    if (riceVarietySeason?.ExpectedYieldPerHectare != null)
+                    if (expectedYield != null)
                     {
-                        selection.ExpectedYield = plot.Area * riceVarietySeason.ExpectedYieldPerHectare.Value;
+                        selection.ExpectedYield = plot.Area * expectedYield.Value;
                     }
                 }
 
@@ -168,4 +182,3 @@ public class GetFarmerCultivationSelectionsQueryHandler
         }
     }
 }
-

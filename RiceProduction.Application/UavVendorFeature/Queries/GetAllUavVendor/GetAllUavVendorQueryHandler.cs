@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 
@@ -5,24 +6,25 @@ namespace RiceProduction.Application.UavVendorFeature.Queries.GetAllUavVendor;
 
 public class GetAllUavVendorQueryHandler : IRequestHandler<GetAllUavVendorQuery, Result<List<UavVendorDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
 
-    public GetAllUavVendorQueryHandler(IUnitOfWork unitOfWork)
+    public GetAllUavVendorQueryHandler(IApplicationDbContext context)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
     }
 
     public async Task<Result<List<UavVendorDto>>> Handle(GetAllUavVendorQuery request, CancellationToken cancellationToken)
     {
-        var vendors = await _unitOfWork.UavVendorRepository.GetAllUavVendorAsync();
-
-        var vendorResponses = vendors.Select(v => new UavVendorDto
-        {
-            Id = v.Id,
-            Name = v.FullName,
-            Address = v.Address,
-            Email = v.Email
-        }).ToList();
+        var vendorResponses = await _context.UavVendors
+            .AsNoTracking()
+            .Select(v => new UavVendorDto
+            {
+                Id = v.Id,
+                Name = v.FullName,
+                Address = v.Address,
+                Email = v.Email
+            })
+            .ToListAsync(cancellationToken);
 
         return Result<List<UavVendorDto>>.Success(vendorResponses);
     }

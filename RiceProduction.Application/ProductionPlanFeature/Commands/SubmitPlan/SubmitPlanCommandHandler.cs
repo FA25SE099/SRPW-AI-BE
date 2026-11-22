@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -10,14 +11,14 @@ namespace RiceProduction.Application.ProductionPlanFeature.Commands.SubmitPlan;
 
 public class SubmitPlanCommandHandler : IRequestHandler<SubmitPlanCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<SubmitPlanCommandHandler> _logger;
 
     public SubmitPlanCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<SubmitPlanCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -32,7 +33,8 @@ public class SubmitPlanCommandHandler : IRequestHandler<SubmitPlanCommand, Resul
                 return Result<Guid>.Failure("Current supervisor user ID not found.", "AuthenticationRequired");
             }
 
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(p => p.Id == request.PlanId);
+            var plan = await _context.ProductionPlans
+                .FirstOrDefaultAsync(p => p.Id == request.PlanId, cancellationToken);
 
             if (plan == null)
             {
@@ -52,8 +54,8 @@ public class SubmitPlanCommandHandler : IRequestHandler<SubmitPlanCommand, Resul
             plan.LastModified = DateTime.UtcNow;
             plan.LastModifiedBy = supervisorId;
 
-            _unitOfWork.Repository<ProductionPlan>().Update(plan);
-            await _unitOfWork.Repository<ProductionPlan>().SaveChangesAsync();
+            _context.ProductionPlans.Update(plan);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Plan {PlanId} submitted for approval by Supervisor {SupervisorId}.",

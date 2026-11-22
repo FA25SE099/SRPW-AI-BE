@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,13 +10,13 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.UpdateRiceVarie
 {
     public class UpdateRiceVarietyCommandHandler : IRequestHandler<UpdateRiceVarietyCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<UpdateRiceVarietyCommandHandler> _logger;
 
-        public UpdateRiceVarietyCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<UpdateRiceVarietyCommandHandler> logger)
+        public UpdateRiceVarietyCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<UpdateRiceVarietyCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,17 +25,17 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.UpdateRiceVarie
         {
             try
             {
-                var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
-                var categoryRepo = _unitOfWork.Repository<RiceVarietyCategory>();
-
-                var variety = await riceVarietyRepo.FindAsync(v => v.Id == request.RiceVarietyId);
+                var variety = await _context.RiceVarieties
+                    .FirstOrDefaultAsync(v => v.Id == request.RiceVarietyId, cancellationToken);
                 if (variety == null)
                 {
                     return Result<Guid>.Failure($"Rice variety with ID {request.RiceVarietyId} not found");
                 }
 
-                var category = await categoryRepo.FindAsync(c => c.Id == request.CategoryId);
-                if (category == null)
+                var categoryExists = await _context.RiceVarietyCategories
+                    .AsNoTracking()
+                    .AnyAsync(c => c.Id == request.CategoryId, cancellationToken);
+                if (!categoryExists)
                 {
                     return Result<Guid>.Failure($"Category with ID {request.CategoryId} not found");
                 }
@@ -47,8 +48,8 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.UpdateRiceVarie
                 variety.Characteristics = request.Characteristics;
                 variety.IsActive = request.IsActive;
 
-                riceVarietyRepo.Update(variety);
-                await _unitOfWork.CompleteAsync();
+                _context.RiceVarieties.Update(variety);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new RiceVarietyChangedEvent(request.RiceVarietyId, ChangeType.Updated), cancellationToken);
 

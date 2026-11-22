@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using RiceProduction.Application.Common.Helpers;
@@ -14,13 +15,13 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
 {
     public class EditPlotCommandHandler : IRequestHandler<EditPlotCommand, Result<UpdatePlotRequest>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly WKTReader _wktReader;
         private readonly ILogger<EditPlotCommandHandler> _logger;
 
-        public EditPlotCommandHandler(IUnitOfWork unitOfWork, ILogger<EditPlotCommandHandler> logger)
+        public EditPlotCommandHandler(IApplicationDbContext context, ILogger<EditPlotCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _wktReader = new WKTReader(new GeometryFactory(new PrecisionModel(), PlotGeometryHelper.Wgs84Srid));
             _logger = logger;
         }
@@ -29,8 +30,8 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
         {
             try
             {
-                var plotRepo = _unitOfWork.Repository<Plot>();
-                var plot = await plotRepo.FindAsync(p => p.Id == request.Request.PlotId);
+                var plot = await _context.Plots
+                    .FirstOrDefaultAsync(p => p.Id == request.Request.PlotId, cancellationToken);
                 if (plot == null)
                 {
                     return Result<UpdatePlotRequest>.Failure("Plot not found");
@@ -87,8 +88,8 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
 
                 plot.Status = request.Request.Status;
 
-                plotRepo.Update(plot);
-                await _unitOfWork.CompleteAsync();
+                _context.Plots.Update(plot);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return Result<UpdatePlotRequest>.Success(request.Request);
             }
@@ -129,8 +130,10 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
 
         private async Task<string?> UpdatePlotGroupAssignmentAsync(Plot plot, Guid groupId, CancellationToken cancellationToken)
         {
-            var targetGroup = await _unitOfWork.Repository<Group>()
-                .FindAsync(g => g.Id == groupId);
+            var targetGroup = await _context.Groups
+                .AsNoTracking()
+                .Include(g => g.YearSeason)
+                .FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
 
             if (targetGroup == null)
             {
@@ -140,23 +143,28 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
             // A plot can belong to multiple groups across seasons, but only one group per season
             if (targetGroup.YearSeason?.SeasonId != null)
             {
-                var existingGroupPlots = await _unitOfWork.Repository<GroupPlot>()
-                    .GetQueryable()
+                var targetSeasonId = targetGroup.YearSeason.SeasonId;
+                var existingGroupPlots = await _context.GroupPlots
                     .Include(gp => gp.Group)
                         .ThenInclude(g => g.YearSeason)
-                    .Where(gp => gp.PlotId == plot.Id && gp.Group.YearSeason != null && gp.Group.YearSeason.SeasonId == targetGroup.YearSeason.SeasonId)
+                    .Where(gp => gp.PlotId == plot.Id &&
+                                 gp.GroupId != groupId &&
+                                 gp.Group.YearSeason != null &&
+                                 gp.Group.YearSeason.SeasonId == targetSeasonId)
                     .ToListAsync(cancellationToken);
 
-                foreach (var gp in existingGroupPlots)
+                if (existingGroupPlots.Any())
                 {
-                    _unitOfWork.Repository<GroupPlot>().Delete(gp);
+                    _context.GroupPlots.RemoveRange(existingGroupPlots);
                 }
             }
 
-            var alreadyInGroup = await _unitOfWork.PlotRepository.IsPlotAssignedToGroupAsync(plot.Id, groupId, cancellationToken);
+            var alreadyInGroup = await _context.GroupPlots
+                .AsNoTracking()
+                .AnyAsync(gp => gp.PlotId == plot.Id && gp.GroupId == groupId, cancellationToken);
             if (!alreadyInGroup)
             {
-                await _unitOfWork.Repository<GroupPlot>().AddAsync(new GroupPlot
+                _context.GroupPlots.Add(new GroupPlot
                 {
                     GroupId = groupId,
                     PlotId = plot.Id
@@ -170,14 +178,20 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
         {
             try
             {
-                var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(plot.FarmerId, cancellationToken);
-                if (farmer == null || !farmer.ClusterId.HasValue)
+                var farmerClusterId = await _context.Farmers
+                    .AsNoTracking()
+                    .Where(f => f.Id == plot.FarmerId)
+                    .Select(f => f.ClusterId)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (!farmerClusterId.HasValue)
                 {
                     return (true, "Farmer not assigned to cluster");
                 }
 
-                var allSeasons = await _unitOfWork.Repository<Season>().ListAllAsync();
-                var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now);
+                var allSeasons = await _context.Seasons
+                    .AsNoTracking()
+                    .ToListAsync(cancellationToken);
+                var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.UtcNow);
                 if (resolvedSeason == null)
                 {
                     return (true, "No active season");
@@ -185,19 +199,21 @@ namespace RiceProduction.Application.PlotFeature.Commands.EditPlot
 
                 var (currentSeason, currentYear) = resolvedSeason.Value;
 
-                var yearSeasons = await _unitOfWork.Repository<YearSeason>()
-                    .ListAsync(ys => ys.ClusterId == farmer.ClusterId.Value
-                              && ys.SeasonId == currentSeason.Id
-                              && ys.Year == currentYear);
+                var yearSeason = await _context.YearSeasons
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(ys => ys.ClusterId == farmerClusterId.Value
+                                            && ys.SeasonId == currentSeason.Id
+                                            && ys.Year == currentYear,
+                                         cancellationToken);
 
-                var yearSeason = yearSeasons.FirstOrDefault();
                 if (yearSeason == null)
                 {
                     return (true, "No active year-season for cluster");
                 }
 
-                var isInGroup = await _unitOfWork.PlotRepository
-                    .IsPlotAssignedToGroupForYearSeasonAsync(plot.Id, yearSeason.Id, cancellationToken);
+                var isInGroup = await _context.GroupPlots
+                    .AsNoTracking()
+                    .AnyAsync(gp => gp.PlotId == plot.Id && gp.Group.YearSeasonId == yearSeason.Id, cancellationToken);
 
                 if (isInGroup)
                 {

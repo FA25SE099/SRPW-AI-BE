@@ -4,6 +4,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
@@ -17,14 +18,14 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
     public class GetAllPlotQueriesHandler : IRequestHandler<GetAllPlotQueries, PagedResult<IEnumerable<PlotDTO>>>
     {
         private readonly ILogger<GetAllPlotQueriesHandler> _logger;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
 
         public GetAllPlotQueriesHandler(
             ILogger<GetAllPlotQueriesHandler> logger,
-            IUnitOfWork unitOfWork)
+            IApplicationDbContext context)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+            _context = context ?? throw new ArgumentNullException(nameof(context));
         }
 
         public async Task<PagedResult<IEnumerable<PlotDTO>>> Handle(GetAllPlotQueries request, CancellationToken cancellationToken)
@@ -37,14 +38,19 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                     "Fetching plots - Page: {PageNumber}, PageSize: {PageSize}, SearchTerm: '{SearchTerm}', ClusterManagerId: {ClusterManagerId}",
                     request.PageNumber, request.PageSize, request.SearchTerm?.Trim(), request.ClusterManagerId);
 
-                Expression<Func<Plot, bool>> predicate = p => p.Status == PlotStatus.Active;
+                var query = _context.Plots
+                    .AsNoTracking()
+                    .Where(p => p.Status == PlotStatus.Active);
 
                 if (request.ClusterManagerId.HasValue)
                 {
-                    var clusterManager = await _unitOfWork.ClusterManagerRepository
-                        .GetClusterManagerByIdAsync(request.ClusterManagerId.Value, cancellationToken);
+                    var managerExists = await _context.ClusterManagers
+                        .AsNoTracking()
+                        .Where(cm => cm.Id == request.ClusterManagerId.Value)
+                        .Select(cm => new { cm.ClusterId })
+                        .FirstOrDefaultAsync(cancellationToken);
 
-                    if (clusterManager == null)
+                    if (managerExists == null)
                     {
                         _logger.LogWarning("ClusterManager Id {ClusterManagerId} not found.", request.ClusterManagerId);
                         return PagedResult<IEnumerable<PlotDTO>>.Success(
@@ -55,27 +61,33 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                             message: "No cluster manager found with the provided ID.");
                     }
 
-                    var targetClusterId = clusterManager.ClusterId;
-                    predicate = predicate.And(p => p.Farmer != null && p.Farmer.ClusterId == targetClusterId);
+                    var targetClusterId = managerExists.ClusterId;
+                    query = query.Where(p => p.Farmer != null && p.Farmer.ClusterId == targetClusterId);
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.SearchTerm))
                 {
                     var search = request.SearchTerm.Trim();
+                    var searchLower = search.ToLower();
 
-                    predicate = predicate.And(p =>
+                    query = query.Where(p =>
                         (p.SoThua.HasValue && p.SoThua.Value.ToString().Contains(search)) ||
                         (p.SoTo.HasValue && p.SoTo.Value.ToString().Contains(search)) ||
-                        (p.Farmer != null && !string.IsNullOrEmpty(p.Farmer.FullName) && p.Farmer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase))
-                    );
+                        (p.Farmer != null && p.Farmer.FullName != null && p.Farmer.FullName.ToLower().Contains(searchLower)));
                 }
 
-                var (items, totalCount) = await _unitOfWork.PlotRepository
-                    .GetAllPlotPagedAsync(
-                        pageNumber: request.PageNumber,
-                        pageSize: request.PageSize,
-                        predicate: predicate,
-                        cancellationToken: cancellationToken);
+                var totalCount = await query.CountAsync(cancellationToken);
+
+                var items = await query
+                    .Include(p => p.Farmer)
+                    .Include(p => p.PlotCultivations).ThenInclude(pc => pc.RiceVariety)
+                    .Include(p => p.PlotCultivations).ThenInclude(pc => pc.Season)
+                    .AsSplitQuery()
+                    .OrderByDescending(p => p.SoThua)
+                    .ThenBy(p => p.Id)
+                    .Skip((request.PageNumber - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .ToListAsync(cancellationToken);
 
                 var plotDTOs = items.Select(p => p.ToDto()).ToList();
 
@@ -108,10 +120,13 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                 }
 
                 var farmerIds = plotDTOs.Select(p => p.FarmerId).Distinct().ToList();
-                var farmers = await _unitOfWork.FarmerRepository.FindAsync(f => farmerIds.Contains(f.Id), cancellationToken);
-                var farmerClusterMap = farmers.ToDictionary(f => f.Id, f => f.ClusterId);
+                var farmerClusterMap = await _context.Farmers
+                    .AsNoTracking()
+                    .Where(f => farmerIds.Contains(f.Id))
+                    .Select(f => new { f.Id, f.ClusterId })
+                    .ToDictionaryAsync(f => f.Id, f => f.ClusterId, cancellationToken);
 
-                var allSeasons = await _unitOfWork.Repository<Season>().ListAllAsync();
+                var allSeasons = await _context.Seasons.AsNoTracking().ToListAsync(cancellationToken);
                 var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, DateTime.Now);
 
                 if (resolvedSeason == null)
@@ -134,12 +149,30 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                     return;
                 }
 
-                var yearSeasons = await _unitOfWork.Repository<YearSeason>()
-                    .ListAsync(ys => clusterIds.Contains(ys.ClusterId)
-                              && ys.SeasonId == currentSeason.Id
-                              && ys.Year == currentYear);
+                var seasonId = currentSeason.Id;
+                var clusterYearSeasonMap = (await _context.YearSeasons
+                    .AsNoTracking()
+                    .Where(ys => clusterIds.Contains(ys.ClusterId)
+                              && ys.SeasonId == seasonId
+                              && ys.Year == currentYear)
+                    .Select(ys => new { ys.ClusterId, ys.Id })
+                    .ToListAsync(cancellationToken))
+                    .GroupBy(ys => ys.ClusterId)
+                    .ToDictionary(g => g.Key, g => g.First().Id);
 
-                var clusterYearSeasonMap = yearSeasons.ToDictionary(ys => ys.ClusterId, ys => ys.Id);
+                // Single query for all (plot, yearSeason) group assignments instead of one query per plot.
+                var plotIds = plotDTOs.Select(p => p.PlotId).Distinct().ToList();
+                var yearSeasonIds = clusterYearSeasonMap.Values.Distinct().ToList();
+                var assignedPairs = (await _context.GroupPlots
+                    .AsNoTracking()
+                    .Where(gp => plotIds.Contains(gp.PlotId)
+                              && gp.Group.YearSeasonId.HasValue
+                              && yearSeasonIds.Contains(gp.Group.YearSeasonId.Value))
+                    .Select(gp => new { gp.PlotId, YearSeasonId = gp.Group.YearSeasonId!.Value })
+                    .Distinct()
+                    .ToListAsync(cancellationToken))
+                    .Select(x => (x.PlotId, x.YearSeasonId))
+                    .ToHashSet();
 
                 foreach (var plot in plotDTOs)
                 {
@@ -166,8 +199,7 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetAll
                         continue;
                     }
 
-                    var isInGroup = await _unitOfWork.PlotRepository
-                        .IsPlotAssignedToGroupForYearSeasonAsync(plot.PlotId, yearSeasonId, cancellationToken);
+                    var isInGroup = assignedPairs.Contains((plot.PlotId, yearSeasonId));
 
                     plot.IsEditableInCurrentSeason = !isInGroup;
                     plot.EditabilityNote = isInGroup

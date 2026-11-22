@@ -16,14 +16,14 @@ namespace RiceProduction.Application.ProductionPlanFeature.Commands.CreateProduc
 public class CreateProductionPlanCommandHandler : 
     IRequestHandler<CreateProductionPlanCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CreateProductionPlanCommandHandler> _logger;
 
     public CreateProductionPlanCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<CreateProductionPlanCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -32,11 +32,14 @@ public class CreateProductionPlanCommandHandler :
         try
         {
             decimal effectiveTotalArea;
-            var currentUtc = DateTime.UtcNow; 
 
             if (request.GroupId.HasValue)
             {
-                var group = await _unitOfWork.Repository<Group>().FindAsync(g => g.Id == request.GroupId.Value);
+                var group = await _context.Groups
+                    .AsNoTracking()
+                    .Where(g => g.Id == request.GroupId.Value)
+                    .Select(g => new { g.Id, g.TotalArea })
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 if (group == null)
                 {
@@ -79,9 +82,21 @@ public class CreateProductionPlanCommandHandler :
 
             var priceReferenceDate = DateTime.SpecifyKind(request.BasePlantingDate.Date, DateTimeKind.Utc);
 
-            var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate
-            );
+            var materialDetailsMap = materialIds.Any()
+                ? await _context.Materials
+                    .AsNoTracking()
+                    .Where(m => materialIds.Contains(m.Id))
+                    .ToDictionaryAsync(m => m.Id, cancellationToken)
+                : new Dictionary<Guid, Material>();
+
+            var potentialPrices = materialIds.Any()
+                ? await _context.MaterialPrices
+                    .AsNoTracking()
+                    .Where(p => materialIds.Contains(p.MaterialId) &&
+                                p.ValidFrom.Date <= priceReferenceDate &&
+                                (!p.ValidTo.HasValue || p.ValidTo.Value.Date >= priceReferenceDate.Date))
+                    .ToListAsync(cancellationToken)
+                : new List<MaterialPrice>();
 
             var materialPriceMap = potentialPrices
                 .GroupBy(p => p.MaterialId)
@@ -130,7 +145,7 @@ public class CreateProductionPlanCommandHandler :
 
                     foreach (var materialDto in taskDto.Materials)
                     {
-                        var materialDetail = await _unitOfWork.Repository<Material>().FindAsync(m => m.Id == materialDto.MaterialId);
+                        materialDetailsMap.TryGetValue(materialDto.MaterialId, out var materialDetail);
                         
                         var material = new ProductionPlanTaskMaterial
                         {
@@ -142,7 +157,7 @@ public class CreateProductionPlanCommandHandler :
                         decimal unitPrice = materialPriceMap.GetValueOrDefault(materialDto.MaterialId, 0M);
                         decimal estimatedAmount = 0M;
 
-                        if (materialDetail != null && materialDetail.AmmountPerMaterial.HasValue && unitPrice > 0)
+                        if (materialDetail != null && materialDetail.AmmountPerMaterial is > 0 && unitPrice > 0)
                         {
                             decimal amountPerUnit = materialDetail.AmmountPerMaterial.Value;
                             
@@ -165,11 +180,11 @@ public class CreateProductionPlanCommandHandler :
                 }
             }
             
-            await _unitOfWork.Repository<ProductionPlan>().AddAsync(plan);
-            await _unitOfWork.Repository<ProductionStage>().AddRangeAsync(planStages);
-            await _unitOfWork.Repository<ProductionPlanTask>().AddRangeAsync(allPlanTasks);
+            _context.ProductionPlans.Add(plan);
+            _context.ProductionStages.AddRange(planStages);
+            _context.ProductionPlanTasks.AddRange(allPlanTasks);
 
-            await _unitOfWork.Repository<ProductionPlan>().SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Successfully created new ProductionPlan with ID {PlanId}, {StageCount} stages, and {TaskCount} tasks. Area used: {Area}", plan.Id, planStages.Count, allPlanTasks.Count, effectiveTotalArea);
 

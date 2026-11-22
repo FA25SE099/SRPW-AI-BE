@@ -10,18 +10,18 @@ namespace RiceProduction.Application.FarmerFeature.Commands.SelectCultivationPre
 public class SelectCultivationPreferencesCommandHandler
     : IRequestHandler<SelectCultivationPreferencesCommand, Result<CultivationPreferenceDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _currentUser;
     private readonly IMediator _mediator;
     private readonly ILogger<SelectCultivationPreferencesCommandHandler> _logger;
 
     public SelectCultivationPreferencesCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser currentUser,
         IMediator mediator,
         ILogger<SelectCultivationPreferencesCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _currentUser = currentUser;
         _mediator = mediator;
         _logger = logger;
@@ -54,8 +54,8 @@ public class SelectCultivationPreferencesCommandHandler
                 return Result<CultivationPreferenceDto>.Failure($"Validation failed: {errorMessages}");
             }
 
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
+                .AsNoTracking()
                 .Include(ys => ys.Season)
                 .FirstOrDefaultAsync(ys => ys.Id == request.YearSeasonId, cancellationToken);
 
@@ -64,10 +64,11 @@ public class SelectCultivationPreferencesCommandHandler
                 return Result<CultivationPreferenceDto>.Failure("Year Season not found");
             }
 
-            var plot = await _unitOfWork.Repository<Plot>()
-                .GetQueryable()
-                .Include(p => p.Farmer)
-                .FirstOrDefaultAsync(p => p.Id == request.PlotId, cancellationToken);
+            var plot = await _context.Plots
+                .AsNoTracking()
+                .Where(p => p.Id == request.PlotId)
+                .Select(p => new { p.Id, p.FarmerId, p.Area })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (plot == null)
             {
@@ -79,16 +80,19 @@ public class SelectCultivationPreferencesCommandHandler
                 return Result<CultivationPreferenceDto>.Failure("You do not have permission to select cultivation for this plot");
             }
 
-            var riceVariety = await _unitOfWork.Repository<RiceVariety>()
-                .FindAsync(rv => rv.Id == request.RiceVarietyId);
+            var riceVariety = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => rv.Id == request.RiceVarietyId)
+                .Select(rv => new { rv.Id, rv.VarietyName })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (riceVariety == null)
             {
                 return Result<CultivationPreferenceDto>.Failure("Rice variety not found");
             }
 
-            var (plotCultivation, isUpdate) = await UpsertPlotCultivationAsync(request, yearSeason, plot, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var (plotCultivation, isUpdate) = await UpsertPlotCultivationAsync(request, yearSeason, plot.Area, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             await EnsureInitialCultivationVersionAsync(plotCultivation, yearSeason, isUpdate, cancellationToken);
 
@@ -127,12 +131,10 @@ public class SelectCultivationPreferencesCommandHandler
     private async Task<(PlotCultivation Cultivation, bool IsUpdate)> UpsertPlotCultivationAsync(
         SelectCultivationPreferencesCommand request,
         YearSeason yearSeason,
-        Plot plot,
+        decimal plotArea,
         CancellationToken cancellationToken)
     {
-        var plotCultivationRepo = _unitOfWork.Repository<PlotCultivation>();
-        var existingCultivation = await plotCultivationRepo
-            .GetQueryable()
+        var existingCultivation = await _context.PlotCultivations
             .FirstOrDefaultAsync(pc =>
                 pc.PlotId == request.PlotId &&
                 pc.YearSeasonId == request.YearSeasonId,
@@ -149,7 +151,7 @@ public class SelectCultivationPreferencesCommandHandler
             existingCultivation.FarmerSelectionDate = DateTime.UtcNow;
             existingCultivation.Status = CultivationStatus.Planned;
 
-            plotCultivationRepo.Update(existingCultivation);
+            _context.PlotCultivations.Update(existingCultivation);
             return (existingCultivation, true);
         }
 
@@ -166,10 +168,10 @@ public class SelectCultivationPreferencesCommandHandler
             PlantingDate = request.PreferredPlantingDate,
             FarmerSelectionDate = DateTime.UtcNow,
             Status = CultivationStatus.Planned,
-            Area = plot.Area
+            Area = plotArea
         };
 
-        await plotCultivationRepo.AddAsync(plotCultivation);
+        _context.PlotCultivations.Add(plotCultivation);
         return (plotCultivation, false);
     }
 
@@ -179,14 +181,14 @@ public class SelectCultivationPreferencesCommandHandler
         bool isUpdate,
         CancellationToken cancellationToken)
     {
-        var cultivationVersionRepo = _unitOfWork.Repository<CultivationVersion>();
-        var existingVersion = await cultivationVersionRepo.GetQueryable()
-            .FirstOrDefaultAsync(v =>
+        var existingVersion = await _context.CultivationVersions
+            .AsNoTracking()
+            .AnyAsync(v =>
                 v.PlotCultivationId == plotCultivation.Id &&
                 v.VersionName == "0",
                 cancellationToken);
 
-        if (existingVersion != null)
+        if (existingVersion)
         {
             return;
         }
@@ -203,8 +205,8 @@ public class SelectCultivationPreferencesCommandHandler
             ActivatedAt = DateTime.UtcNow
         };
 
-        await cultivationVersionRepo.AddAsync(firstVersion);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _context.CultivationVersions.Add(firstVersion);
+        await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Created initial CultivationVersion '0' for PlotCultivation {PlotCultivationId}",

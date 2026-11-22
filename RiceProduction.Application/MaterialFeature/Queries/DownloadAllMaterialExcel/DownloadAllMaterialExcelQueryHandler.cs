@@ -1,4 +1,5 @@
-﻿using RiceProduction.Application.Common.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
@@ -14,12 +15,12 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
 {
     public class DownloadAllMaterialExcelQueryHandler : IRequestHandler<DownloadAllMaterialExcelQuery, Result<FileExportResult>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IGenericExcel _genericExcel;
 
-        public DownloadAllMaterialExcelQueryHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
+        public DownloadAllMaterialExcelQueryHandler(IApplicationDbContext context, IGenericExcel genericExcel)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _genericExcel = genericExcel;
         }
 
@@ -27,13 +28,28 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
         {
             try
             {
-                var materialRepo = await _unitOfWork.Repository<Material>().ListAsync(
-                    filter: m => m.IsActive,
-                    orderBy: q => q.OrderBy(m => m.Name));
-                var materialPriceRepoList = await _unitOfWork.Repository<MaterialPrice>().ListAsync();
+                var currentDate = DateTime.UtcNow;
 
-                var currentDate = DateTime.Now;
-                var materialResponses = materialRepo
+                var materials = await _context.Materials
+                    .AsNoTracking()
+                    .Where(m => m.IsActive)
+                    .OrderBy(m => m.Name)
+                    .ToListAsync(cancellationToken);
+
+                var materialIds = materials.Select(m => m.Id).ToList();
+                var prices = await _context.MaterialPrices
+                    .AsNoTracking()
+                    .Where(p => materialIds.Contains(p.MaterialId)
+                        && p.ValidFrom <= currentDate
+                        && (!p.ValidTo.HasValue || p.ValidTo.Value >= currentDate.Date))
+                    .Select(p => new { p.MaterialId, p.ValidFrom, p.PricePerMaterial })
+                    .ToListAsync(cancellationToken);
+
+                var latestPriceByMaterial = prices
+                    .GroupBy(p => p.MaterialId)
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.ValidFrom).First().PricePerMaterial);
+
+                var materialResponses = materials
                     .Select(m => new MaterialResponseInVietnamese()
                     {
                         MaterialId = m.Id,
@@ -41,14 +57,7 @@ namespace RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterial
                         Type = m.Type,
                         AmmountPerMaterial = m.AmmountPerMaterial,
                         Showout = m.AmmountPerMaterial.ToString() + m.Unit,
-                        PricePerMaterial = materialPriceRepoList
-                        .Where(p => p.MaterialId == m.Id
-                        && m.IsActive
-                        && (p.ValidFrom.CompareTo(currentDate) <= 0)
-                        && (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))
-                             )
-                        .OrderByDescending(p => p.ValidFrom)
-                        .FirstOrDefault()?.PricePerMaterial ?? 0,
+                        PricePerMaterial = latestPriceByMaterial.TryGetValue(m.Id, out var price) ? price : 0,
                         Unit = m.Unit,
                         Description = m.Description,
                         Manufacturer = m.Manufacturer,

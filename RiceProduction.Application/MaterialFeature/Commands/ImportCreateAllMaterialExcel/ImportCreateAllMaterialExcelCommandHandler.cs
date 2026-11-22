@@ -1,4 +1,5 @@
-﻿using RiceProduction.Application.Common.Interfaces;
+﻿using Microsoft.EntityFrameworkCore;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Request.MaterialRequests;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
@@ -9,12 +10,12 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
     public class ImportCreateAllMaterialExcelCommandHandler : IRequestHandler<ImportCreateAllMaterialExcelCommand,
         Result<List<MaterialResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IGenericExcel _genericExcel;
 
-        public ImportCreateAllMaterialExcelCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
+        public ImportCreateAllMaterialExcelCommandHandler(IApplicationDbContext context, IGenericExcel genericExcel)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _genericExcel = genericExcel;
         }
 
@@ -37,30 +38,29 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
                         $"Excel validation failed:\n{string.Join("\n", validationErrors)}");
                 }
 
-                var duplicateName = await FindDuplicateMaterialNameAsync(materialListCreateInput);
+                var duplicateName = await FindDuplicateMaterialNameAsync(materialListCreateInput, cancellationToken);
                 if (duplicateName != null)
                 {
                     return Result<List<MaterialResponse>>.Failure(
                         $"The uploaded Excel file contain duplicate material in the system, material name {duplicateName}. Please check again!");
                 }
 
-                var materialRepo = _unitOfWork.Repository<Material>();
                 var materialList = new List<Material>();
                 foreach (var material in materialListCreateInput)
                 {
-                    var id = await materialRepo.GenerateNewGuid(Guid.NewGuid());
+                    var id = Guid.NewGuid();
                     materialList.Add(CreateMaterialEntity(id, material, request.ImportDate));
                 }
 
-                await materialRepo.AddRangeAsync(materialList);
+                _context.Materials.AddRange(materialList);
 
-                var result = await _unitOfWork.CompleteAsync();
+                var result = await _context.SaveChangesAsync(cancellationToken);
                 if (result <= 0)
                 {
                     return Result<List<MaterialResponse>>.Failure("Failed to import materials.");
                 }
 
-                var materialCreateSuccessList = await BuildMaterialResponsesAsync(materialList);
+                var materialCreateSuccessList = BuildMaterialResponses(materialList);
 
                 return Result<List<MaterialResponse>>.Success(
                     materialCreateSuccessList,
@@ -119,21 +119,24 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
             return validationErrors;
         }
 
-        private async Task<string?> FindDuplicateMaterialNameAsync(List<MaterialCreateRequest> materials)
+        private async Task<string?> FindDuplicateMaterialNameAsync(
+            List<MaterialCreateRequest> materials,
+            CancellationToken cancellationToken)
         {
-            var materialRepo = _unitOfWork.Repository<Material>();
-
             foreach (var material in materials)
             {
-                var duplicate = await materialRepo.FindAsync(m =>
-                    m.Name == material.Name &&
-                    m.Type == material.Type &&
-                    m.AmmountPerMaterial == material.AmmountPerMaterial &&
-                    m.Unit == material.Unit &&
-                    m.Description == material.Description &&
-                    m.Manufacturer == material.Manufacturer);
+                var duplicate = await _context.Materials
+                    .AsNoTracking()
+                    .AnyAsync(m =>
+                        m.Name == material.Name &&
+                        m.Type == material.Type &&
+                        m.AmmountPerMaterial == material.AmmountPerMaterial &&
+                        m.Unit == material.Unit &&
+                        m.Description == material.Description &&
+                        m.Manufacturer == material.Manufacturer,
+                        cancellationToken);
 
-                if (duplicate != null)
+                if (duplicate)
                 {
                     return material.Name;
                 }
@@ -166,15 +169,13 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportCreateAllMat
                 IsPartition = false
             };
 
-        private async Task<List<MaterialResponse>> BuildMaterialResponsesAsync(List<Material> materials)
+        private static List<MaterialResponse> BuildMaterialResponses(List<Material> materials)
         {
-            var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
-            var responses = new List<MaterialResponse>();
+            var responses = new List<MaterialResponse>(materials.Count);
 
             foreach (var material in materials)
             {
-                var prices = await materialPriceRepo.ListAsync(p => p.MaterialId == material.Id);
-                var latestPrice = prices
+                var latestPrice = material.MaterialPrices
                     .OrderByDescending(p => p.ValidFrom)
                     .FirstOrDefault()?.PricePerMaterial ?? 0;
 

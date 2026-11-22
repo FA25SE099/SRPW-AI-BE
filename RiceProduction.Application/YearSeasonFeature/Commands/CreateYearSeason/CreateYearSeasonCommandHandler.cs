@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -9,16 +10,16 @@ namespace RiceProduction.Application.YearSeasonFeature.Commands.CreateYearSeason
 
 public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _user;
     private readonly ILogger<CreateYearSeasonCommandHandler> _logger;
 
     public CreateYearSeasonCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser user,
         ILogger<CreateYearSeasonCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _user = user;
         _logger = logger;
     }
@@ -27,25 +28,28 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
     {
         try
         {
-            var yearSeasonRepo = _unitOfWork.Repository<YearSeason>();
-
-            var season = await _unitOfWork.Repository<Season>().GetEntityByIdAsync(request.SeasonId);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .Where(s => s.Id == request.SeasonId)
+                .Select(s => new { s.Id, s.SeasonName, s.StartDate, s.EndDate })
+                .FirstOrDefaultAsync(cancellationToken);
             if (season == null)
             {
                 return Result<Guid>.Failure("Season not found");
             }
 
-            var cluster = await _unitOfWork.Repository<Cluster>().GetEntityByIdAsync(request.ClusterId);
-            if (cluster == null)
+            var clusterExists = await _context.Clusters
+                .AnyAsync(c => c.Id == request.ClusterId, cancellationToken);
+            if (!clusterExists)
             {
                 return Result<Guid>.Failure("Cluster not found");
             }
 
-            RiceVariety? riceVariety = null;
             if (request.RiceVarietyId.HasValue)
             {
-                riceVariety = await _unitOfWork.Repository<RiceVariety>().GetEntityByIdAsync(request.RiceVarietyId.Value);
-                if (riceVariety == null)
+                var riceVarietyExists = await _context.RiceVarieties
+                    .AnyAsync(rv => rv.Id == request.RiceVarietyId.Value, cancellationToken);
+                if (!riceVarietyExists)
                 {
                     return Result<Guid>.Failure("Rice variety not found");
                 }
@@ -55,12 +59,13 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
                 return Result<Guid>.Failure("Rice variety must be provided when farmer selection is disabled");
             }
 
-            var duplicate = await yearSeasonRepo.FindAsync(ys =>
+            var duplicate = await _context.YearSeasons.AnyAsync(ys =>
                 ys.ClusterId == request.ClusterId &&
                 ys.SeasonId == request.SeasonId &&
-                ys.Year == request.Year);
+                ys.Year == request.Year,
+                cancellationToken);
 
-            if (duplicate != null)
+            if (duplicate)
             {
                 return Result<Guid>.Failure($"YearSeason already exists for {season.SeasonName} {request.Year} in this cluster");
             }
@@ -100,14 +105,15 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
             Guid? expertId = null;
             if (userId.HasValue)
             {
-                var expert = await _unitOfWork.AgronomyExpertRepository.GetAgronomyExpertByIdAsync(userId.Value);
-                if (expert != null)
+                var expertExists = await _context.AgronomyExperts
+                    .AnyAsync(e => e.Id == userId.Value, cancellationToken);
+                if (expertExists)
                 {
-                    expertId = expert.Id;
+                    expertId = userId.Value;
                 }
             }
 
-            var id = await yearSeasonRepo.GenerateNewGuid(Guid.NewGuid());
+            var id = Guid.NewGuid();
             var newYearSeason = new YearSeason
             {
                 Id = id,
@@ -129,8 +135,8 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
                 Notes = request.Notes
             };
 
-            await yearSeasonRepo.AddAsync(newYearSeason);
-            await _unitOfWork.CompleteAsync();
+            _context.YearSeasons.Add(newYearSeason);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Created YearSeason with ID: {YearSeasonId} for Cluster: {ClusterId}, Season: {SeasonId}, Year: {Year}",
                 id, request.ClusterId, request.SeasonId, request.Year);
@@ -152,7 +158,7 @@ public class CreateYearSeasonCommandHandler : IRequestHandler<CreateYearSeasonCo
         var parts = mmddString.Split('/');
         var month = int.Parse(parts[0]);
         var day = int.Parse(parts[1]);
-        return new DateTime(year, month, day);
+        return new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
     }
 }
 

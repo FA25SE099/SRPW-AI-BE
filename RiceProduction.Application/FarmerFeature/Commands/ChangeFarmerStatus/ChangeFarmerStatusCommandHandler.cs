@@ -9,14 +9,14 @@ namespace RiceProduction.Application.FarmerFeature.Commands.ChangeFarmerStatus;
 
 public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStatusCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ChangeFarmerStatusCommandHandler> _logger;
 
     public ChangeFarmerStatusCommandHandler(
-        IUnitOfWork _unitOfWork,
+        IApplicationDbContext context,
         ILogger<ChangeFarmerStatusCommandHandler> logger)
     {
-        this._unitOfWork = _unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -26,8 +26,8 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
     {
         try
         {
-            // Get farmer using FarmerRepository
-            var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.FarmerId, cancellationToken);
+            var farmer = await _context.Farmers
+                .FirstOrDefaultAsync(f => f.Id == request.FarmerId, cancellationToken);
 
             if (farmer == null)
             {
@@ -59,8 +59,9 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
             // If changing to NotAllowed or Resigned, deactivate assignments
             if (request.NewStatus == FarmerStatus.NotAllowed || request.NewStatus == FarmerStatus.Resigned)
             {
-                var assignments = await _unitOfWork.Repository<SupervisorFarmerAssignment>()
-                    .ListAsync(sfa => sfa.FarmerId == request.FarmerId && sfa.IsActive);
+                var assignments = await _context.SupervisorFarmerAssignments
+                    .Where(sfa => sfa.FarmerId == request.FarmerId && sfa.IsActive)
+                    .ToListAsync(cancellationToken);
 
                 foreach (var assignment in assignments)
                 {
@@ -86,7 +87,7 @@ public class ChangeFarmerStatusCommandHandler : IRequestHandler<ChangeFarmerStat
                     request.FarmerId);
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             var message = $"Farmer status successfully changed from {oldStatus} to {request.NewStatus}.";
 

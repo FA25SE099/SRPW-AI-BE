@@ -9,16 +9,16 @@ namespace RiceProduction.Application.ProductionPlanFeature.Commands.ApproveRejec
 public class ApproveRejectPlanCommandHandler :
     IRequestHandler<ApproveRejectPlanCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ApproveRejectPlanCommandHandler> _logger;
     private readonly IMediator _mediator;
     public ApproveRejectPlanCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ApproveRejectPlanCommandHandler> logger,
         IMediator mediator
         ) 
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
         _mediator = mediator;
     }
@@ -27,7 +27,8 @@ public class ApproveRejectPlanCommandHandler :
     {
         try
         {
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(p => p.Id == request.PlanId);
+            var plan = await _context.ProductionPlans
+                .FirstOrDefaultAsync(p => p.Id == request.PlanId, cancellationToken);
 
             var expertId = request.ExpertId;
 
@@ -60,8 +61,8 @@ public class ApproveRejectPlanCommandHandler :
                 _logger.LogInformation("Plan {PlanId} rejected by Expert {ExpertId}. Reason: {Notes}", plan.Id, expertId, request.Notes);
             }
 
-            _unitOfWork.Repository<ProductionPlan>().Update(plan);
-            await _unitOfWork.Repository<ProductionPlan>().SaveChangesAsync();
+            _context.ProductionPlans.Update(plan);
+            await _context.SaveChangesAsync(cancellationToken);
 
             string action = request.Approved ? "Approved" : "Rejected";
             if (request.Approved)

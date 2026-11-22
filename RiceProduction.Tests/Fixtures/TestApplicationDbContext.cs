@@ -15,6 +15,22 @@ public sealed class TestApplicationDbContext : IdentityDbContext<ApplicationUser
     {
     }
 
+    /// <summary>
+    /// Optional exception thrown when <see cref="SaveChangesAsync"/> is invoked,
+    /// useful for testing database failure handling paths.
+    /// </summary>
+    public Exception? SaveChangesException { get; set; }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        if (SaveChangesException != null)
+        {
+            throw SaveChangesException;
+        }
+
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
     public static TestApplicationDbContext Create(string? databaseName = null)
     {
         var options = new DbContextOptionsBuilder<TestApplicationDbContext>()

@@ -1,42 +1,37 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Application.PestProtocolFeature.Commands.CreatePestProtocol;
 
 public class CreatePestProtocolCommandHandler : IRequestHandler<CreatePestProtocolCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IUser _currentUser;
-    private readonly IMediator _mediator;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CreatePestProtocolCommandHandler> _logger;
 
     public CreatePestProtocolCommandHandler(
-        IUnitOfWork unitOfWork,
-        IUser currentUser,
-        IMediator mediator,
+        IApplicationDbContext context,
         ILogger<CreatePestProtocolCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
-        _currentUser = currentUser;
-        _mediator = mediator;
+        _context = context;
         _logger = logger;
     }
 
     public async Task<Result<Guid>> Handle(CreatePestProtocolCommand request, CancellationToken cancellationToken)
     {
-
         try
         {
-            // 2. Check for duplicate pest protocol name
-            var duplicateExists = await _unitOfWork.Repository<PestProtocol>()
-                .ExistsAsync(p => p.Name.ToLower() == request.Name.ToLower());
+            // 1. Check for duplicate pest protocol name
+            var normalizedName = request.Name.Trim().ToLower();
+            var duplicateExists = await _context.PestProtocols
+                .AsNoTracking()
+                .AnyAsync(p => p.Name.ToLower() == normalizedName, cancellationToken);
 
             if (duplicateExists)
             {
@@ -45,7 +40,7 @@ public class CreatePestProtocolCommandHandler : IRequestHandler<CreatePestProtoc
                     "DuplicatePestProtocolName");
             }
 
-            // 3. Create the PestProtocol entity
+            // 2. Create the PestProtocol entity
             var pestProtocol = new PestProtocol
             {
                 Name = request.Name.Trim(),
@@ -58,10 +53,9 @@ public class CreatePestProtocolCommandHandler : IRequestHandler<CreatePestProtoc
                 Notes = request.Notes?.Trim()
             };
 
-            // 4. Add and save
-            await _unitOfWork.Repository<PestProtocol>().AddAsync(pestProtocol);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
+            // 3. Add and save
+            _context.PestProtocols.Add(pestProtocol);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully created PestProtocol {ProtocolId} '{ProtocolName}' with {ImageCount} images",

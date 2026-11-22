@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Domain.Entities;
@@ -9,18 +10,15 @@ namespace RiceProduction.Application.ProductionPlanFeature.Commands.ResolveEmerg
 
 public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergencyPlanCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ResolveEmergencyPlanCommandHandler> _logger;
-    private readonly IMediator _mediator;
 
     public ResolveEmergencyPlanCommandHandler(
-        IUnitOfWork unitOfWork,
-        ILogger<ResolveEmergencyPlanCommandHandler> logger,
-        IMediator mediator)
+        IApplicationDbContext context,
+        ILogger<ResolveEmergencyPlanCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
-        _mediator = mediator;
     }
 
     public async Task<Result<Guid>> Handle(ResolveEmergencyPlanCommand request, CancellationToken cancellationToken)
@@ -33,8 +31,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
 
         try
         {
-            var plan = await _unitOfWork.Repository<ProductionPlan>()
-                .GetQueryable()
+            var plan = await _context.ProductionPlans
                 .Include(p => p.CurrentProductionStages)
                     .ThenInclude(s => s.ProductionPlanTasks)
                         .ThenInclude(t => t.ProductionPlanTaskMaterials)
@@ -83,8 +80,10 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             var (plots, plotCultivationMap) = plotMappingResult.Data;
 
             var plotCultivationIds = plotCultivationMap.Values.Select(pc => pc.Id).ToList();
-            var existingVersions = await _unitOfWork.Repository<CultivationVersion>()
-                .ListAsync(v => plotCultivationIds.Contains(v.PlotCultivationId));
+            var existingVersions = await _context.CultivationVersions
+                .AsNoTracking()
+                .Where(v => plotCultivationIds.Contains(v.PlotCultivationId))
+                .ToListAsync(cancellationToken);
 
             if (existingVersions.Any(v => v.VersionName.Equals(request.NewVersionName, StringComparison.OrdinalIgnoreCase)))
             {
@@ -103,8 +102,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             var totalArea = plots.Sum(p => p.Area);
             var cultivationTasks = BuildCultivationTasks(plots, plotCultivationMap, request, planTasksResult.Data!);
 
-            await _unitOfWork.Repository<CultivationTask>().AddRangeAsync(cultivationTasks);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.CultivationTasks.AddRange(cultivationTasks);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully created {TotalTaskCount} cultivation tasks ({TaskTypeCount} types × {PlotCount} plots). Total area: {TotalArea} ha",
@@ -122,8 +121,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 }
             }
 
-            _unitOfWork.Repository<CultivationTask>().UpdateRange(cultivationTasks);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.CultivationTasks.UpdateRange(cultivationTasks);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Assigned VersionIds to {TaskCount} cultivation tasks across {VersionCount} versions",
@@ -133,8 +132,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             plan.LastModified = DateTime.UtcNow;
             plan.LastModifiedBy = expertId;
 
-            _unitOfWork.Repository<ProductionPlan>().Update(plan);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.ProductionPlans.Update(plan);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully resolved emergency for Plan {PlanId}. Status changed to Approved. Created {VersionCount} versions '{VersionName}' with {TaskCount} cultivation tasks across {PlotCount} plots by Expert {ExpertId}",
@@ -171,7 +170,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
         Guid productionStageId,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrEmpty(productionStageId.ToString()))
+        if (productionStageId != Guid.Empty)
         {
             var specifiedStage = plan.CurrentProductionStages
                 .FirstOrDefault(s => s.Id == productionStageId);
@@ -202,8 +201,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             TypicalDurationDays = 7
         };
 
-        await _unitOfWork.Repository<ProductionStage>().AddAsync(newStage);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _context.ProductionStages.Add(newStage);
+        await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Created new emergency ProductionStage '{StageName}' with ID {StageId} for Plan {PlanId}",
@@ -227,8 +226,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             return null;
         }
 
-        var existingMaterialIds = await _unitOfWork.Repository<Material>()
-            .GetQueryable()
+        var existingMaterialIds = await _context.Materials
+            .AsNoTracking()
             .Where(m => allMaterialIds.Contains(m.Id))
             .Select(m => m.Id)
             .ToListAsync(cancellationToken);
@@ -256,8 +255,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
             return null;
         }
 
-        var validTaskIds = await _unitOfWork.Repository<ProductionPlanTask>()
-            .GetQueryable()
+        var validTaskIds = await _context.ProductionPlanTasks
+            .AsNoTracking()
             .Where(t => existingTaskIds.Contains(t.Id))
             .Select(t => t.Id)
             .ToListAsync(cancellationToken);
@@ -275,8 +274,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
         List<Guid> requestedPlotIds,
         CancellationToken cancellationToken)
     {
-        var plots = await _unitOfWork.Repository<Plot>()
-            .GetQueryable()
+        var plots = await _context.Plots
             .Include(p => p.PlotCultivations)
             .Where(p => requestedPlotIds.Contains(p.Id))
             .ToListAsync(cancellationToken);
@@ -290,14 +288,12 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 "PlotsNotFound");
         }
 
-        var planWithGroup = await _unitOfWork.Repository<ProductionPlan>()
-            .GetQueryable()
+        var planWithGroup = await _context.ProductionPlans
+            .AsNoTracking()
             .Include(p => p.Group)
                 .ThenInclude(g => g!.YearSeason)
             .Include(p => p.Group)
                 .ThenInclude(g => g!.GroupPlots)
-                    .ThenInclude(gp => gp.Plot)
-                        .ThenInclude(p => p.PlotCultivations)
             .FirstOrDefaultAsync(p => p.Id == plan.Id, cancellationToken);
 
         if (planWithGroup?.Group == null)
@@ -308,6 +304,13 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
         }
 
         var group = planWithGroup.Group;
+        if (group.YearSeason == null || !group.PlantingDate.HasValue)
+        {
+            return Result<(List<Plot>, Dictionary<Guid, PlotCultivation>)>.Failure(
+                "Production plan group is missing season or planting date configuration.",
+                "InvalidGroupConfiguration");
+        }
+
         var groupPlotIds = group.GroupPlots.Select(gp => gp.PlotId).ToHashSet();
 
         var invalidPlotIds = requestedPlotIds.Except(groupPlotIds).ToList();
@@ -324,9 +327,9 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
         }
 
         var plotCultivationMap = new Dictionary<Guid, PlotCultivation>();
-        var seasonId = group.YearSeason!.SeasonId;
-        var riceVarietyId = group.YearSeason!.RiceVarietyId;
-        var plantingDate = group.PlantingDate!.Value;
+        var seasonId = group.YearSeason.SeasonId;
+        var riceVarietyId = group.YearSeason.RiceVarietyId;
+        var plantingDate = DateTime.SpecifyKind(group.PlantingDate.Value, DateTimeKind.Utc);
 
         foreach (var plot in plots)
         {
@@ -353,8 +356,8 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                     ExpectedYield = plot.Area * 6.0m // Default: 6 tons/ha
                 };
 
-                await _unitOfWork.Repository<PlotCultivation>().AddAsync(plotCultivation);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _context.PlotCultivations.Add(plotCultivation);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Created PlotCultivation {PlotCultivationId} for Plot {PlotId} (SoThua: {SoThua}, SoTo: {SoTo})",
@@ -385,8 +388,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
 
             if (baseTask.ProductionPlanTaskId.HasValue)
             {
-                productionPlanTask = await _unitOfWork.Repository<ProductionPlanTask>()
-                    .GetQueryable()
+                productionPlanTask = await _context.ProductionPlanTasks
                     .Include(t => t.ProductionPlanTaskMaterials)
                     .FirstOrDefaultAsync(t => t.Id == baseTask.ProductionPlanTaskId.Value, cancellationToken);
 
@@ -412,12 +414,12 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                     EstimatedMaterialCost = 0
                 };
 
-                await _unitOfWork.Repository<ProductionPlanTask>().AddAsync(productionPlanTask);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _context.ProductionPlanTasks.Add(productionPlanTask);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 foreach (var material in baseTask.MaterialsPerHectare)
                 {
-                    await _unitOfWork.Repository<ProductionPlanTaskMaterial>().AddAsync(new ProductionPlanTaskMaterial
+                    _context.ProductionPlanTaskMaterials.Add(new ProductionPlanTaskMaterial
                     {
                         ProductionPlanTaskId = productionPlanTask.Id,
                         MaterialId = material.MaterialId,
@@ -425,7 +427,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                     });
                 }
 
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Created new ProductionPlanTask '{TaskName}' with ID {TaskId} and {MaterialCount} materials",
@@ -465,7 +467,9 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                     CultivationTaskName = $"{baseTask.TaskName ?? productionPlanTask.TaskName} - Plot {plot.SoThua}/{plot.SoTo}",
                     Description = $"{baseTask.Description ?? productionPlanTask.Description} | Area: {plotArea} ha",
                     TaskType = baseTask.TaskType ?? productionPlanTask.TaskType,
-                    ScheduledEndDate = baseTask.ScheduledEndDate ?? DateTime.UtcNow.AddDays(7),
+                    ScheduledEndDate = baseTask.ScheduledEndDate.HasValue
+                        ? DateTime.SpecifyKind(baseTask.ScheduledEndDate.Value, DateTimeKind.Utc)
+                        : DateTime.UtcNow.AddDays(7),
                     Status = baseTask.Status ?? TaskStatus.Draft,
                     ExecutionOrder = baseTask.ExecutionOrder,
                     IsContingency = baseTask.IsContingency,
@@ -506,8 +510,9 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
 
         foreach (var plotCultivation in plotCultivations)
         {
-            var existingVersionsForPlot = await _unitOfWork.Repository<CultivationVersion>()
-                .ListAsync(v => v.PlotCultivationId == plotCultivation.Id);
+            var existingVersionsForPlot = await _context.CultivationVersions
+                .Where(v => v.PlotCultivationId == plotCultivation.Id)
+                .ToListAsync(cancellationToken);
 
             foreach (var existingVersion in existingVersionsForPlot)
             {
@@ -516,7 +521,7 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
 
             if (existingVersionsForPlot.Any())
             {
-                _unitOfWork.Repository<CultivationVersion>().UpdateRange(existingVersionsForPlot);
+                _context.CultivationVersions.UpdateRange(existingVersionsForPlot);
             }
 
             var maxVersionOrder = existingVersionsForPlot.Any()
@@ -529,12 +534,12 @@ public class ResolveEmergencyPlanCommandHandler : IRequestHandler<ResolveEmergen
                 newVersionName.Trim(),
                 reason: resolutionReason?.Trim() ?? "Emergency resolution");
 
-            await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
+            _context.CultivationVersions.Add(newVersion);
             newVersions.Add(newVersion);
             plotCultivationVersionMap[plotCultivation.Id] = newVersion.Id;
         }
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Created {VersionCount} new CultivationVersions '{VersionName}' for PlotCultivations in Plan {PlanId}",

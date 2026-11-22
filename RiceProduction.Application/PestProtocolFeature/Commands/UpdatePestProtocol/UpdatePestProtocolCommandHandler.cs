@@ -12,20 +12,14 @@ namespace RiceProduction.Application.PestProtocolFeature.Commands.UpdatePestProt
 
 public class UpdatePestProtocolCommandHandler : IRequestHandler<UpdatePestProtocolCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IUser _currentUser;
-    private readonly IMediator _mediator;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<UpdatePestProtocolCommandHandler> _logger;
 
     public UpdatePestProtocolCommandHandler(
-        IUnitOfWork unitOfWork,
-        IUser currentUser,
-        IMediator mediator,
+        IApplicationDbContext context,
         ILogger<UpdatePestProtocolCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
-        _currentUser = currentUser;
-        _mediator = mediator;
+        _context = context;
         _logger = logger;
     }
 
@@ -34,8 +28,7 @@ public class UpdatePestProtocolCommandHandler : IRequestHandler<UpdatePestProtoc
         try
         {
             // 1. Get existing pest protocol
-            var pestProtocol = await _unitOfWork.Repository<PestProtocol>()
-                .GetQueryable()
+            var pestProtocol = await _context.PestProtocols
                 .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
 
             if (pestProtocol == null)
@@ -46,9 +39,11 @@ public class UpdatePestProtocolCommandHandler : IRequestHandler<UpdatePestProtoc
             }
 
             // 2. Check for duplicate name (excluding current protocol)
-            var duplicateExists = await _unitOfWork.Repository<PestProtocol>()
-                .ExistsAsync(p => p.Id != request.Id &&
-                              p.Name.ToLower() == request.Name.ToLower());
+            var duplicateExists = await _context.PestProtocols
+                .AsNoTracking()
+                .AnyAsync(p => p.Id != request.Id &&
+                              p.Name.ToLower() == request.Name.ToLower(),
+                    cancellationToken);
 
             if (duplicateExists)
             {
@@ -68,8 +63,8 @@ public class UpdatePestProtocolCommandHandler : IRequestHandler<UpdatePestProtoc
             pestProtocol.Notes = request.Notes?.Trim();
 
             // 4. Update and save
-            _unitOfWork.Repository<PestProtocol>().Update(pestProtocol);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.PestProtocols.Update(pestProtocol);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully updated PestProtocol {ProtocolId} '{ProtocolName}' with {ImageCount} images",

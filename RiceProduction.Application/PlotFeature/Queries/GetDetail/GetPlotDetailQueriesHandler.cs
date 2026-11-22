@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
@@ -14,12 +15,12 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetDetail
 {
     public class GetPlotDetailQueriesHandler : IRequestHandler<GetPlotDetailQueries, Result<PlotDetailDTO>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetPlotDetailQueriesHandler> _logger;
 
-        public GetPlotDetailQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetPlotDetailQueriesHandler> logger)
+        public GetPlotDetailQueriesHandler(IApplicationDbContext context, ILogger<GetPlotDetailQueriesHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
         async Task<Result<PlotDetailDTO>> IRequestHandler<GetPlotDetailQueries, Result<PlotDetailDTO>>.Handle(GetPlotDetailQueries request, CancellationToken cancellationToken)
@@ -27,7 +28,8 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetDetail
             try
             {
                 _logger.LogInformation("Retrieving detail plot data with ID: {PlotId}", request.PlotId);
-                var query = _unitOfWork.Repository<Plot>().GetQueryable()
+                var query = _context.Plots
+                    .AsNoTracking()
                     .Include(p => p.Farmer)
                     .Include(p => p.GroupPlots)
                         .ThenInclude(gp => gp.Group)
@@ -42,8 +44,6 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetDetail
                     .Include(p => p.PlotCultivations)
                         .ThenInclude(pc => pc.Season)
                      .Include(p => p.PlotCultivations)
-                        .ThenInclude(pc => pc.RiceVariety)
-                      .Include(p => p.PlotCultivations)
                         .ThenInclude(pc => pc.RiceVariety)
                       .Include(p => p.PlotCultivations)
                         .ThenInclude(c => c.CultivationTasks)

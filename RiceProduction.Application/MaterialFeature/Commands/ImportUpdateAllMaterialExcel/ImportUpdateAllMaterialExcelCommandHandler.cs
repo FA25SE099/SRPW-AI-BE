@@ -1,24 +1,26 @@
-﻿using RiceProduction.Application.Common.Interfaces;
+﻿using Microsoft.EntityFrameworkCore;
+using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.MaterialResponses;
 using RiceProduction.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMaterialExcel
 {
     public class ImportUpdateAllMaterialExcelCommandHandler : IRequestHandler<ImportUpdateAllMaterialExcelCommand, Result<List<MaterialResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IGenericExcel _genericExcel;
-        public ImportUpdateAllMaterialExcelCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
+
+        public ImportUpdateAllMaterialExcelCommandHandler(IApplicationDbContext context, IGenericExcel genericExcel)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _genericExcel = genericExcel;
         }
+
         public async Task<Result<List<MaterialResponse>>> Handle(ImportUpdateAllMaterialExcelCommand request, CancellationToken cancellationToken)
         {
             try
@@ -28,36 +30,40 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMat
                 {
                     return Result<List<MaterialResponse>>.Failure("The uploaded Excel file is empty or invalid.");
                 }
-                var materialRepo = _unitOfWork.Repository<Material>();
-                var materialPriceRepo = _unitOfWork.Repository<MaterialPrice>();
+
+                var materialsInDbById = new Dictionary<Guid, Material>();
                 foreach (var material in materialListInput)
                 {
-                    var materialInDB = await materialRepo.FindAsync(m => material.MaterialId == m.Id);
+                    var materialInDB = await _context.Materials
+                        .FirstOrDefaultAsync(m => m.Id == material.MaterialId, cancellationToken);
                     if (materialInDB == null)
                     {
                         return Result<List<MaterialResponse>>.Failure($"The uploaded Excel file contain material name {material.Name} with ID changed. Please download file again to get the right ID!");
                     }
+                    materialsInDbById[material.MaterialId] = materialInDB;
                 }
+
                 var materialList = new List<Material>();
                 var materialPriceUpdateList = new List<MaterialPrice>();
                 var materialPriceCreateList = new List<MaterialPrice>();
+                var currentDate = DateTime.UtcNow;
+
                 foreach (var material in materialListInput)
                 {
-                    // Get material from database
-                    var materialInDB = await materialRepo.FindAsync(m => material.MaterialId == m.Id);
-                    if (materialInDB == null)
+                    if (!materialsInDbById.TryGetValue(material.MaterialId, out var materialInDB))
                     {
                         return Result<List<MaterialResponse>>.Failure(
                             $"Material with ID {material.MaterialId} not found.");
                     }
 
-                    var currentDate = DateTime.UtcNow;
-                    // FIX 2: Fixed filter logic - get current active price (where ValidTo is null)
-                    var materialPriceInDB = (await materialPriceRepo.ListAsync(
-                        p => p.MaterialId == material.MaterialId &&
-                             (p.ValidFrom.CompareTo(currentDate) <= 0) && 
-                             (!p.ValidTo.HasValue || (p.ValidTo.Value.Date.CompareTo(currentDate) >= 0))))
-                             .OrderByDescending(p => p.ValidFrom)
+                    // FIX 2: Fixed filter logic - get current active price (where ValidTo is null or in the future)
+                    var candidatePrices = await _context.MaterialPrices
+                        .Where(p => p.MaterialId == material.MaterialId && p.ValidFrom <= currentDate)
+                        .ToListAsync(cancellationToken);
+
+                    var materialPriceInDB = candidatePrices
+                        .Where(p => !p.ValidTo.HasValue || p.ValidTo.Value.Date >= currentDate.Date)
+                        .OrderByDescending(p => p.ValidFrom)
                         .FirstOrDefault();
 
                     // Update material properties
@@ -108,20 +114,20 @@ namespace RiceProduction.Application.MaterialFeature.Commands.ImportUpdateAllMat
                 // FIX 5: Update old prices before adding new ones
                 if (materialPriceUpdateList.Any())
                 {
-                    materialPriceRepo.UpdateRange(materialPriceUpdateList);
+                    _context.MaterialPrices.UpdateRange(materialPriceUpdateList);
                 }
 
                 // Update materials
-                materialRepo.UpdateRange(materialList);
+                _context.Materials.UpdateRange(materialList);
 
                 // Add new price records
                 if (materialPriceCreateList.Any())
                 {
-                    await materialPriceRepo.AddRangeAsync(materialPriceCreateList);
+                    _context.MaterialPrices.AddRange(materialPriceCreateList);
                 }
 
                 // Save all changes
-                await _unitOfWork.CompleteAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return Result<List<MaterialResponse>>.Success(
                     materialListInput,

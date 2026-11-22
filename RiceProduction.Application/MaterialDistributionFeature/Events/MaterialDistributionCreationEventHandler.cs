@@ -15,14 +15,14 @@ namespace RiceProduction.Application.MaterialDistributionFeature.Events;
 /// </summary>
 public class MaterialDistributionCreationEventHandler : INotificationHandler<ProductionPlanApprovalEvent>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<MaterialDistributionCreationEventHandler> _logger;
 
     public MaterialDistributionCreationEventHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<MaterialDistributionCreationEventHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -34,13 +34,13 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
 
         try
         {
-            var plan = await FetchPlanWithRelationsAsync(notification.PlanId);
+            var plan = await FetchPlanWithRelationsAsync(notification.PlanId, cancellationToken);
             if (!IsPlanEligibleForDistribution(plan, notification.PlanId))
             {
                 return;
             }
 
-            var settings = await GetDistributionSettingsAsync();
+            var settings = await GetDistributionSettingsAsync(cancellationToken);
             var plotCultivations = GetPlotCultivationsForPlan(plan!);
 
             if (!plotCultivations.Any())
@@ -51,12 +51,12 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
                 return;
             }
 
-            var distributions = await CreateMaterialDistributionsAsync(plan!, plotCultivations, settings);
+            var distributions = await CreateMaterialDistributionsAsync(plan!, plotCultivations, settings, cancellationToken);
 
             if (distributions.Any())
             {
-                await _unitOfWork.Repository<MaterialDistribution>().AddRangeAsync(distributions);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _context.MaterialDistributions.AddRange(distributions);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Successfully created {Count} material distributions for production plan {PlanId} (Group: {GroupId})",
@@ -111,22 +111,21 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
         return true;
     }
 
-    private async Task<ProductionPlan?> FetchPlanWithRelationsAsync(Guid planId)
+    private async Task<ProductionPlan?> FetchPlanWithRelationsAsync(Guid planId, CancellationToken cancellationToken)
     {
-        var plans = await _unitOfWork.Repository<ProductionPlan>().ListAsync(
-            filter: p => p.Id == planId,
-            includeProperties: q => q
-                .Include(p => p.Group)
-                    .ThenInclude(g => g!.YearSeason)
-                .Include(p => p.Group)
-                    .ThenInclude(g => g!.GroupPlots)
-                    .ThenInclude(gp => gp.Plot)
-                    .ThenInclude(pl => pl.PlotCultivations)
-                .Include(p => p.CurrentProductionStages)
-                    .ThenInclude(s => s.ProductionPlanTasks)
-                    .ThenInclude(t => t.ProductionPlanTaskMaterials));
-
-        return plans.FirstOrDefault();
+        return await _context.ProductionPlans
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.YearSeason)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.GroupPlots)
+                .ThenInclude(gp => gp.Plot)
+                .ThenInclude(pl => pl.PlotCultivations)
+            .Include(p => p.CurrentProductionStages)
+                .ThenInclude(s => s.ProductionPlanTasks)
+                .ThenInclude(t => t.ProductionPlanTaskMaterials)
+            .FirstOrDefaultAsync(p => p.Id == planId, cancellationToken);
     }
 
     private List<PlotCultivation> GetPlotCultivationsForPlan(ProductionPlan plan)
@@ -155,7 +154,7 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
         return plotCultivations;
     }
 
-    private async Task<DistributionSettings> GetDistributionSettingsAsync()
+    private async Task<DistributionSettings> GetDistributionSettingsAsync(CancellationToken cancellationToken)
     {
         var settingKeys = new[]
         {
@@ -165,10 +164,10 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
             "MaterialDistributionGracePeriodDays"
         };
 
-        var settings = await _unitOfWork.Repository<SystemSetting>()
-            .ListAsync(s => settingKeys.Contains(s.SettingKey));
-
-        var settingsDict = settings.ToDictionary(s => s.SettingKey, s => s.SettingValue);
+        var settingsDict = await _context.SystemSettings
+            .AsNoTracking()
+            .Where(s => settingKeys.Contains(s.SettingKey))
+            .ToDictionaryAsync(s => s.SettingKey, s => s.SettingValue, cancellationToken);
 
         return new DistributionSettings(
             DaysBeforeTask: ParseSettingInt(settingsDict, "MaterialDistributionDaysBeforeTask", 7),
@@ -193,7 +192,8 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
     private async Task<List<MaterialDistribution>> CreateMaterialDistributionsAsync(
         ProductionPlan plan,
         List<PlotCultivation> plotCultivations,
-        DistributionSettings settings)
+        DistributionSettings settings,
+        CancellationToken cancellationToken)
     {
         var distributions = new List<MaterialDistribution>();
 
@@ -215,18 +215,27 @@ public class MaterialDistributionCreationEventHandler : INotificationHandler<Pro
         var supervisorDeadline = scheduledDate.AddDays(settings.SupervisorConfirmationWindow);
 
         var materialAggregations = AggregateRequiredMaterials(plan, plotCultivations);
+        if (!materialAggregations.Any())
+        {
+            return distributions;
+        }
+
+        var plotCultivationIds = materialAggregations.Keys.Select(k => k.PlotCultivationId).Distinct().ToList();
+        var existingKeys = (await _context.MaterialDistributions
+            .AsNoTracking()
+            .Where(md =>
+                plotCultivationIds.Contains(md.PlotCultivationId) &&
+                md.RelatedTaskId == null &&
+                md.Status != DistributionStatus.Rejected)
+            .Select(md => new { md.PlotCultivationId, md.MaterialId })
+            .ToListAsync(cancellationToken))
+            .Select(x => (x.PlotCultivationId, x.MaterialId))
+            .ToHashSet();
 
         // Create one bulk distribution record per (PlotCultivation, Material) combination
         foreach (var ((plotCultivationId, materialId), totalQuantity) in materialAggregations)
         {
-            var existingDistribution = await _unitOfWork.Repository<MaterialDistribution>()
-                .FindAsync(md =>
-                    md.PlotCultivationId == plotCultivationId &&
-                    md.MaterialId == materialId &&
-                    md.RelatedTaskId == null && // Bulk distribution has no specific task
-                    md.Status != DistributionStatus.Rejected);
-
-            if (existingDistribution != null)
+            if (existingKeys.Contains((plotCultivationId, materialId)))
             {
                 _logger.LogDebug(
                     "Bulk distribution already exists for PlotCultivation {PlotCultivationId}, Material {MaterialId}",

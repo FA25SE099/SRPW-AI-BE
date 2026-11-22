@@ -1,12 +1,12 @@
 using FluentAssertions;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.RiceVarietyFeature.Commands.DeleteRiceVariety;
 using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.RiceVarietyFeature;
 
@@ -15,31 +15,14 @@ namespace RiceProduction.Tests.Unit.Application.RiceVarietyFeature;
 /// </summary>
 public class DeleteRiceVarietyCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<RiceVariety>> _mockRiceVarietyRepo;
-    private readonly Mock<IMediator> _mockMediator;
-    private readonly Mock<ILogger<DeleteRiceVarietyCommandHandler>> _mockLogger;
-    private readonly DeleteRiceVarietyCommandHandler _handler;
-
-    public DeleteRiceVarietyCommandHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockRiceVarietyRepo = new Mock<IGenericRepository<RiceVariety>>();
-        _mockMediator = new Mock<IMediator>();
-        _mockLogger = new Mock<ILogger<DeleteRiceVarietyCommandHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<RiceVariety>()).Returns(_mockRiceVarietyRepo.Object);
-
-        _handler = new DeleteRiceVarietyCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockMediator.Object,
-            _mockLogger.Object);
-    }
+    private readonly Mock<IMediator> _mockMediator = new();
+    private readonly Mock<ILogger<DeleteRiceVarietyCommandHandler>> _mockLogger = new();
 
     [Fact]
     public async Task Handle_ValidRiceVariety_SoftDeletesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var varietyId = Guid.NewGuid();
         var variety = new RiceVariety
         {
@@ -48,35 +31,32 @@ public class DeleteRiceVarietyCommandHandlerTests
             IsActive = true
         };
 
+        context.RiceVarieties.Add(variety);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = varietyId };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().Be(varietyId);
-        variety.IsActive.Should().BeFalse();
-        _mockRiceVarietyRepo.Verify(r => r.Update(It.Is<RiceVariety>(v => v.IsActive == false)), Times.Once);
+        var updated = await context.RiceVarieties.AsNoTracking().FirstAsync(v => v.Id == varietyId);
+        updated.IsActive.Should().BeFalse();
     }
 
     [Fact]
     public async Task Handle_RiceVarietyNotFound_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = Guid.NewGuid() };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync((RiceVariety?)null);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -87,6 +67,7 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_PopularVariety_StillDeletes()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var varietyId = Guid.NewGuid();
         var variety = new RiceVariety
         {
@@ -96,16 +77,14 @@ public class DeleteRiceVarietyCommandHandlerTests
             IsActive = true
         };
 
+        context.RiceVarieties.Add(variety);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = varietyId };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -115,6 +94,7 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_AlreadyInactiveVariety_RemainsInactive()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var varietyId = Guid.NewGuid();
         var variety = new RiceVariety
         {
@@ -123,16 +103,14 @@ public class DeleteRiceVarietyCommandHandlerTests
             IsActive = false
         };
 
+        context.RiceVarieties.Add(variety);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = varietyId };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -143,6 +121,7 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_DatabaseError_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var varietyId = Guid.NewGuid();
         var variety = new RiceVariety
         {
@@ -151,16 +130,15 @@ public class DeleteRiceVarietyCommandHandlerTests
             IsActive = true
         };
 
+        context.RiceVarieties.Add(variety);
+        await context.SaveChangesAsync();
+        context.SaveChangesException = new Exception("Database connection failed");
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = varietyId };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ThrowsAsync(new Exception("Database connection failed"));
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -170,6 +148,7 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_SuccessfulDelete_PublishesEvent()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var varietyId = Guid.NewGuid();
         var variety = new RiceVariety
         {
@@ -178,16 +157,14 @@ public class DeleteRiceVarietyCommandHandlerTests
             IsActive = true
         };
 
+        context.RiceVarieties.Add(variety);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = varietyId };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -200,6 +177,7 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_VarietyWithLongName_DeletesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var varietyId = Guid.NewGuid();
         var variety = new RiceVariety
         {
@@ -208,16 +186,14 @@ public class DeleteRiceVarietyCommandHandlerTests
             IsActive = true
         };
 
+        context.RiceVarieties.Add(variety);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = varietyId };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -227,6 +203,7 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_VietnameseVarietyName_DeletesCorrectly()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var varietyId = Guid.NewGuid();
         var variety = new RiceVariety
         {
@@ -235,16 +212,14 @@ public class DeleteRiceVarietyCommandHandlerTests
             IsActive = true
         };
 
+        context.RiceVarieties.Add(variety);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = varietyId };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -254,13 +229,12 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_EmptyGuid_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = Guid.Empty };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync((RiceVariety?)null);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -270,23 +244,21 @@ public class DeleteRiceVarietyCommandHandlerTests
     public async Task Handle_MultipleDeleteOperations_EachSucceedsIndependently()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var variety1Id = Guid.NewGuid();
         var variety1 = new RiceVariety { Id = variety1Id, VarietyName = "Variety 1", IsActive = true };
 
+        context.RiceVarieties.Add(variety1);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteRiceVarietyCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteRiceVarietyCommand { RiceVarietyId = variety1Id };
 
-        _mockRiceVarietyRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>()))
-            .ReturnsAsync(variety1);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         variety1.IsActive.Should().BeFalse();
     }
 }
-

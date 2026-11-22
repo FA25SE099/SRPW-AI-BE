@@ -1,12 +1,9 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.SupervisorFeature.Queries.ValidatePolygonArea;
-using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using RiceProduction.Tests.Fixtures;
-using System.Linq.Expressions;
 using Xunit;
 
 namespace RiceProduction.Tests.Unit.Application.SupervisorFeature;
@@ -16,10 +13,7 @@ namespace RiceProduction.Tests.Unit.Application.SupervisorFeature;
 /// </summary>
 public class ValidatePolygonAreaQueryHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<Plot>> _mockPlotRepo;
-    private readonly Mock<ILogger<ValidatePolygonAreaQueryHandler>> _mockLogger;
-    private readonly ValidatePolygonAreaQueryHandler _handler;
+    private readonly Mock<ILogger<ValidatePolygonAreaQueryHandler>> _mockLogger = new();
 
     // Sample GeoJSON for a small polygon (~1 hectare)
     private const string ValidPolygonGeoJson = @"{
@@ -45,23 +39,12 @@ public class ValidatePolygonAreaQueryHandlerTests
         ]]
     }";
 
-    public ValidatePolygonAreaQueryHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockPlotRepo = new Mock<IGenericRepository<Plot>>();
-        _mockLogger = new Mock<ILogger<ValidatePolygonAreaQueryHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Plot>()).Returns(_mockPlotRepo.Object);
-
-        _handler = new ValidatePolygonAreaQueryHandler(_mockUnitOfWork.Object, _mockLogger.Object);
-    }
-
     [Fact]
     public async Task Handle_PlotNotFound_ReturnsFailure()
     {
         // Arrange
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync((Plot?)null);
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new ValidatePolygonAreaQuery
         {
@@ -71,7 +54,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -82,12 +65,13 @@ public class ValidatePolygonAreaQueryHandlerTests
     public async Task Handle_InvalidGeoJson_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var plotId = Guid.NewGuid();
-        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000m, status: PlotStatus.Active);
-        plot.Area = 1.0m;
+        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1.0m, status: PlotStatus.Active);
+        context.Plots.Add(plot);
+        await context.SaveChangesAsync();
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(plot);
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new ValidatePolygonAreaQuery
         {
@@ -97,7 +81,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -108,12 +92,13 @@ public class ValidatePolygonAreaQueryHandlerTests
     public async Task Handle_NonPolygonGeometry_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var plotId = Guid.NewGuid();
-        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000m, status: PlotStatus.Active);
-        plot.Area = 1.0m;
+        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1.0m, status: PlotStatus.Active);
+        context.Plots.Add(plot);
+        await context.SaveChangesAsync();
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(plot);
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         // GeoJSON for a Point, not a Polygon
         var pointGeoJson = @"{
@@ -129,7 +114,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -140,13 +125,13 @@ public class ValidatePolygonAreaQueryHandlerTests
     public async Task Handle_ValidPolygonWithinTolerance_ReturnsSuccess()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var plotId = Guid.NewGuid();
-        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000m, status: PlotStatus.Active);
-        plot.Area = 1.2m; // 1.2 hectares registered
+        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1.2m, status: PlotStatus.Active);
+        context.Plots.Add(plot);
+        await context.SaveChangesAsync();
 
-        // Mock the ONE-parameter FindAsync that the handler actually calls
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(plot);
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new ValidatePolygonAreaQuery
         {
@@ -156,7 +141,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -172,12 +157,13 @@ public class ValidatePolygonAreaQueryHandlerTests
     public async Task Handle_PolygonExceedsTolerance_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var plotId = Guid.NewGuid();
-        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000m, status: PlotStatus.Active);
-        plot.Area = 1.0m; // 1 hectare registered
+        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1.0m, status: PlotStatus.Active);
+        context.Plots.Add(plot);
+        await context.SaveChangesAsync();
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(plot);
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new ValidatePolygonAreaQuery
         {
@@ -187,7 +173,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue(); // Request succeeds but validation fails
@@ -202,12 +188,13 @@ public class ValidatePolygonAreaQueryHandlerTests
     public async Task Handle_CustomTolerancePercent_UsesProvidedTolerance()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var plotId = Guid.NewGuid();
-        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000m, status: PlotStatus.Active);
-        plot.Area = 1.5m;
+        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1.5m, status: PlotStatus.Active);
+        context.Plots.Add(plot);
+        await context.SaveChangesAsync();
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(plot);
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new ValidatePolygonAreaQuery
         {
@@ -217,7 +204,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -228,12 +215,13 @@ public class ValidatePolygonAreaQueryHandlerTests
     public async Task Handle_CalculatesCorrectDifferencePercent()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var plotId = Guid.NewGuid();
-        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000m, status: PlotStatus.Active);
-        plot.Area = 10.0m; // 10 hectares registered
+        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 10.0m, status: PlotStatus.Active);
+        context.Plots.Add(plot);
+        await context.SaveChangesAsync();
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(plot);
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new ValidatePolygonAreaQuery
         {
@@ -243,7 +231,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -259,12 +247,13 @@ public class ValidatePolygonAreaQueryHandlerTests
     public async Task Handle_RoundsAreasAndPercentagesToTwoDecimals()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var plotId = Guid.NewGuid();
-        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1000m, status: PlotStatus.Active);
-        plot.Area = 1.234567m; // More than 2 decimals
+        var plot = MockDataBuilder.CreatePlot(id: plotId, farmerId: Guid.NewGuid(), area: 1.234567m, status: PlotStatus.Active);
+        context.Plots.Add(plot);
+        await context.SaveChangesAsync();
 
-        _mockPlotRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Plot, bool>>>()))
-            .ReturnsAsync(plot);
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         var query = new ValidatePolygonAreaQuery
         {
@@ -274,7 +263,7 @@ public class ValidatePolygonAreaQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -285,10 +274,11 @@ public class ValidatePolygonAreaQueryHandlerTests
     }
 
     [Fact]
-    public void Constructor_InitializesAllDependencies()
+    public async Task Constructor_InitializesAllDependencies()
     {
         // Arrange & Act
-        var handler = new ValidatePolygonAreaQueryHandler(_mockUnitOfWork.Object, _mockLogger.Object);
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new ValidatePolygonAreaQueryHandler(context, _mockLogger.Object);
 
         // Assert
         handler.Should().NotBeNull();

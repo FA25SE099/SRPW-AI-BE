@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -7,12 +8,12 @@ namespace RiceProduction.Application.RiceVarietySeasonFeature.Commands.UpdateRic
 {
     public class UpdateRiceVarietySeasonCommandHandler : IRequestHandler<UpdateRiceVarietySeasonCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<UpdateRiceVarietySeasonCommandHandler> _logger;
 
-        public UpdateRiceVarietySeasonCommandHandler(IUnitOfWork unitOfWork, ILogger<UpdateRiceVarietySeasonCommandHandler> logger)
+        public UpdateRiceVarietySeasonCommandHandler(IApplicationDbContext context, ILogger<UpdateRiceVarietySeasonCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -20,9 +21,8 @@ namespace RiceProduction.Application.RiceVarietySeasonFeature.Commands.UpdateRic
         {
             try
             {
-                var riceVarietySeasonRepo = _unitOfWork.Repository<RiceVarietySeason>();
-
-                var riceVarietySeason = await riceVarietySeasonRepo.FindAsync(rvs => rvs.Id == request.RiceVarietySeasonId);
+                var riceVarietySeason = await _context.RiceVarietySeasons
+                    .FirstOrDefaultAsync(rvs => rvs.Id == request.RiceVarietySeasonId, cancellationToken);
                 if (riceVarietySeason == null)
                 {
                     return Result<Guid>.Failure($"Rice variety season association with ID {request.RiceVarietySeasonId} not found");
@@ -36,8 +36,8 @@ namespace RiceProduction.Application.RiceVarietySeasonFeature.Commands.UpdateRic
                 riceVarietySeason.SeasonalNotes = request.SeasonalNotes;
                 riceVarietySeason.IsRecommended = request.IsRecommended;
 
-                riceVarietySeasonRepo.Update(riceVarietySeason);
-                await _unitOfWork.CompleteAsync();
+                _context.RiceVarietySeasons.Update(riceVarietySeason);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation("Updated rice variety season association with ID: {Id}", request.RiceVarietySeasonId);
                 return Result<Guid>.Success(request.RiceVarietySeasonId, "Rice variety season association updated successfully");

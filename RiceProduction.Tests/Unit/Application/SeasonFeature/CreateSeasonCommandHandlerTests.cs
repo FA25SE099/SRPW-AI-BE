@@ -1,12 +1,12 @@
 using FluentAssertions;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.SeasonFeature.Commands.CreateSeason;
 using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.SeasonFeature;
 
@@ -15,31 +15,19 @@ namespace RiceProduction.Tests.Unit.Application.SeasonFeature;
 /// </summary>
 public class CreateSeasonCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<Season>> _mockSeasonRepo;
-    private readonly Mock<IMediator> _mockMediator;
-    private readonly Mock<ILogger<CreateSeasonCommandHandler>> _mockLogger;
-    private readonly CreateSeasonCommandHandler _handler;
-
-    public CreateSeasonCommandHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockSeasonRepo = new Mock<IGenericRepository<Season>>();
-        _mockMediator = new Mock<IMediator>();
-        _mockLogger = new Mock<ILogger<CreateSeasonCommandHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Season>()).Returns(_mockSeasonRepo.Object);
-
-        _handler = new CreateSeasonCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockMediator.Object,
-            _mockLogger.Object);
-    }
+    private static CreateSeasonCommandHandler CreateHandler(
+        TestApplicationDbContext context,
+        Mock<IMediator>? mockMediator = null) =>
+        new(
+            context,
+            (mockMediator ?? new Mock<IMediator>()).Object,
+            Mock.Of<ILogger<CreateSeasonCommandHandler>>());
 
     [Fact]
     public async Task Handle_ValidSeason_CreatesSuccessfully()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Winter-Spring",
@@ -47,35 +35,22 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "5/31"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockSeasonRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync((Guid g) => g == Guid.Empty ? Guid.NewGuid() : g);
-
-        _mockSeasonRepo.Setup(r => r.AddAsync(It.IsAny<Season>()))
-            .Callback<Season>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().NotBe(Guid.Empty);
-        _mockSeasonRepo.Verify(r => r.AddAsync(It.Is<Season>(
-            s => s.SeasonName == "Winter-Spring" && 
-                 s.StartDate == "1/1" &&
-                 s.EndDate == "5/31")), Times.Once);
+        var created = await context.Seasons.SingleOrDefaultAsync(s => s.Id == result.Data);
+        created.Should().NotBeNull();
+        created!.SeasonName.Should().Be("Winter-Spring");
+        created.StartDate.Should().Be("1/1");
+        created.EndDate.Should().Be("5/31");
     }
 
     [Fact]
     public async Task Handle_SummerAutumnSeason_CreatesSuccessfully()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Summer-Autumn",
@@ -83,23 +58,16 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "9/30",
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task Handle_AutumnWinterSeason_CreatesSuccessfully()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Autumn-Winter",
@@ -107,31 +75,25 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "12/31"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task Handle_DuplicateSeasonName_ReturnsFailure()
     {
-        // Arrange
-        var existingSeason = new Season
+        await using var context = TestApplicationDbContext.Create();
+        context.Seasons.Add(new Season
         {
             Id = Guid.NewGuid(),
             SeasonName = "Winter-Spring",
             StartDate = "1/1",
             EndDate = "5/31"
-        };
+        });
+        await context.SaveChangesAsync();
 
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Winter-Spring",
@@ -139,13 +101,8 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "5/31"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync(existingSeason);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("already exists") || e.Contains("duplicate"));
     }
@@ -153,7 +110,8 @@ public class CreateSeasonCommandHandlerTests
     [Fact]
     public async Task Handle_SeasonWithSeasonType_StoresSeasonType()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Detailed Season",
@@ -162,25 +120,18 @@ public class CreateSeasonCommandHandlerTests
             SeasonType = "Main Crop"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        _mockSeasonRepo.Verify(r => r.AddAsync(It.Is<Season>(
-            s => s.SeasonType == "Main Crop")), Times.Once);
+        var created = await context.Seasons.SingleOrDefaultAsync(s => s.Id == result.Data);
+        created!.SeasonType.Should().Be("Main Crop");
     }
 
     [Fact]
     public async Task Handle_SeasonCrossYearBoundary_CreatesSuccessfully()
     {
-        // Arrange - Season that spans year boundary
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Year-End Season",
@@ -188,23 +139,17 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "2/28"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task Handle_DatabaseError_ReturnsFailure()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        context.SaveChangesException = new Exception("Database connection error");
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Test Season",
@@ -212,16 +157,8 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "3/31"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ThrowsAsync(new Exception("Database connection error"));
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Failed to create season"));
     }
@@ -229,7 +166,8 @@ public class CreateSeasonCommandHandlerTests
     [Fact]
     public async Task Handle_VietnameseSeasonName_CreatesCorrectly()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Vụ Đông Xuân",
@@ -237,23 +175,16 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "4/30"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task Handle_SeasonWithoutDescription_CreatesSuccessfully()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Quick Season",
@@ -261,23 +192,16 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "7/31"
         };
 
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task Handle_CreatedSeason_SetsIsActiveToTrue()
     {
-        // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = CreateHandler(context);
         var command = new CreateSeasonCommand
         {
             SeasonName = "Active Season",
@@ -285,24 +209,11 @@ public class CreateSeasonCommandHandlerTests
             EndDate = "4/30"
         };
 
-        Season? capturedSeason = null;
-        _mockSeasonRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Season, bool>>>()))
-            .ReturnsAsync((Season?)null);
+        var result = await handler.Handle(command, CancellationToken.None);
 
-        _mockSeasonRepo.Setup(r => r.AddAsync(It.IsAny<Season>()))
-            .Callback<Season>(s => capturedSeason = s)
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
-        // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
-
-        // Assert
         result.Succeeded.Should().BeTrue();
-        capturedSeason.Should().NotBeNull();
-        capturedSeason!.IsActive.Should().BeTrue();
+        var created = await context.Seasons.SingleOrDefaultAsync(s => s.Id == result.Data);
+        created.Should().NotBeNull();
+        created!.IsActive.Should().BeTrue();
     }
 }
-

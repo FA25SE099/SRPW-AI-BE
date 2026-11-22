@@ -10,18 +10,18 @@ namespace RiceProduction.Application.StandardPlanFeature.Commands.CreateStandard
 
 public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPlanCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _currentUser;
     private readonly IMediator _mediator;
     private readonly ILogger<CreateStandardPlanCommandHandler> _logger;
 
     public CreateStandardPlanCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser currentUser,
         IMediator mediator,
         ILogger<CreateStandardPlanCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _currentUser = currentUser;
         _mediator = mediator;
         _logger = logger;
@@ -45,8 +45,8 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
 
             var standardPlan = BuildStandardPlan(request, expertId.Value);
 
-            await _unitOfWork.Repository<StandardPlan>().AddAsync(standardPlan);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.StandardPlans.Add(standardPlan);
+            await _context.SaveChangesAsync(cancellationToken);
 
             await _mediator.Publish(
                 new StandardPlanChangedEvent(standardPlan.Id, ChangeType.Created),
@@ -93,8 +93,9 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
         Guid expertId,
         CancellationToken cancellationToken)
     {
-        var expertExists = await _unitOfWork.AgronomyExpertRepository
-            .ExistAsync(expertId, cancellationToken);
+        var expertExists = await _context.AgronomyExperts
+            .AsNoTracking()
+            .AnyAsync(e => e.Id == expertId, cancellationToken);
 
         if (!expertExists)
         {
@@ -103,8 +104,9 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
                 "NotAnExpert");
         }
 
-        var categoryExists = await _unitOfWork.Repository<RiceVarietyCategory>()
-            .ExistsAsync(c => c.Id == request.CategoryId);
+        var categoryExists = await _context.RiceVarietyCategories
+            .AsNoTracking()
+            .AnyAsync(c => c.Id == request.CategoryId, cancellationToken);
 
         if (!categoryExists)
         {
@@ -113,9 +115,12 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
                 "CategoryNotFound");
         }
 
-        var duplicateExists = await _unitOfWork.Repository<StandardPlan>()
-            .ExistsAsync(p => p.CategoryId == request.CategoryId &&
-                              p.PlanName.ToLower() == request.PlanName.ToLower());
+        var normalizedPlanName = request.PlanName.Trim().ToLower();
+        var duplicateExists = await _context.StandardPlans
+            .AsNoTracking()
+            .AnyAsync(p => p.CategoryId == request.CategoryId &&
+                           p.PlanName.ToLower() == normalizedPlanName,
+                      cancellationToken);
 
         if (duplicateExists)
         {
@@ -136,8 +141,8 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
             return null;
         }
 
-        var existingMaterialIds = await _unitOfWork.Repository<Material>()
-            .GetQueryable()
+        var existingMaterialIds = await _context.Materials
+            .AsNoTracking()
             .Where(m => allMaterialIds.Contains(m.Id))
             .Select(m => m.Id)
             .ToListAsync(cancellationToken);
@@ -208,4 +213,3 @@ public class CreateStandardPlanCommandHandler : IRequestHandler<CreateStandardPl
         return standardPlan;
     }
 }
-

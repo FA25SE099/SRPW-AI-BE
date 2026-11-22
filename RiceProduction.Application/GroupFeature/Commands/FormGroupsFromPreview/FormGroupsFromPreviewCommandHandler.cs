@@ -11,15 +11,15 @@ namespace RiceProduction.Application.GroupFeature.Commands.FormGroupsFromPreview
 
 public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFromPreviewCommand, Result<FormGroupsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<FormGroupsFromPreviewCommandHandler> _logger;
     private readonly WKTWriter _wktWriter;
 
     public FormGroupsFromPreviewCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<FormGroupsFromPreviewCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
         _wktWriter = new WKTWriter();
     }
@@ -31,17 +31,21 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
         try
         {
             // Verify cluster exists
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
+            var clusterExists = await _context.Clusters
+                .AsNoTracking()
+                .AnyAsync(c => c.Id == request.ClusterId, cancellationToken);
 
-            if (cluster == null)
+            if (!clusterExists)
             {
                 return Result<FormGroupsResponse>.Failure($"Cluster {request.ClusterId} not found");
             }
 
             // Verify season exists
-            var season = await _unitOfWork.Repository<Season>()
-                .FindAsync(s => s.Id == request.SeasonId);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .Where(s => s.Id == request.SeasonId)
+                .Select(s => new { s.Id, s.SeasonName })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (season == null)
             {
@@ -49,10 +53,12 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
             }
 
             // Get or verify YearSeason exists
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .FindAsync(ys => ys.ClusterId == request.ClusterId && 
-                                ys.SeasonId == request.SeasonId && 
-                                ys.Year == request.Year);
+            var yearSeason = await _context.YearSeasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ys => ys.ClusterId == request.ClusterId && 
+                                           ys.SeasonId == request.SeasonId && 
+                                           ys.Year == request.Year,
+                    cancellationToken);
 
             if (yearSeason == null)
             {
@@ -62,12 +68,14 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
             }
 
             // Check if groups already exist for this cluster/season/year
-            var existingGroups = await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.ClusterId == request.ClusterId && 
+            var existingGroupsExist = await _context.Groups
+                .AsNoTracking()
+                .AnyAsync(g => g.ClusterId == request.ClusterId && 
                                g.YearSeasonId == yearSeason.Id && 
-                               g.Year == request.Year);
+                               g.Year == request.Year,
+                    cancellationToken);
 
-            if (existingGroups.Any())
+            if (existingGroupsExist)
             {
                 return Result<FormGroupsResponse>.Failure(
                     $"Groups already exist for this cluster in {season.SeasonName} {request.Year}. " +
@@ -83,8 +91,10 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
             var allPlotIds = request.Groups.SelectMany(g => g.PlotIds).Distinct().ToList();
             
             // Verify all plots exist
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => allPlotIds.Contains(p.Id));
+            var plots = await _context.Plots
+                .AsNoTracking()
+                .Where(p => allPlotIds.Contains(p.Id))
+                .ToListAsync(cancellationToken);
             var plotsDict = plots.ToDictionary(p => p.Id);
 
             if (plotsDict.Count != allPlotIds.Count)
@@ -95,21 +105,19 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
             }
 
             // Check for plots already grouped for THIS SEASON
-            var alreadyGroupedPlots = new List<Guid>();
-            foreach (var plotId in allPlotIds)
-            {
-                var isGroupedForSeason = await _unitOfWork.PlotRepository
-                    .IsPlotAssignedToGroupForSeasonAsync(plotId, request.SeasonId, cancellationToken);
-                if (isGroupedForSeason)
-                {
-                    alreadyGroupedPlots.Add(plotId);
-                }
-            }
+            var alreadyGroupedPlotCount = await _context.GroupPlots
+                .AsNoTracking()
+                .Where(gp => allPlotIds.Contains(gp.PlotId) &&
+                             gp.Group.YearSeason != null &&
+                             gp.Group.YearSeason.SeasonId == request.SeasonId)
+                .Select(gp => gp.PlotId)
+                .Distinct()
+                .CountAsync(cancellationToken);
 
-            if (alreadyGroupedPlots.Any())
+            if (alreadyGroupedPlotCount > 0)
             {
                 return Result<FormGroupsResponse>.Failure(
-                    $"{alreadyGroupedPlots.Count} plot(s) are already assigned to a group for this season.");
+                    $"{alreadyGroupedPlotCount} plot(s) are already assigned to a group for this season.");
             }
 
             // Check for duplicate plot assignments
@@ -128,8 +136,14 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
 
             // Get rice varieties for validation
             var varietyIds = request.Groups.Select(g => g.RiceVarietyId).Distinct().ToList();
-            var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-                .ListAsync(rv => varietyIds.Contains(rv.Id));
+            if (yearSeason.RiceVarietyId.HasValue && !varietyIds.Contains(yearSeason.RiceVarietyId.Value))
+            {
+                varietyIds.Add(yearSeason.RiceVarietyId.Value);
+            }
+            var riceVarieties = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => varietyIds.Contains(rv.Id))
+                .ToListAsync(cancellationToken);
             var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
 
             // Validate supervisors if specified
@@ -142,9 +156,11 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
             Dictionary<Guid, string> supervisorsForResponse = new();
             if (supervisorIds.Any())
             {
-                var supervisors = (await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => supervisorIds.Contains(s.Id)))
-                    .ToList();
+                var supervisors = await _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => supervisorIds.Contains(s.Id))
+                    .Select(s => new { s.Id, s.FullName })
+                    .ToListAsync(cancellationToken);
 
                 if (supervisors.Count != supervisorIds.Count)
                 {
@@ -194,7 +210,7 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
                     warnings.Add($"Group '{previewGroup.GroupName ?? "unnamed"}' created without supervisor assignment");
                 }
 
-                await _unitOfWork.Repository<Group>().AddAsync(group);
+                _context.Groups.Add(group);
                 createdGroups.Add(group);
 
                 foreach (var plot in groupPlots)
@@ -204,12 +220,12 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
                         GroupId = group.Id,
                         PlotId = plot.Id
                     };
-                    await _unitOfWork.Repository<GroupPlot>().AddAsync(groupPlot);
+                    _context.GroupPlots.Add(groupPlot);
                 }
             }
 
             // Save all changes
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Created {GroupCount} groups from preview for cluster {ClusterId}, season {SeasonId}, year {Year}",
@@ -226,7 +242,7 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
                 PlotsGrouped = totalPlotsGrouped,
                 UngroupedPlots = 0, // No ungrouped plots since we're using exact preview
                 Groups = createdGroups
-                    .Select(g => MapToCreatedGroupDto(g, varietyDict, supervisorsForResponse))
+                    .Select(g => MapToCreatedGroupDto(g, yearSeason.RiceVarietyId, varietyDict, supervisorsForResponse))
                     .ToList(),
                 UngroupedPlotIds = new List<Guid>(),
                 Warnings = warnings
@@ -269,14 +285,16 @@ public class FormGroupsFromPreviewCommandHandler : IRequestHandler<FormGroupsFro
 
     private CreatedGroupDto MapToCreatedGroupDto(
         Group group,
+        Guid? yearSeasonRiceVarietyId,
         Dictionary<Guid, RiceVariety> varietyDict,
         Dictionary<Guid, string> supervisorsForResponse)
     {
+        var effectiveVarietyId = group.YearSeason?.RiceVarietyId ?? yearSeasonRiceVarietyId;
         return new CreatedGroupDto
         {
             GroupId = group.Id,
-            RiceVarietyId = (Guid)(group.YearSeason?.RiceVarietyId),
-            RiceVarietyName = group.YearSeason?.RiceVarietyId is Guid riceVarietyId
+            RiceVarietyId = effectiveVarietyId ?? Guid.Empty,
+            RiceVarietyName = effectiveVarietyId is Guid riceVarietyId
                 ? varietyDict.GetValueOrDefault(riceVarietyId)?.VarietyName ?? "Unknown"
                 : "Not Set",
             SupervisorId = group.SupervisorId,

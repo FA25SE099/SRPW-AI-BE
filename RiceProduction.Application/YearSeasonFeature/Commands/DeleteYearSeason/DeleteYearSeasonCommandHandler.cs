@@ -1,21 +1,21 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.YearSeasonFeature.Commands.DeleteYearSeason;
 
 public class DeleteYearSeasonCommandHandler : IRequestHandler<DeleteYearSeasonCommand, Result<bool>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<DeleteYearSeasonCommandHandler> _logger;
 
     public DeleteYearSeasonCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<DeleteYearSeasonCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,24 +23,24 @@ public class DeleteYearSeasonCommandHandler : IRequestHandler<DeleteYearSeasonCo
     {
         try
         {
-            var yearSeasonRepo = _unitOfWork.Repository<YearSeason>();
-            var yearSeason = await yearSeasonRepo.GetEntityByIdAsync(request.Id);
+            var yearSeason = await _context.YearSeasons
+                .FirstOrDefaultAsync(ys => ys.Id == request.Id, cancellationToken);
 
             if (yearSeason == null)
             {
                 return Result<bool>.Failure("YearSeason not found");
             }
 
-            var hasGroups = await _unitOfWork.Repository<Group>()
-                .ExistsAsync(g => g.YearSeasonId == request.Id);
+            var hasGroups = await _context.Groups
+                .AnyAsync(g => g.YearSeasonId == request.Id, cancellationToken);
 
             if (hasGroups)
             {
                 return Result<bool>.Failure("Cannot delete YearSeason that has associated groups");
             }
 
-            yearSeasonRepo.Delete(yearSeason);
-            await _unitOfWork.CompleteAsync();
+            _context.YearSeasons.Remove(yearSeason);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Deleted YearSeason with ID: {YearSeasonId}", request.Id);
             return Result<bool>.Success(true, "YearSeason deleted successfully");

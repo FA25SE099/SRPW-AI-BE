@@ -12,20 +12,14 @@ namespace RiceProduction.Application.WeatherProtocolFeature.Commands.UpdateWeath
 
 public class UpdateWeatherProtocolCommandHandler : IRequestHandler<UpdateWeatherProtocolCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IUser _currentUser;
-    private readonly IMediator _mediator;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<UpdateWeatherProtocolCommandHandler> _logger;
 
     public UpdateWeatherProtocolCommandHandler(
-        IUnitOfWork unitOfWork,
-        IUser currentUser,
-        IMediator mediator,
+        IApplicationDbContext context,
         ILogger<UpdateWeatherProtocolCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
-        _currentUser = currentUser;
-        _mediator = mediator;
+        _context = context;
         _logger = logger;
     }
 
@@ -34,8 +28,7 @@ public class UpdateWeatherProtocolCommandHandler : IRequestHandler<UpdateWeather
         try
         {
             // 1. Get existing weather protocol
-            var weatherProtocol = await _unitOfWork.Repository<WeatherProtocol>()
-                .GetQueryable()
+            var weatherProtocol = await _context.WeatherProtocols
                 .FirstOrDefaultAsync(w => w.Id == request.Id, cancellationToken);
 
             if (weatherProtocol == null)
@@ -46,9 +39,11 @@ public class UpdateWeatherProtocolCommandHandler : IRequestHandler<UpdateWeather
             }
 
             // 2. Check for duplicate name (excluding current protocol)
-            var duplicateExists = await _unitOfWork.Repository<WeatherProtocol>()
-                .ExistsAsync(w => w.Id != request.Id &&
-                              w.Name.ToLower() == request.Name.ToLower());
+            var duplicateExists = await _context.WeatherProtocols
+                .AsNoTracking()
+                .AnyAsync(w => w.Id != request.Id &&
+                              w.Name.ToLower() == request.Name.ToLower(),
+                    cancellationToken);
 
             if (duplicateExists)
             {
@@ -69,8 +64,8 @@ public class UpdateWeatherProtocolCommandHandler : IRequestHandler<UpdateWeather
             weatherProtocol.Notes = request.Notes?.Trim();
 
             // 4. Update and save
-            _unitOfWork.Repository<WeatherProtocol>().Update(weatherProtocol);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.WeatherProtocols.Update(weatherProtocol);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully updated WeatherProtocol {ProtocolId} '{ProtocolName}' with {ImageCount} images",

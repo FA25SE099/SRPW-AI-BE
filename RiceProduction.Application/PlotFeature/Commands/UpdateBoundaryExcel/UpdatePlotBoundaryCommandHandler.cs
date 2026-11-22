@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using RiceProduction.Application.Common.Interfaces;
@@ -16,14 +15,15 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel
 {
     public class UpdatePlotBoundaryCommandHandler : IRequestHandler<UpdatePlotBoundaryCommand, Result<List<BoundaryResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IGenericExcel _genericExcel;
         
-        public UpdatePlotBoundaryCommandHandler(IUnitOfWork unitOfWork, IGenericExcel genericExcel)
+        public UpdatePlotBoundaryCommandHandler(IApplicationDbContext context, IGenericExcel genericExcel)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _genericExcel = genericExcel;
         }
+
         public async Task<Result<List<BoundaryResponse>>> Handle(UpdatePlotBoundaryCommand request, CancellationToken cancellationToken)
         {
             try
@@ -33,12 +33,10 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel
                 {
                     return Result<List<BoundaryResponse>>.Failure("The upload Excel file is empty or invalid");
                 }
-                var plotRepo = _unitOfWork.Repository<Plot>();
-                var farmerRepo = _unitOfWork.FarmerRepository;
+
                 var validatorErrors = new List<string>();
                 var successfulUpdates = new List<BoundaryResponse>();
                 var wktReader = new WKTReader();
-               
 
                 for (var i = 0; i < boundaryInputList.Count; i++)
                 {
@@ -49,6 +47,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel
                         if (boundaryInput.FarmerId == Guid.Empty)
                         {
                             validatorErrors.Add($"Row {rowNumber}: FarmerId is required");
+                            continue;
                         }
                         if (!boundaryInput.SoThua.HasValue || boundaryInput.SoThua.Value <= 0)
                         {
@@ -64,22 +63,28 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel
                         {
                             continue; // Skip this row silently - it's OK to have empty boundaries
                         }
-                        var farmerExist = await farmerRepo.ExistAsync(boundaryInput.FarmerId, cancellationToken);
+
+                        var farmerExist = await _context.Farmers
+                            .AsNoTracking()
+                            .AnyAsync(f => f.Id == boundaryInput.FarmerId, cancellationToken);
                         if (!farmerExist)
                         {
                             validatorErrors.Add($"Row {rowNumber}: Farmer Id {boundaryInput.FarmerId} does not exist");
                             continue;
                         }
-                        var existingPlot = await plotRepo.FindAsync
-                            (p => p.SoThua == boundaryInput.SoThua
-                        && p.SoTo == boundaryInput.SoTo
-                        && p.FarmerId == boundaryInput.FarmerId);
 
-                        if (existingPlot != null)
+                        var existingPlot = await _context.Plots
+                            .FirstOrDefaultAsync(p => p.SoThua == boundaryInput.SoThua
+                                                   && p.SoTo == boundaryInput.SoTo
+                                                   && p.FarmerId == boundaryInput.FarmerId,
+                                                 cancellationToken);
+
+                        if (existingPlot == null)
                         {
                             validatorErrors.Add($"Row {rowNumber}: Plot does not exist");
                             continue;
                         }
+
                         var boundary = wktReader.Read(boundaryInput.Boundary) as Polygon;
                         if (boundary == null)
                         {
@@ -88,7 +93,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel
                         }
                         boundary.SRID = 4326;
 
-                        Point coordinate;
+                        Point? coordinate;
                         if (!string.IsNullOrEmpty(boundaryInput.Coordinate))
                         {
                             coordinate = wktReader.Read(boundaryInput.Coordinate) as Point;
@@ -102,36 +107,40 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel
                             if (!boundary.Contains(coordinate))
                             {
                                 validatorErrors.Add($"Row {rowNumber}: Coordinate must be within the boundary polygon. Using centroid instead.");
-                                coordinate = boundary.Centroid as Point;
+                                coordinate = boundary.Centroid;
+                                coordinate.SRID = 4326;
                             }
                         }
                         else
                         {
-                            coordinate = boundary.Centroid as Point;
+                            coordinate = boundary.Centroid;
                             coordinate.SRID = 4326;
                         }
+
+                        existingPlot.Boundary = boundary;
+                        existingPlot.Coordinate = coordinate;
                         existingPlot.Area = CalculationArea(boundary);
-                        plotRepo.Update(existingPlot);
-                        var farmer = await farmerRepo.GetFarmerByIdAsync(existingPlot.FarmerId, cancellationToken);
+                        _context.Plots.Update(existingPlot);
+
                         successfulUpdates.Add(new BoundaryResponse
                         {
                             PlotId = existingPlot.Id,
                             Boundary = boundary.ToText(),
                             Coordinate = coordinate.ToText(),
                         });
-
                     }
                     catch (Exception ex)
                     {
                         validatorErrors.Add($"Row {rowNumber}: Error - {ex.Message}");
                         continue;
                     }
-                    
                 }
+
                 if (successfulUpdates.Any())
                 {
-                    await _unitOfWork.CompleteAsync();
+                    await _context.SaveChangesAsync(cancellationToken);
                 }
+
                 if (validatorErrors.Any())
                 {
                     var errorMessage = string.Join("; ", validatorErrors);
@@ -146,18 +155,18 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateBoundaryExcel
 
                     return Result<List<BoundaryResponse>>.Failure(errorMessage);
                 }
+
                 return Result<List<BoundaryResponse>>.Success(
                     successfulUpdates,
                     $"Successfully updated {successfulUpdates.Count} plot boundaries"
                 );
-
             }
             catch (Exception ex)
             {
                 return Result<List<BoundaryResponse>>.Failure($"An error occurred: {ex.Message}");
             }
-
         }
+
         private decimal CalculationArea(Polygon polygon)
         {
             var area = polygon.Area;

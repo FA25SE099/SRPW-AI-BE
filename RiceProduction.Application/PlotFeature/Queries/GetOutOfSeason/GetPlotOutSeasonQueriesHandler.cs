@@ -2,11 +2,9 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using NetTopologySuite.Index.HPRtree;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
@@ -16,12 +14,12 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
 {
     public class GetPlotOutSeasonQueriesHandler : IRequestHandler<GetPlotOutSeasonQueries, Result<IEnumerable<PlotDTO>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetPlotOutSeasonQueriesHandler> _logger;
 
-        public GetPlotOutSeasonQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetPlotOutSeasonQueriesHandler> logger)
+        public GetPlotOutSeasonQueriesHandler(IApplicationDbContext context, ILogger<GetPlotOutSeasonQueriesHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -33,13 +31,10 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
                     request.CurrentDate,
                     request.SearchTerm);
                 var currentDate = request.CurrentDate?.ToUniversalTime() ?? DateTime.UtcNow;
-                var query = _unitOfWork.Repository<Plot>()
-                    .GetQueryable()
-                    .Include(p => p.Farmer)
-                    .Include(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(g => g.YearSeason).ThenInclude(ys => ys.RiceVariety)
-                    .Include(p => p.PlotCultivations).Where(p => p.Status == Domain.Enums.PlotStatus.Active)
-                    .Include (p =>p.PlotCultivations).ThenInclude(pc => pc.Season)
-                    .AsQueryable();
+                var query = _context.Plots
+                    .AsNoTracking()
+                    .Where(p => p.Status == Domain.Enums.PlotStatus.Active);
+
                 //filter:
                 query = query
                 //khong co plot cultivation
@@ -58,16 +53,22 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
                 {
                     var searchTerm = request.SearchTerm.ToLower();
                     query = query.Where(p =>
-                        p.SoThua.HasValue && p.SoThua.ToString().Contains(searchTerm) ||
-                        p.SoTo.HasValue && p.SoTo.ToString().Contains(searchTerm) ||
-                        p.Farmer != null && p.Farmer.FullName.ToLower().Contains(searchTerm) ||
-                        p.SoilType != null && p.SoilType.ToLower().Contains(searchTerm)
+                        (p.SoThua.HasValue && p.SoThua.Value.ToString().Contains(searchTerm)) ||
+                        (p.SoTo.HasValue && p.SoTo.Value.ToString().Contains(searchTerm)) ||
+                        (p.Farmer != null && p.Farmer.FullName != null && p.Farmer.FullName.ToLower().Contains(searchTerm)) ||
+                        (p.SoilType != null && p.SoilType.ToLower().Contains(searchTerm))
                     );
                 }
+
                 var items = await query
-               .OrderBy(p => p.SoThua)
-               .ThenBy(p => p.SoTo)
-               .ToListAsync(cancellationToken);
+                    .Include(p => p.Farmer)
+                    .Include(p => p.PlotCultivations).ThenInclude(pc => pc.Season)
+                    .Include(p => p.PlotCultivations).ThenInclude(pc => pc.RiceVariety)
+                    .AsSplitQuery()
+                    .OrderBy(p => p.SoThua)
+                    .ThenBy(p => p.SoTo)
+                    .ThenBy(p => p.Id)
+                    .ToListAsync(cancellationToken);
 
                 var filterdItems = items.Where(p =>
                 {
@@ -81,12 +82,12 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetOutOfSeason
 
                 var plotDTOs = filterdItems.Select(p => p.ToDto()).ToList();
 
-                _logger.LogInformation("Found {Count} plots out of season", items.Count);
+                _logger.LogInformation("Found {Count} plots out of season", filterdItems.Count);
 
                 return Result<IEnumerable<PlotDTO>>.Success(
                     plotDTOs,
                     "Plots out of season retrieved successfully");
-            }   
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while getting plots out of season");

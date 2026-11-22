@@ -9,16 +9,16 @@ namespace RiceProduction.Application.FarmerFeature.Queries.ValidateCultivationPr
 public class ValidateCultivationPreferencesQueryHandler 
     : IRequestHandler<ValidateCultivationPreferencesQuery, Result<CultivationValidationDto>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _currentUser;
     private readonly ILogger<ValidateCultivationPreferencesQueryHandler> _logger;
 
     public ValidateCultivationPreferencesQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser currentUser,
         ILogger<ValidateCultivationPreferencesQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _currentUser = currentUser;
         _logger = logger;
     }
@@ -31,11 +31,8 @@ public class ValidateCultivationPreferencesQueryHandler
 
         try
         {
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .GetQueryable()
+            var yearSeason = await _context.YearSeasons
                 .AsNoTracking()
-                .Include(ys => ys.Season)
-                .Include(ys => ys.RiceVariety)
                 .FirstOrDefaultAsync(ys => ys.Id == request.YearSeasonId, cancellationToken);
 
             if (yearSeason == null)
@@ -65,11 +62,11 @@ public class ValidateCultivationPreferencesQueryHandler
                     $"Selection window closed on {yearSeason.FarmerSelectionWindowEnd.Value:yyyy-MM-dd}");
             }
 
-            var plot = await _unitOfWork.Repository<Plot>()
-                .GetQueryable()
+            var plot = await _context.Plots
                 .AsNoTracking()
-                .Include(p => p.Farmer)
-                .FirstOrDefaultAsync(p => p.Id == request.PlotId, cancellationToken);
+                .Where(p => p.Id == request.PlotId)
+                .Select(p => new { p.Id, p.FarmerId, p.Area })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (plot == null)
             {
@@ -81,13 +78,16 @@ public class ValidateCultivationPreferencesQueryHandler
                 return FailureResult(validation, "PLOT_NOT_OWNED", "You do not own this plot");
             }
 
-            var riceVarietySeason = await _unitOfWork.Repository<RiceVarietySeason>()
-                .GetQueryable()
+            var riceVarietySeason = await _context.RiceVarietySeasons
                 .AsNoTracking()
-                .Include(rvs => rvs.RiceVariety)
-                .FirstOrDefaultAsync(
-                    rvs => rvs.RiceVarietyId == request.RiceVarietyId && rvs.SeasonId == yearSeason.SeasonId,
-                    cancellationToken);
+                .Where(rvs => rvs.RiceVarietyId == request.RiceVarietyId && rvs.SeasonId == yearSeason.SeasonId)
+                .Select(rvs => new
+                {
+                    rvs.ExpectedYieldPerHectare,
+                    rvs.IsRecommended,
+                    BaseGrowthDurationDays = rvs.RiceVariety.BaseGrowthDurationDays
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (riceVarietySeason == null)
             {
@@ -110,10 +110,15 @@ public class ValidateCultivationPreferencesQueryHandler
                     $"Planting date must be before {yearSeason.EndDate:yyyy-MM-dd}");
             }
 
-            var existingCultivation = await _unitOfWork.Repository<PlotCultivation>()
-                .FindAsync(pc => pc.PlotId == request.PlotId && pc.YearSeasonId == request.YearSeasonId);
+            var hasExistingSelection = await _context.PlotCultivations
+                .AsNoTracking()
+                .AnyAsync(
+                    pc => pc.PlotId == request.PlotId
+                        && pc.YearSeasonId == request.YearSeasonId
+                        && pc.FarmerSelectionDate != null,
+                    cancellationToken);
 
-            if (existingCultivation?.FarmerSelectionDate != null)
+            if (hasExistingSelection)
             {
                 validation.Warnings.Add(new ValidationIssue
                 {
@@ -123,9 +128,12 @@ public class ValidateCultivationPreferencesQueryHandler
                 });
             }
 
-            validation.GrowthDurationDays = riceVarietySeason.RiceVariety.BaseGrowthDurationDays;
-            validation.EstimatedHarvestDate = request.PreferredPlantingDate
-                .AddDays(validation.GrowthDurationDays.Value);
+            validation.GrowthDurationDays = riceVarietySeason.BaseGrowthDurationDays;
+            if (validation.GrowthDurationDays.HasValue)
+            {
+                validation.EstimatedHarvestDate = request.PreferredPlantingDate
+                    .AddDays(validation.GrowthDurationDays.Value);
+            }
 
             if (riceVarietySeason.ExpectedYieldPerHectare.HasValue)
             {

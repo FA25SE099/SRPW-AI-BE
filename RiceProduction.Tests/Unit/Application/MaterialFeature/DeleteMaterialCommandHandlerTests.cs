@@ -1,12 +1,12 @@
 using FluentAssertions;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial;
 using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.MaterialFeature;
 
@@ -15,31 +15,14 @@ namespace RiceProduction.Tests.Unit.Application.MaterialFeature;
 /// </summary>
 public class DeleteMaterialCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<Material>> _mockMaterialRepo;
-    private readonly Mock<IMediator> _mockMediator;
-    private readonly Mock<ILogger<DeleteMaterialCommandHandler>> _mockLogger;
-    private readonly DeleteMaterialCommandHandler _handler;
-
-    public DeleteMaterialCommandHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockMaterialRepo = new Mock<IGenericRepository<Material>>();
-        _mockMediator = new Mock<IMediator>();
-        _mockLogger = new Mock<ILogger<DeleteMaterialCommandHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Material>()).Returns(_mockMaterialRepo.Object);
-
-        _handler = new DeleteMaterialCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockMediator.Object,
-            _mockLogger.Object);
-    }
+    private readonly Mock<IMediator> _mockMediator = new();
+    private readonly Mock<ILogger<DeleteMaterialCommandHandler>> _mockLogger = new();
 
     [Fact]
     public async Task Handle_ValidMaterialId_SoftDeletesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
         var material = new Material
         {
@@ -49,50 +32,44 @@ public class DeleteMaterialCommandHandlerTests
             IsActive = true
         };
 
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = materialId };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material);
-
-        _mockMaterialRepo.Setup(r => r.Update(It.IsAny<Material>()))
-            .Verifiable();
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().Be(materialId);
         result.Message.Should().Contain("deleted successfully");
-        material.IsActive.Should().BeFalse();
-        _mockMaterialRepo.Verify(r => r.Update(It.Is<Material>(m => m.IsActive == false)), Times.Once);
+        var updated = await context.Materials.AsNoTracking().FirstAsync(m => m.Id == materialId);
+        updated.IsActive.Should().BeFalse();
     }
 
     [Fact]
     public async Task Handle_MaterialNotFound_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = Guid.NewGuid() };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync((Material?)null);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("not found"));
-        _mockMaterialRepo.Verify(r => r.Update(It.IsAny<Material>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_AlreadyInactiveMaterial_StillSoftDeletes()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
         var material = new Material
         {
@@ -102,16 +79,14 @@ public class DeleteMaterialCommandHandlerTests
             IsActive = false // Already inactive
         };
 
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = materialId };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -122,6 +97,7 @@ public class DeleteMaterialCommandHandlerTests
     public async Task Handle_DatabaseError_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
         var material = new Material
         {
@@ -130,16 +106,15 @@ public class DeleteMaterialCommandHandlerTests
             IsActive = true
         };
 
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
+        context.SaveChangesException = new Exception("Database error");
+
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = materialId };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ThrowsAsync(new Exception("Database error"));
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -150,6 +125,7 @@ public class DeleteMaterialCommandHandlerTests
     public async Task Handle_SuccessfulDelete_PublishesEvent()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
         var material = new Material
         {
@@ -158,16 +134,14 @@ public class DeleteMaterialCommandHandlerTests
             IsActive = true
         };
 
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = materialId };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -180,19 +154,18 @@ public class DeleteMaterialCommandHandlerTests
     public async Task Handle_MultipleDeletions_EachDeletesIndependently()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var material1Id = Guid.NewGuid();
         var material1 = new Material { Id = material1Id, Name = "Material 1", IsActive = true };
 
+        context.Materials.Add(material1);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = material1Id };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material1);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -202,13 +175,12 @@ public class DeleteMaterialCommandHandlerTests
     public async Task Handle_EmptyGuid_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = Guid.Empty };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync((Material?)null);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -218,6 +190,7 @@ public class DeleteMaterialCommandHandlerTests
     public async Task Handle_ValidDelete_LogsInformation()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
         var material = new Material
         {
@@ -226,26 +199,24 @@ public class DeleteMaterialCommandHandlerTests
             IsActive = true
         };
 
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = materialId };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        // Logger verification would be implementation-specific
     }
 
     [Fact]
     public async Task Handle_PartialDatabaseCommit_HandlesGracefully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
         var material = new Material
         {
@@ -254,16 +225,14 @@ public class DeleteMaterialCommandHandlerTests
             IsActive = true
         };
 
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
+
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var command = new DeleteMaterialCommand { MaterialId = materialId };
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(0); // No changes saved
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert - Handler should still succeed as update was called
         result.Succeeded.Should().BeTrue();
@@ -273,22 +242,23 @@ public class DeleteMaterialCommandHandlerTests
     public async Task Handle_CancellationRequested_HandlesCancellation()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var materialId = Guid.NewGuid();
         var material = new Material { Id = materialId, Name = "Cancel Test", IsActive = true };
 
-        var command = new DeleteMaterialCommand { MaterialId = materialId };
+        context.Materials.Add(material);
+        await context.SaveChangesAsync();
 
-        _mockMaterialRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Material, bool>>>()))
-            .ReturnsAsync(material);
+        var handler = new DeleteMaterialCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
+        var command = new DeleteMaterialCommand { MaterialId = materialId };
 
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
         // Act
-        var result = await _handler.Handle(command, cts.Token);
+        var result = await handler.Handle(command, cts.Token);
 
         // Assert - Should complete despite cancellation in this implementation
         result.Should().NotBeNull();
     }
 }
-

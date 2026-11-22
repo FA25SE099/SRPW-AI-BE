@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Interfaces.External;
 using RiceProduction.Application.Common.Models;
@@ -13,18 +14,18 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
 {
     private static readonly HashSet<string> ValidAlertTypes = new() { "pest", "weather", "disease", "other" };
 
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _currentUser;
     private readonly IStorageService _storageService;
     private readonly ILogger<CreateEmergencyReportCommandHandler> _logger;
 
     public CreateEmergencyReportCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser currentUser,
         IStorageService storageService,
         ILogger<CreateEmergencyReportCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _currentUser = currentUser;
         _storageService = storageService;
         _logger = logger;
@@ -46,7 +47,7 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                 return fieldValidation;
             }
 
-            var entityValidation = await ValidateReferencedEntitiesAsync(request);
+            var entityValidation = await ValidateReferencedEntitiesAsync(request, cancellationToken);
             if (entityValidation != null)
             {
                 return entityValidation;
@@ -96,8 +97,8 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
                     emergencyReport.AiDetectedPestCount, emergencyReport.AiAverageConfidence);
             }
 
-            await _unitOfWork.Repository<EmergencyReport>().AddAsync(emergencyReport);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.EmergencyReports.Add(emergencyReport);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Emergency report created successfully. ID: {ReportId}, Type: {AlertType}, Source: {Source}, Reporter: {UserId}, Images: {ImageCount}, AI Analysis: {HasAI}, AffectedTask: {TaskId}",
@@ -157,35 +158,35 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
         return null;
     }
 
-    private async Task<Result<Guid>?> ValidateReferencedEntitiesAsync(CreateEmergencyReportCommand request)
+    private async Task<Result<Guid>?> ValidateReferencedEntitiesAsync(
+        CreateEmergencyReportCommand request,
+        CancellationToken cancellationToken)
     {
-        var plotValidation = await ValidateOptionalEntityExistsAsync<PlotCultivation>(request.PlotCultivationId, "PlotCultivation");
+        var plotValidation = await ValidateOptionalEntityExistsAsync<PlotCultivation>(request.PlotCultivationId, "PlotCultivation", cancellationToken);
         if (plotValidation != null)
         {
             return plotValidation;
         }
 
-        var groupValidation = await ValidateOptionalEntityExistsAsync<Group>(request.GroupId, "Group");
+        var groupValidation = await ValidateOptionalEntityExistsAsync<Group>(request.GroupId, "Group", cancellationToken);
         if (groupValidation != null)
         {
             return groupValidation;
         }
 
-        if (request.ClusterId.HasValue)
+        var clusterValidation = await ValidateOptionalEntityExistsAsync<Cluster>(request.ClusterId, "Cluster", cancellationToken);
+        if (clusterValidation != null)
         {
-            var clusterExists = await _unitOfWork.ClusterRepository!.ExistClusterAsync(request.ClusterId.Value);
-            if (!clusterExists)
-            {
-                return Result<Guid>.Failure($"Cluster with ID {request.ClusterId.Value} not found.");
-            }
+            return clusterValidation;
         }
 
-        return await ValidateOptionalEntityExistsAsync<CultivationTask>(request.AffectedCultivationTaskId, "Cultivation Task");
+        return await ValidateOptionalEntityExistsAsync<CultivationTask>(request.AffectedCultivationTaskId, "Cultivation Task", cancellationToken);
     }
 
     private async Task<Result<Guid>?> ValidateOptionalEntityExistsAsync<TEntity>(
         Guid? entityId,
-        string entityDisplayName)
+        string entityDisplayName,
+        CancellationToken cancellationToken)
         where TEntity : BaseAuditableEntity
     {
         if (!entityId.HasValue)
@@ -193,7 +194,7 @@ public class CreateEmergencyReportCommandHandler : IRequestHandler<CreateEmergen
             return null;
         }
 
-        var exists = await _unitOfWork.Repository<TEntity>().ExistsAsync(e => e.Id == entityId.Value);
+        var exists = await _context.Set<TEntity>().AnyAsync(e => e.Id == entityId.Value, cancellationToken);
         return exists
             ? null
             : Result<Guid>.Failure($"{entityDisplayName} with ID {entityId.Value} not found.");

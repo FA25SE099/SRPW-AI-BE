@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
@@ -114,7 +115,7 @@ internal static class PlotImportHelper
     internal static async Task<Result<List<PlotResponse>>> ExecuteImportAsync(
         IList<PlotImportRow>? plotImportRows,
         Guid? clusterManagerId,
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IMediator mediator,
         ILogger logger,
         PlotImportProfile profile,
@@ -125,15 +126,13 @@ internal static class PlotImportHelper
             return Result<List<PlotResponse>>.Failure(profile.EmptyDataError);
         }
 
-        var plotRepo = unitOfWork.Repository<Plot>();
-        var farmerRepo = unitOfWork.FarmerRepository;
-        var riceVarietyRepo = unitOfWork.Repository<RiceVariety>();
-
         var geometryFactory = new GeometryFactory(new PrecisionModel(), PlotGeometryHelper.Wgs84Srid);
         var wktReader = new WKTReader(geometryFactory);
 
-        var allSeasons = await unitOfWork.Repository<Season>().ListAsync(_ => true);
-        var today = DateTime.Now;
+        var allSeasons = await context.Seasons
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+        var today = DateTime.UtcNow;
         var resolvedSeason = SeasonDateHelper.ResolveCurrentSeason(allSeasons, today);
         var currentSeason = resolvedSeason?.Season;
         var currentYear = resolvedSeason?.Year ?? today.Year;
@@ -141,22 +140,28 @@ internal static class PlotImportHelper
 
         var uniqueFarmCodes = plotImportRows
             .Where(p => !string.IsNullOrWhiteSpace(p.FarmCode))
-            .Select(p => p.FarmCode)
+            .Select(p => p.FarmCode!)
             .Distinct()
             .ToList();
 
-        var farmers = await farmerRepo.ListAsync(f => uniqueFarmCodes.Contains(f.FarmCode));
-        var farmerLookup = farmers.ToDictionary(f => f.FarmCode, f => f);
+        var farmers = await context.Farmers
+            .AsNoTracking()
+            .Where(f => f.FarmCode != null && uniqueFarmCodes.Contains(f.FarmCode))
+            .ToListAsync(cancellationToken);
+        var farmerLookup = farmers.ToDictionary(f => f.FarmCode!, f => f);
+        var farmerById = farmers.ToDictionary(f => f.Id, f => f);
         Guid? firstFarmerClusterId = farmers.FirstOrDefault()?.ClusterId;
 
         var uniqueVarietyNames = plotImportRows
             .Where(p => !string.IsNullOrWhiteSpace(p.RiceVarietyName))
-            .Select(p => p.RiceVarietyName)
+            .Select(p => p.RiceVarietyName!)
             .Distinct()
             .ToList();
 
-        var riceVarieties = await riceVarietyRepo.ListAsync(
-            rv => uniqueVarietyNames.Contains(rv.VarietyName));
+        var riceVarieties = await context.RiceVarieties
+            .AsNoTracking()
+            .Where(rv => uniqueVarietyNames.Contains(rv.VarietyName))
+            .ToListAsync(cancellationToken);
         var varietyLookup = riceVarieties.ToDictionary(rv => rv.VarietyName, rv => rv);
 
         var validatedPolygons = new Dictionary<int, (Polygon boundary, Point coordinate)>();
@@ -203,17 +208,17 @@ internal static class PlotImportHelper
                 continue;
             }
 
-            if (!farmerLookup.TryGetValue(row.FarmCode, out var farmer))
+            if (string.IsNullOrWhiteSpace(row.FarmCode) || !farmerLookup.TryGetValue(row.FarmCode, out var farmer))
             {
                 continue;
             }
 
-            var existingPlot = await plotRepo.FindAsync(p =>
-                p.SoThua == row.SoThua &&
-                p.SoTo == row.SoTo &&
-                p.FarmerId == farmer.Id);
-
-            if (existingPlot != null)
+            var existsInDb = await context.Plots
+                .AsNoTracking()
+                .AnyAsync(
+                    p => p.SoThua == row.SoThua && p.SoTo == row.SoTo && p.FarmerId == farmer.Id,
+                    cancellationToken);
+            if (existsInDb)
             {
                 logger.LogWarning(
                     profile.DuplicatePlotLog,
@@ -221,7 +226,7 @@ internal static class PlotImportHelper
                 continue;
             }
 
-            var plotId = await plotRepo.GenerateNewGuid(Guid.NewGuid());
+            var plotId = Guid.NewGuid();
             Polygon boundary;
             Point? coordinate = null;
             PlotStatus status;
@@ -283,7 +288,7 @@ internal static class PlotImportHelper
             var cultivationYear = row.Year ?? currentYear;
             var yearSeasonForCultivation = firstFarmerClusterId.HasValue
                 ? await GetOrCacheYearSeasonAsync(
-                    unitOfWork,
+                    context,
                     yearSeasonCache,
                     seasonToUse,
                     cultivationYear,
@@ -325,13 +330,13 @@ internal static class PlotImportHelper
 
         if (plotList.Any())
         {
-            await plotRepo.AddRangeAsync(plotList);
+            context.Plots.AddRange(plotList);
         }
 
         string? seasonYearDisplay = null;
         if (plotCultivationsToCreate.Any())
         {
-            await unitOfWork.Repository<PlotCultivation>().AddRangeAsync(plotCultivationsToCreate);
+            context.PlotCultivations.AddRange(plotCultivationsToCreate);
 
             if (profile.IncludeSeasonYearInSummary)
             {
@@ -356,29 +361,24 @@ internal static class PlotImportHelper
 
         if (cultivationVersionsToCreate.Any())
         {
-            await unitOfWork.Repository<CultivationVersion>().AddRangeAsync(cultivationVersionsToCreate);
+            context.CultivationVersions.AddRange(cultivationVersionsToCreate);
             logger.LogInformation(profile.CreatingVersionsLog, cultivationVersionsToCreate.Count);
         }
 
-        await unitOfWork.CompleteAsync();
+        await context.SaveChangesAsync(cancellationToken);
 
-        var plotCreateSuccessList = new List<PlotResponse>();
-        foreach (var plot in plotList)
+        var plotCreateSuccessList = plotList.Select(plot => new PlotResponse
         {
-            var farmer = await farmerRepo.GetFarmerByIdAsync(plot.FarmerId, cancellationToken);
-            plotCreateSuccessList.Add(new PlotResponse
-            {
-                PlotId = plot.Id,
-                SoThua = plot.SoThua,
-                SoTo = plot.SoTo,
-                Area = plot.Area,
-                FarmerId = plot.FarmerId,
-                FarmerName = farmer?.FullName ?? string.Empty,
-                SoilType = plot.SoilType,
-                Status = plot.Status,
-                GroupId = plot.GroupPlots.FirstOrDefault()?.GroupId
-            });
-        }
+            PlotId = plot.Id,
+            SoThua = plot.SoThua,
+            SoTo = plot.SoTo,
+            Area = plot.Area,
+            FarmerId = plot.FarmerId,
+            FarmerName = farmerById.TryGetValue(plot.FarmerId, out var farmer) ? farmer.FullName ?? string.Empty : string.Empty,
+            SoilType = plot.SoilType,
+            Status = plot.Status,
+            GroupId = plot.GroupPlots.FirstOrDefault()?.GroupId
+        }).ToList();
 
         if (plotsNeedingPolygonTasks.Any())
         {
@@ -581,13 +581,17 @@ internal static class PlotImportHelper
         if (coordinate == null)
         {
             logger.LogWarning(profile.InvalidCoordinateLog, rowNumber);
-            return boundary.Centroid;
+            var centroid = boundary.Centroid;
+            centroid.SRID = PlotGeometryHelper.Wgs84Srid;
+            return centroid;
         }
 
         if (!boundary.Contains(coordinate))
         {
             logger.LogWarning(profile.CoordinateOutsideBoundaryLog, rowNumber);
-            return boundary.Centroid;
+            var centroid = boundary.Centroid;
+            centroid.SRID = PlotGeometryHelper.Wgs84Srid;
+            return centroid;
         }
 
         coordinate.SRID = PlotGeometryHelper.Wgs84Srid;
@@ -595,7 +599,7 @@ internal static class PlotImportHelper
     }
 
     private static async Task<YearSeason?> GetOrCacheYearSeasonAsync(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         Dictionary<(Guid seasonId, int year, Guid clusterId), YearSeason> yearSeasonCache,
         Season season,
         int year,
@@ -611,7 +615,7 @@ internal static class PlotImportHelper
         }
 
         var yearSeason = await GetOrCreateYearSeasonAsync(
-            unitOfWork, season, year, clusterId, logger, profile, cancellationToken);
+            context, season, year, clusterId, logger, profile, cancellationToken);
         if (yearSeason != null)
         {
             yearSeasonCache[cacheKey] = yearSeason;
@@ -621,7 +625,7 @@ internal static class PlotImportHelper
     }
 
     private static async Task<YearSeason?> GetOrCreateYearSeasonAsync(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         Season season,
         int year,
         Guid clusterId,
@@ -631,10 +635,11 @@ internal static class PlotImportHelper
     {
         try
         {
-            var yearSeason = await unitOfWork.Repository<YearSeason>()
-                .FindAsync(ys => ys.SeasonId == season.Id &&
-                                 ys.Year == year &&
-                                 ys.ClusterId == clusterId);
+            var yearSeason = await context.YearSeasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    ys => ys.SeasonId == season.Id && ys.Year == year && ys.ClusterId == clusterId,
+                    cancellationToken);
 
             if (yearSeason != null)
             {
@@ -678,8 +683,8 @@ internal static class PlotImportHelper
                 PlanningWindowEnd = seasonStart.AddDays(-3)
             };
 
-            await unitOfWork.Repository<YearSeason>().AddAsync(yearSeason);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+            context.YearSeasons.Add(yearSeason);
+            await context.SaveChangesAsync(cancellationToken);
 
             logger.LogInformation(
                 profile.AutoCreatedYearSeasonLog,
@@ -697,12 +702,17 @@ internal static class PlotImportHelper
         }
     }
 
-    private static DateTime ParseSeasonDate(string ddmmString, int year)
+    private static DateTime ParseSeasonDate(string dateStr, int year)
     {
-        var parts = ddmmString.Split('/');
-        var day = int.Parse(parts[0]);
-        var month = int.Parse(parts[1]);
-        return new DateTime(year, month, day);
+        if (SeasonDateHelper.TryParseMonthDay(dateStr, out var month, out var day))
+        {
+            return new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+        }
+
+        var parts = dateStr.Split('/');
+        var fallbackDay = int.Parse(parts[0]);
+        var fallbackMonth = int.Parse(parts[1]);
+        return new DateTime(year, fallbackMonth, fallbackDay, 0, 0, 0, DateTimeKind.Utc);
     }
 
     private static string FormatSeasonYearDisplay(

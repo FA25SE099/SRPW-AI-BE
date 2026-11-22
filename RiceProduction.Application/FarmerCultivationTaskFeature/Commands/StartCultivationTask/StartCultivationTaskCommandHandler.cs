@@ -10,16 +10,16 @@ namespace RiceProduction.Application.FarmerCultivationTaskFeature.Commands.Start
 public class StartCultivationTaskCommandHandler :
     IRequestHandler<StartCultivationTaskCommand, Result<StartCultivationTaskResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly IUser _currentUser;
     private readonly ILogger<StartCultivationTaskCommandHandler> _logger;
 
     public StartCultivationTaskCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         IUser currentUser,
         ILogger<StartCultivationTaskCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _currentUser = currentUser;
         _logger = logger;
     }
@@ -31,16 +31,15 @@ public class StartCultivationTaskCommandHandler :
         try
         {
             // Get the cultivation task with all necessary related data
-            var cultivationTask = await _unitOfWork.Repository<CultivationTask>().FindAsync(
-                match: ct => ct.Id == request.CultivationTaskId,
-                includeProperties: q => q
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Plot)
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.Season)
-                    .Include(ct => ct.PlotCultivation)
-                        .ThenInclude(pc => pc.RiceVariety)
-                    .Include(ct => ct.ProductionPlanTask));
+            var cultivationTask = await _context.CultivationTasks
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Plot)
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.Season)
+                .Include(ct => ct.PlotCultivation)
+                    .ThenInclude(pc => pc.RiceVariety)
+                .Include(ct => ct.ProductionPlanTask)
+                .FirstOrDefaultAsync(ct => ct.Id == request.CultivationTaskId, cancellationToken);
 
             if (cultivationTask == null)
             {
@@ -119,23 +118,8 @@ public class StartCultivationTaskCommandHandler :
                     CreatedAt = now
                 };
 
-                await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
+                _context.FarmLogs.Add(farmLog);
             }
-            //else
-            //{
-            //    var farmLog = new FarmLog
-            //    {
-            //        CultivationTaskId = cultivationTask.Id,
-            //        PlotCultivationId = cultivationTask.PlotCultivationId,
-            //        LoggedDate = now,
-            //        ServiceNotes = "Task started: " + cultivationTask.ProductionPlanTask.TaskName,
-            //        WeatherConditions = request.WeatherConditions,
-            //        LoggedBy = farmerId.Value,
-            //        CreatedAt = now
-            //    };
-
-            //    await _unitOfWork.Repository<FarmLog>().AddAsync(farmLog);
-            //}
 
             // Update the PlotCultivation status if it's still in Planned status
             if (cultivationTask.PlotCultivation.Status == Domain.Enums.CultivationStatus.Planned)
@@ -144,7 +128,7 @@ public class StartCultivationTaskCommandHandler :
             }
 
             // Save changes
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Cultivation task {TaskId} started by farmer {FarmerId} at {StartTime}",

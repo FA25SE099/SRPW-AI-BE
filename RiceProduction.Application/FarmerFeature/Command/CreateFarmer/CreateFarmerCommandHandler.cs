@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -14,18 +15,18 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
     public class CreateFarmerCommandHandler : IRequestHandler<CreateFarmerCommand, Result<Guid>>
     {
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<CreateFarmerCommandHandler> _logger;
         private readonly IMediator _mediator;
 
         public CreateFarmerCommandHandler(
             UserManager<ApplicationUser> userManager,
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<CreateFarmerCommandHandler> logger,
             IMediator mediator)
         {
             _userManager = userManager;
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
             _mediator = mediator;
         }
@@ -46,8 +47,9 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 }
 
                 // Check if phone number already exists in Farmer table
-                var existingFarmer = await _unitOfWork.FarmerRepository.GetFarmerByPhoneNumber(request.PhoneNumber, cancellationToken);
-                if (existingFarmer != null)
+                var existingFarmer = await _context.Farmers
+                    .AnyAsync(f => f.PhoneNumber != null && f.PhoneNumber == request.PhoneNumber, cancellationToken);
+                if (existingFarmer)
                 {
                     return Result<Guid>.Failure($"Phone number '{request.PhoneNumber}' already exists in the system");
                 }
@@ -63,9 +65,11 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 Guid? clusterId = null;
                 if (request.ClusterManagerId.HasValue)
                 {
-                    var clusterManager = await _unitOfWork.ClusterManagerRepository
-                        .GetClusterManagerByIdAsync(request.ClusterManagerId.Value, cancellationToken);
-                    clusterId = clusterManager?.ClusterId;
+                    clusterId = await _context.ClusterManagers
+                        .AsNoTracking()
+                        .Where(cm => cm.Id == request.ClusterManagerId.Value)
+                        .Select(cm => cm.ClusterId)
+                        .FirstOrDefaultAsync(cancellationToken);
                 }
 
                 // Create farmer
@@ -113,6 +117,7 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                         {
                             var plot = new Plot
                             {
+                                Id = Guid.NewGuid(),
                                 FarmerId = farmer.Id,
                                 SoThua = plotData.SoThua,
                                 SoTo = plotData.SoTo,
@@ -122,14 +127,14 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                                 Boundary = null // Supervisor will assign polygon later
                             };
 
-                            await _unitOfWork.Repository<Plot>().AddAsync(plot);
+                            _context.Plots.Add(plot);
                             createdPlotIds.Add(plot.Id);
                         }
                     }
 
                     if (createdPlotIds.Any())
                     {
-                        await _unitOfWork.SaveChangesAsync(cancellationToken);
+                        await _context.SaveChangesAsync(cancellationToken);
                         _logger.LogInformation("Created {PlotCount} plot(s) for farmer: {FarmerId}", createdPlotIds.Count, farmer.Id);
                     }
                 }
@@ -137,22 +142,22 @@ namespace RiceProduction.Application.FarmerFeature.Command.CreateFarmer
                 // Publish PlotImportedEvent if plots were created
                 if (createdPlotIds.Any() && request.ClusterManagerId.HasValue)
                 {
-                    // Get the created plots for the event
-                    var createdPlots = await _unitOfWork.Repository<Plot>()
-                        .ListAsync(p => createdPlotIds.Contains(p.Id));
-                    
-                    var plotResponses = createdPlots.Select(p => new PlotResponse
-                    {
-                        PlotId = p.Id,
-                        SoThua = p.SoThua,
-                        SoTo = p.SoTo,
-                        Area = p.Area,
-                        FarmerId = p.FarmerId,
-                        FarmerName = farmer.FullName,
-                        SoilType = p.SoilType,
-                        Status = p.Status,
-                        GroupId = p.GroupPlots.FirstOrDefault()?.GroupId
-                    }).ToList();
+                    var plotResponses = await _context.Plots
+                        .AsNoTracking()
+                        .Where(p => createdPlotIds.Contains(p.Id))
+                        .Select(p => new PlotResponse
+                        {
+                            PlotId = p.Id,
+                            SoThua = p.SoThua,
+                            SoTo = p.SoTo,
+                            Area = p.Area,
+                            FarmerId = p.FarmerId,
+                            FarmerName = farmer.FullName,
+                            SoilType = p.SoilType,
+                            Status = p.Status,
+                            GroupId = p.GroupPlots.Select(gp => (Guid?)gp.GroupId).FirstOrDefault()
+                        })
+                        .ToListAsync(cancellationToken);
 
                     await _mediator.Publish(new PlotImportedEvent
                     {

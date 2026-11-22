@@ -1,23 +1,22 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById
 {
     public class GetFarmerByIdQueriesHandler : IRequestHandler<GetFarmerByIdQueries ,FarmerDTO>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetFarmerByIdQueriesHandler> _logger;
 
-        public GetFarmerByIdQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetFarmerByIdQueriesHandler> logger)
+        public GetFarmerByIdQueriesHandler(IApplicationDbContext context, ILogger<GetFarmerByIdQueriesHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -26,18 +25,33 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetById
             try
             {
                 _logger.LogInformation("Retrieving farmer with ID: {FarmerId}", request.Farmerid);
-                var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.Farmerid, cancellationToken);
-                if (farmer == null)
+                var farmerDTO = await _context.Farmers
+                    .AsNoTracking()
+                    .Where(f => f.Id == request.Farmerid)
+                    .Select(f => new FarmerDTO
+                    {
+                        FarmerId = f.Id,
+                        FullName = f.FullName,
+                        Address = f.Address,
+                        PhoneNumber = f.PhoneNumber,
+                        IsActive = f.IsActive,
+                        IsVerified = f.IsVerified,
+                        LastActivityAt = f.LastActivityAt,
+                        FarmCode = f.FarmCode,
+                        PlotCount = f.OwnedPlots.Count
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (farmerDTO == null)
                 {
                     _logger.LogWarning("Farmer with Id:{FarmerId} not found", request.Farmerid);
                     return null;
                 }
-                var farmerDTO = farmer.ToDto();
 
                 _logger.LogInformation(
                     "Successfully retrieve farmer:{FarmerName} (ID: {FarmerId})",
-                    farmer.FullName,
-                    farmer.Id);
+                    farmerDTO.FullName,
+                    farmerDTO.FarmerId);
                     
                 return farmerDTO;
             }

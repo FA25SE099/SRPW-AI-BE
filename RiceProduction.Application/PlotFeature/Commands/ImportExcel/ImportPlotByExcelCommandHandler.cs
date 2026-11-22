@@ -14,18 +14,18 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
 {
     public class ImportPlotByExcelCommandHandler : IRequestHandler<ImportPlotByExcelCommand, Result<List<PlotResponse>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IGenericExcel _genericExcel;
         private readonly IMediator _mediator;
         private readonly ILogger<ImportPlotByExcelCommandHandler> _logger;
 
         public ImportPlotByExcelCommandHandler(
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             IGenericExcel genericExcel,
             IMediator mediator,
             ILogger<ImportPlotByExcelCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _genericExcel = genericExcel;
             _mediator = mediator;
             _logger = logger;
@@ -41,7 +41,7 @@ namespace RiceProduction.Application.PlotFeature.Commands.ImportExcel
                 return await PlotImportHelper.ExecuteImportAsync(
                     plotImportRows,
                     request.ClusterManagerId,
-                    _unitOfWork,
+                    _context,
                     _mediator,
                     _logger,
                     PlotImportHelper.ExcelProfile,

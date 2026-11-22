@@ -1,28 +1,19 @@
-﻿using Microsoft.Extensions.Logging;
-using RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyExpertById;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.Common.Models.Response.AgronomyExpertResponses;
 using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
-using RiceProduction.Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterManagerById
 {
     public class GetClusterManagerByIdQueryHandler : IRequestHandler<GetClusterManagerByIdQuery, Result<ClusterManagerResponse>>
     {
-        private readonly IClusterManagerRepository _clusterRepo;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetClusterManagerByIdQueryHandler> _logger;
 
-        public GetClusterManagerByIdQueryHandler(IUnitOfWork unitOfWork, ILogger<GetClusterManagerByIdQueryHandler> logger)
+        public GetClusterManagerByIdQueryHandler(IApplicationDbContext context, ILogger<GetClusterManagerByIdQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
-            _clusterRepo = _unitOfWork.ClusterManagerRepository;
+            _context = context;
             _logger = logger;
         }
 
@@ -30,28 +21,33 @@ namespace RiceProduction.Application.ClusterManagerFeature.Queries.GetClusterMan
         {
             try
             {
-                var cluster = await _clusterRepo.GetClusterManagerByIdAsync(
-                    request.ClusterManagerId,
-                    cancellationToken);
+                var clusterManagerResponse = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(m => m.Id == request.ClusterManagerId)
+                    .Select(m => new ClusterManagerResponse
+                    {
+                        ClusterManagerId = m.Id,
+                        ClusterManagerName = m.FullName,
+                        ClusterManagerPhoneNumber = m.PhoneNumber,
+                        Email = m.Email,
+                        ClusterId = m.ClusterId,
+                        ClusterName = m.ManagedCluster != null ? m.ManagedCluster.ClusterName : null,
+                        AssignedDate = m.AssignedDate
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
 
-                var clusterManagerResponse = new ClusterManagerResponse
+                if (clusterManagerResponse == null)
                 {
-                    ClusterManagerId = cluster.Id,
-                    ClusterManagerName = cluster.FullName,
-                    ClusterManagerPhoneNumber = cluster.PhoneNumber,
-                    Email = cluster.Email,
-                    ClusterId = cluster.ClusterId,
-                    ClusterName = cluster.ManagedCluster?.ClusterName,
-                    AssignedDate = cluster.AssignedDate
-                };
+                    return Result<ClusterManagerResponse>.Failure("Cluster manager not found");
+                }
 
                 return Result<ClusterManagerResponse>.Success(
                     clusterManagerResponse,
-                    "Agronomy experts retrieved successfully");
+                    "Cluster manager retrieved successfully");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while getting agronomy experts");
+                _logger.LogError(ex, "Error occurred while getting cluster manager");
                 return Result<ClusterManagerResponse>.Failure("An error occurred while processing your request");
             }
         }

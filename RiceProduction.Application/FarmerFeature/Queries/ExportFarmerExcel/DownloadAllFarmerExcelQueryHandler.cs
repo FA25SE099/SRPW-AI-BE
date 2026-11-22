@@ -1,26 +1,23 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 using RiceProduction.Application.Common.Interfaces;
-using RiceProduction.Application.Common.Mappings;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response;
 using RiceProduction.Application.MaterialFeature.Queries.DownloadAllMaterialExcel;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
 {
     public class DownloadAllFarmerExcelQueryHandler : IRequestHandler<DownloadAllFarmerExcelQuery, Result<FileExportResult>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IGenericExcel _downloadGenericExcel;
 
-        public DownloadAllFarmerExcelQueryHandler(IUnitOfWork unitOfWork, IGenericExcel downloadGenericExcel)
+        public DownloadAllFarmerExcelQueryHandler(IApplicationDbContext context, IGenericExcel downloadGenericExcel)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _downloadGenericExcel = downloadGenericExcel;
         }
 
@@ -28,19 +25,35 @@ namespace RiceProduction.Application.FarmerFeature.Queries.DownloadFarmerExcel
         {
             try
             {
-                var farmers = await _unitOfWork.FarmerRepository.GetAllFarmerAsync(cancellationToken);
+                var farmerDTOs = await _context.Farmers
+                    .AsNoTracking()
+                    .Where(f => f.IsActive)
+                    .OrderBy(f => f.FullName)
+                    .Select(f => new FarmerDTO
+                    {
+                        FarmerId = f.Id,
+                        FullName = f.FullName,
+                        Address = f.Address,
+                        PhoneNumber = f.PhoneNumber,
+                        IsActive = f.IsActive,
+                        IsVerified = f.IsVerified,
+                        LastActivityAt = f.LastActivityAt,
+                        FarmCode = f.FarmCode,
+                        PlotCount = f.OwnedPlots.Count
+                    })
+                    .ToListAsync(cancellationToken);
 
-                if (farmers == null || !farmers.Any())
+                if (farmerDTOs.Count == 0)
                 {
                     return Result<FileExportResult>.Failure("No farmers found to export");
                 }
-                var farmerDTOs = farmers.Where(f => f != null).Select(f => f!.ToDto()).ToList();
+
                 var sheetName = $"Farmers_{request.InputDate:yyyyMMdd}";
                 var fileName = $"{sheetName}.xlsx";
                 var result = await _downloadGenericExcel.DownloadGenericExcelFile(
-                farmerDTOs,
-                sheetName,
-                fileName);
+                    farmerDTOs,
+                    sheetName,
+                    fileName);
                 return Result<FileExportResult>.Success(result, "Farmer download successfully");
             }
             catch (Exception)

@@ -16,7 +16,6 @@ using RiceProduction.Infrastructure.Implementation.MiniExcelImplementation;
 using RiceProduction.Infrastructure.Implementation.NotificationImplementation.Infobip;
 using RiceProduction.Infrastructure.Implementation.StorageImplementation.Azure;
 using RiceProduction.Infrastructure.Implementation.Zalo;
-using RiceProduction.Infrastructure.Repository;
 using RiceProduction.Infrastructure.Services;
 using System.Threading.Channels;
 
@@ -66,9 +65,6 @@ public static class DependencyInjection
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
 
-        builder.Services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
-        builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
-        builder.Services.AddScoped<IFarmerRepository, FarmerRepository>();
         builder.Services.AddScoped<ICacheInvalidator, CacheInvalidator>();
 
         builder.Services.AddTransient<IIdentityService, IdentityService>();

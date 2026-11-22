@@ -1,13 +1,13 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using RiceProduction.API.Common;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.FarmerFeature.Commands.SelectCultivationPreferences;
 using RiceProduction.Application.FarmerFeature.Queries.GetFarmerCultivationSelections;
 using RiceProduction.Application.FarmerFeature.Queries.ValidateCultivationPreferences;
 using RiceProduction.Application.SeasonFeature.Queries.GetAvailableRiceVarietiesForSeason;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.API.Controllers;
 
@@ -21,18 +21,18 @@ public class FarmerCultivationController : ControllerBase
     private readonly IMediator _mediator;
     private readonly ILogger<FarmerCultivationController> _logger;
     private readonly IUser _currentUser;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
 
     public FarmerCultivationController(
         IMediator mediator,
         ILogger<FarmerCultivationController> logger,
         IUser currentUser,
-        IUnitOfWork unitOfWork)
+        IApplicationDbContext context)
     {
         _mediator = mediator;
         _logger = logger;
         _currentUser = currentUser;
-        _unitOfWork = unitOfWork;
+        _context = context;
     }
 
     /// <summary>
@@ -72,8 +72,11 @@ public class FarmerCultivationController : ControllerBase
         Guid yearSeasonId,
         [FromQuery] bool onlyRecommended = true)
     {
-        var yearSeason = await _unitOfWork.Repository<YearSeason>()
-            .FindAsync(ys => ys.Id == yearSeasonId);
+        var yearSeason = await _context.YearSeasons
+            .AsNoTracking()
+            .Where(ys => ys.Id == yearSeasonId)
+            .Select(ys => new { ys.SeasonId })
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
         if (yearSeason == null)
         {
@@ -119,8 +122,11 @@ public class FarmerCultivationController : ControllerBase
         // Additional authorization check: ensure farmer owns the plot
         if (_currentUser.Id.HasValue)
         {
-            var plot = await _unitOfWork.Repository<Plot>()
-                .FindAsync(p => p.Id == command.PlotId);
+            var plot = await _context.Plots
+                .AsNoTracking()
+                .Where(p => p.Id == command.PlotId)
+                .Select(p => new { p.FarmerId })
+                .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
             if (plot == null)
             {

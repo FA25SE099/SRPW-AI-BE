@@ -1,12 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.UAVFeature.Queries.GetPlotsReadyForUav;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
 using RiceProduction.Tests.Fixtures;
-using System.Linq.Expressions;
 using Xunit;
 
 namespace RiceProduction.Tests.Unit.Application.UAVFeature;
@@ -17,30 +15,14 @@ namespace RiceProduction.Tests.Unit.Application.UAVFeature;
 /// </summary>
 public class GetPlotsReadyForUavQueryHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<Group>> _mockGroupRepo;
-    private readonly Mock<ILogger<GetPlotsReadyForUavQueryHandler>> _mockLogger;
-    private readonly GetPlotsReadyForUavQueryHandler _handler;
-
-    public GetPlotsReadyForUavQueryHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockGroupRepo = new Mock<IGenericRepository<Group>>();
-        _mockLogger = new Mock<ILogger<GetPlotsReadyForUavQueryHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Group>()).Returns(_mockGroupRepo.Object);
-
-        _handler = new GetPlotsReadyForUavQueryHandler(_mockUnitOfWork.Object, _mockLogger.Object);
-    }
+    private readonly Mock<ILogger<GetPlotsReadyForUavQueryHandler>> _mockLogger = new();
 
     [Fact]
     public async Task Handle_GroupNotFound_ReturnsFailure()
     {
         // Arrange
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync((Group?)null);
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new GetPlotsReadyForUavQueryHandler(context, _mockLogger.Object);
 
         var query = new GetPlotsReadyForUavQuery 
         { 
@@ -50,7 +32,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -61,14 +43,15 @@ public class GetPlotsReadyForUavQueryHandlerTests
     public async Task Handle_EmptyGroup_ReturnsSuccessWithEmptyList()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var groupId = Guid.NewGuid();
         var group = MockDataBuilder.CreateGroup(id: groupId);
         group.GroupPlots = new List<GroupPlot>(); // Empty group
 
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync(group);
+        context.Groups.Add(group);
+        await context.SaveChangesAsync();
+
+        var handler = new GetPlotsReadyForUavQueryHandler(context, _mockLogger.Object);
 
         var query = new GetPlotsReadyForUavQuery
         {
@@ -78,7 +61,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -91,6 +74,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
     public async Task Handle_PlotWithReadyTask_ReturnsSuccessWithReadyPlot()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var groupId = Guid.NewGuid();
         var plotId = Guid.NewGuid();
         var plotCultivationId = Guid.NewGuid();
@@ -157,37 +141,12 @@ public class GetPlotsReadyForUavQueryHandlerTests
             }
         };
 
-        // Setup mocks
-        var mockCultivationVersionRepo = new Mock<IGenericRepository<CultivationVersion>>();
-        var mockCultivationTaskRepo = new Mock<IGenericRepository<CultivationTask>>();
-        var mockUavAssignmentRepo = new Mock<IGenericRepository<UavOrderPlotAssignment>>();
+        context.Groups.Add(group);
+        context.CultivationVersions.Add(cultivationVersion);
+        context.CultivationTasks.Add(cultivationTask);
+        await context.SaveChangesAsync();
 
-        _mockGroupRepo.Setup(r => r.FindAsync(
-            It.IsAny<Expression<Func<Group, bool>>>(),
-            It.IsAny<Func<IQueryable<Group>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<Group, object>>>()))
-            .ReturnsAsync(group);
-
-        mockCultivationVersionRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<CultivationVersion, bool>>>(),
-            It.IsAny<Func<IQueryable<CultivationVersion>, IOrderedQueryable<CultivationVersion>>>(),
-            null))
-            .ReturnsAsync(new List<CultivationVersion> { cultivationVersion });
-
-        mockUavAssignmentRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<UavOrderPlotAssignment, bool>>>(),
-            null,
-            null))
-            .ReturnsAsync(new List<UavOrderPlotAssignment>()); // No active UAV orders
-
-        mockCultivationTaskRepo.Setup(r => r.ListAsync(
-            It.IsAny<Expression<Func<CultivationTask, bool>>>(),
-            null,
-            It.IsAny<Func<IQueryable<CultivationTask>, Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<CultivationTask, object>>>()))
-            .ReturnsAsync(new List<CultivationTask> { cultivationTask });
-
-        _mockUnitOfWork.Setup(u => u.Repository<CultivationVersion>()).Returns(mockCultivationVersionRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<CultivationTask>()).Returns(mockCultivationTaskRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<UavOrderPlotAssignment>()).Returns(mockUavAssignmentRepo.Object);
+        var handler = new GetPlotsReadyForUavQueryHandler(context, _mockLogger.Object);
 
         var query = new GetPlotsReadyForUavQuery
         {
@@ -197,7 +156,7 @@ public class GetPlotsReadyForUavQueryHandlerTests
         };
 
         // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
+        var result = await handler.Handle(query, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -215,10 +174,11 @@ public class GetPlotsReadyForUavQueryHandlerTests
     }
 
     [Fact]
-    public void Constructor_InitializesAllDependencies()
+    public async Task Constructor_InitializesAllDependencies()
     {
         // Arrange & Act
-        var handler = new GetPlotsReadyForUavQueryHandler(_mockUnitOfWork.Object, _mockLogger.Object);
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new GetPlotsReadyForUavQueryHandler(context, _mockLogger.Object);
 
         // Assert
         handler.Should().NotBeNull();

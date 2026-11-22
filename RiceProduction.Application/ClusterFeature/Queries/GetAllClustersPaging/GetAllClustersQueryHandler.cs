@@ -1,74 +1,99 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.ClusterManagerResponses;
 using RiceProduction.Application.Common.Models.Response.ClusterResponses;
 using RiceProduction.Domain.Enums;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.ClusterFeature.Queries.GetAllClustersPaging
 {
     public class GetAllClustersQueryHandler : IRequestHandler<GetAllClustersQuery, PagedResult<List<ClusterResponse>>>
     {
         private readonly ILogger<GetAllClustersQueryHandler> _logger;
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IClusterManagerRepository _clusterManagerRepository;
-        private readonly IAgronomyExpertRepository _agronomyExpertRepository;
+        private readonly IApplicationDbContext _context;
 
-        public GetAllClustersQueryHandler(ILogger<GetAllClustersQueryHandler> logger, IUnitOfWork unitOfWork)
+        public GetAllClustersQueryHandler(ILogger<GetAllClustersQueryHandler> logger, IApplicationDbContext context)
         {
             _logger = logger;
-            _unitOfWork = unitOfWork;
-            _clusterManagerRepository = _unitOfWork.ClusterManagerRepository;
-            _agronomyExpertRepository = _unitOfWork.AgronomyExpertRepository;
+            _context = context;
         }
+
         public async Task<PagedResult<List<ClusterResponse>>> Handle(GetAllClustersQuery request, CancellationToken cancellationToken)
         {
             try
             {
-                var clusterRepo = _unitOfWork.ClusterRepository;
-                var (clusterList, totalCount) = await clusterRepo.GetAllClusterPagedSearchSortAsync(
-                    request.CurrentPage,
-                    request.PageSize,
-                    request.ClusterNameSearch,
-                    request.ManagerExpertNameSearch,
-                    request.PhoneNumber,
-                    request.SortBy,
-                    cancellationToken);
-                var clusterResponses = clusterList.Select(c => new ClusterResponse
+                var query = _context.Clusters.AsNoTracking();
+
+                if (!string.IsNullOrEmpty(request.ClusterNameSearch))
                 {
-                    ClusterId = c.Id,
-                    ClusterName = c.ClusterName,
-                    ClusterManagerId = c.ClusterManagerId,
-                    AgronomyExpertId = c.AgronomyExpertId,
-                    ClusterManagerName = c.ClusterManager != null ? c.ClusterManager.FullName : null,
-                    ClusterManagerPhoneNumber = c.ClusterManager != null ? c.ClusterManager.PhoneNumber : null,
-                    ClusterManagerEmail = c.ClusterManager != null ? c.ClusterManager.Email : null,
-                    AgronomyExpertName = c.AgronomyExpert != null ? c.AgronomyExpert.FullName : null,
-                    AgronomyExpertPhoneNumber = c.AgronomyExpert != null ? c.AgronomyExpert.PhoneNumber : null,
-                    AgronomyExpertEmail = c.AgronomyExpert != null ? c.AgronomyExpert.Email : null,
-                    Area = c.Area,
-                    Supervisors = c.SupervisorsInCluster?.Select(s => new SupervisorSummary
+                    var clusterNameSearch = request.ClusterNameSearch.ToLower();
+                    query = query.Where(c => c.ClusterName.ToLower().Contains(clusterNameSearch));
+                }
+
+                if (!string.IsNullOrEmpty(request.ManagerExpertNameSearch))
+                {
+                    var managerExpertSearch = request.ManagerExpertNameSearch.ToLower();
+                    query = query.Where(c =>
+                        (c.ClusterManager != null && c.ClusterManager.FullName != null && c.ClusterManager.FullName.ToLower().Contains(managerExpertSearch)) ||
+                        (c.AgronomyExpert != null && c.AgronomyExpert.FullName != null && c.AgronomyExpert.FullName.ToLower().Contains(managerExpertSearch)) ||
+                        (c.ClusterManager != null && c.ClusterManager.Email != null && c.ClusterManager.Email.ToLower().Contains(managerExpertSearch)) ||
+                        (c.AgronomyExpert != null && c.AgronomyExpert.Email != null && c.AgronomyExpert.Email.ToLower().Contains(managerExpertSearch)));
+                }
+
+                if (!string.IsNullOrEmpty(request.PhoneNumber))
+                {
+                    var phoneNumber = request.PhoneNumber;
+                    query = query.Where(c =>
+                        (c.ClusterManager != null && c.ClusterManager.PhoneNumber != null && c.ClusterManager.PhoneNumber.Contains(phoneNumber)) ||
+                        (c.AgronomyExpert != null && c.AgronomyExpert.PhoneNumber != null && c.AgronomyExpert.PhoneNumber.Contains(phoneNumber)));
+                }
+
+                var totalCount = await query.CountAsync(cancellationToken);
+
+                query = request.SortBy switch
+                {
+                    SortBy.NameAscending => query.OrderBy(c => c.ClusterName),
+                    SortBy.NameDescending => query.OrderByDescending(c => c.ClusterName),
+                    SortBy.DateCreatedAscending => query.OrderBy(c => c.CreatedAt),
+                    _ => query.OrderByDescending(c => c.CreatedAt)
+                };
+
+                var clusterResponses = await query
+                    .Skip((request.CurrentPage - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(c => new ClusterResponse
                     {
-                        SupervisorId = s.Id,
-                        FullName = s.FullName,
-                        PhoneNumber = s.PhoneNumber,
-                        Email = s.Email,
-                        CurrentFarmerCount = s.CurrentFarmerCount,
-                        MaxFarmerCapacity = s.MaxFarmerCapacity,
-                        AssignedDate = s.AssignedDate
-                    }).ToList()
-                }).ToList();
+                        ClusterId = c.Id,
+                        ClusterName = c.ClusterName,
+                        ClusterManagerId = c.ClusterManagerId,
+                        AgronomyExpertId = c.AgronomyExpertId,
+                        ClusterManagerName = c.ClusterManager != null ? c.ClusterManager.FullName : null,
+                        ClusterManagerPhoneNumber = c.ClusterManager != null ? c.ClusterManager.PhoneNumber : null,
+                        ClusterManagerEmail = c.ClusterManager != null ? c.ClusterManager.Email : null,
+                        AgronomyExpertName = c.AgronomyExpert != null ? c.AgronomyExpert.FullName : null,
+                        AgronomyExpertPhoneNumber = c.AgronomyExpert != null ? c.AgronomyExpert.PhoneNumber : null,
+                        AgronomyExpertEmail = c.AgronomyExpert != null ? c.AgronomyExpert.Email : null,
+                        Area = c.Area,
+                        Supervisors = c.SupervisorsInCluster.Select(s => new SupervisorSummary
+                        {
+                            SupervisorId = s.Id,
+                            FullName = s.FullName,
+                            PhoneNumber = s.PhoneNumber,
+                            Email = s.Email,
+                            CurrentFarmerCount = s.CurrentFarmerCount,
+                            MaxFarmerCapacity = s.MaxFarmerCapacity,
+                            AssignedDate = s.AssignedDate
+                        }).ToList()
+                    })
+                    .ToListAsync(cancellationToken);
+
                 return PagedResult<List<ClusterResponse>>.Success(
                     clusterResponses,
                     request.CurrentPage,
                     request.PageSize,
                     totalCount,
-                    "Cluster managers retrieved successfully");
+                    "Clusters retrieved successfully");
             }
             catch (Exception ex)
             {

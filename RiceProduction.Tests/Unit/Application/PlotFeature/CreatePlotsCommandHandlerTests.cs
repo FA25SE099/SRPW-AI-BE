@@ -1,14 +1,13 @@
 using FluentAssertions;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.PlotFeature.Commands.CreatePlots;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using NetTopologySuite.Geometries;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.PlotFeature;
 
@@ -17,57 +16,19 @@ namespace RiceProduction.Tests.Unit.Application.PlotFeature;
 /// </summary>
 public class CreatePlotsCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<Plot>> _mockPlotRepo;
-    private readonly Mock<IGenericRepository<Season>> _mockSeasonRepo;
-    private readonly Mock<IGenericRepository<RiceVariety>> _mockRiceVarietyRepo;
-    private readonly Mock<IGenericRepository<PlotCultivation>> _mockPlotCultivationRepo;
-    private readonly Mock<IGenericRepository<CultivationVersion>> _mockCultivationVersionRepo;
-    private readonly Mock<IFarmerRepository> _mockFarmerRepo;
-    private readonly Mock<IMediator> _mockMediator;
-    private readonly Mock<ILogger<CreatePlotsCommandHandler>> _mockLogger;
-    private readonly CreatePlotsCommandHandler _handler;
-
-    public CreatePlotsCommandHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockPlotRepo = new Mock<IGenericRepository<Plot>>();
-        _mockSeasonRepo = new Mock<IGenericRepository<Season>>();
-        _mockRiceVarietyRepo = new Mock<IGenericRepository<RiceVariety>>();
-        _mockPlotCultivationRepo = new Mock<IGenericRepository<PlotCultivation>>();
-        _mockCultivationVersionRepo = new Mock<IGenericRepository<CultivationVersion>>();
-        _mockFarmerRepo = new Mock<IFarmerRepository>();
-        _mockMediator = new Mock<IMediator>();
-        _mockLogger = new Mock<ILogger<CreatePlotsCommandHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<Plot>()).Returns(_mockPlotRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<Season>()).Returns(_mockSeasonRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<RiceVariety>()).Returns(_mockRiceVarietyRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<PlotCultivation>()).Returns(_mockPlotCultivationRepo.Object);
-        _mockUnitOfWork.Setup(u => u.Repository<CultivationVersion>()).Returns(_mockCultivationVersionRepo.Object);
-        _mockUnitOfWork.Setup(u => u.FarmerRepository).Returns(_mockFarmerRepo.Object);
-
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer>());
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _handler = new CreatePlotsCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockMediator.Object,
-            _mockLogger.Object);
-    }
+    private readonly Mock<IMediator> _mockMediator = new();
+    private readonly Mock<ILogger<CreatePlotsCommandHandler>> _mockLogger = new();
 
     [Fact]
     public async Task Handle_ValidSinglePlot_CreatesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Test Farmer", FarmCode = "FARM001" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Test Farmer", FarmCode = "FARM001" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -84,42 +45,24 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        _mockPlotRepo.Setup(r => r.AddRangeAsync(It.IsAny<List<Plot>>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().HaveCount(1);
-        _mockPlotRepo.Verify(r => r.AddRangeAsync(It.Is<List<Plot>>(
-            plots => plots.Count == 1 && plots[0].Area == 1000m)), Times.Once);
+        var savedPlots = await context.Plots.ToListAsync();
+        savedPlots.Should().ContainSingle(p => p.Area == 1000m && p.FarmerId == farmerId);
     }
 
     [Fact]
     public async Task Handle_FarmerNotFound_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
         var farmerId = Guid.NewGuid();
+
         var command = new CreatePlotsCommand
         {
             Plots = new List<PlotCreationRequest>
@@ -128,11 +71,8 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer>());
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -143,8 +83,12 @@ public class CreatePlotsCommandHandlerTests
     public async Task Handle_MultiplePlots_CreatesAllSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Test Farmer", FarmCode = "FARM001" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Test Farmer", FarmCode = "FARM001" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -156,49 +100,33 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().HaveCount(3);
-        _mockPlotRepo.Verify(r => r.AddRangeAsync(It.Is<List<Plot>>(
-            plots => plots.Count == 3)), Times.Once);
+        (await context.Plots.CountAsync()).Should().Be(3);
     }
 
     [Fact]
     public async Task Handle_DuplicatePlot_SkipsDuplicate()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Test Farmer", FarmCode = "FARM001" };
-
-        var existingPlot = new Plot
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Test Farmer", FarmCode = "FARM001" });
+        context.Plots.Add(new Plot
         {
             Id = Guid.NewGuid(),
             FarmerId = farmerId,
             SoThua = 1,
             SoTo = 1,
             Area = 1000m
-        };
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -208,35 +136,29 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot> { existingPlot });
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("No plots to create") && e.Contains("All plots already exist"));
-        _mockPlotRepo.Verify(r => r.AddRangeAsync(It.IsAny<IEnumerable<Plot>>()), Times.Never);
+        (await context.Plots.CountAsync()).Should().Be(1);
     }
 
     [Fact]
     public async Task Handle_EmptyPlotList_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
+
         var command = new CreatePlotsCommand
         {
             Plots = new List<PlotCreationRequest>()
         };
 
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -247,8 +169,12 @@ public class CreatePlotsCommandHandlerTests
     public async Task Handle_PlotWithZeroArea_ReturnsValidationError()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Test Farmer" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Test Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -258,11 +184,8 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -273,8 +196,12 @@ public class CreatePlotsCommandHandlerTests
     public async Task Handle_PlotWithNegativeArea_ReturnsValidationError()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Test Farmer" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Test Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -284,11 +211,8 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -299,8 +223,12 @@ public class CreatePlotsCommandHandlerTests
     public async Task Handle_LargeNumberOfPlots_HandlesEfficiently()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Large Scale Farmer" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Large Scale Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var plots = Enumerable.Range(1, 50)
             .Select(i => new PlotCreationRequest
@@ -318,26 +246,8 @@ public class CreatePlotsCommandHandlerTests
             Plots = plots
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -348,8 +258,13 @@ public class CreatePlotsCommandHandlerTests
     public async Task Handle_DatabaseError_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Test Farmer" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Test Farmer" });
+        await context.SaveChangesAsync();
+        context.SaveChangesException = new Exception("Database error");
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -359,26 +274,8 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ThrowsAsync(new Exception("Database error"));
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -389,8 +286,12 @@ public class CreatePlotsCommandHandlerTests
     public async Task Handle_PlotWithVeryLargeArea_CreatesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Large Estate Farmer" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Large Estate Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -400,38 +301,24 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        result.Data.First().Area.Should().Be(100000m);
+        result.Data!.First().Area.Should().Be(100000m);
     }
 
     [Fact]
     public async Task Handle_PlotsWithDifferentSoilTypes_CreatesWithCorrectTypes()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Diverse Farm" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Diverse Farm" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -444,39 +331,25 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().HaveCount(4);
-        result.Data.Select(p => p.SoilType).Should().Contain(new[] { "Loamy", "Clay", "Sandy", "Silt" });
+        result.Data!.Select(p => p.SoilType).Should().Contain(new[] { "Loamy", "Clay", "Sandy", "Silt" });
     }
 
     [Fact]
     public async Task Handle_PlotStatusSetToPending_CreatesWithPendingStatus()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
         var farmerId = Guid.NewGuid();
-        var farmer = new Farmer { Id = farmerId, FullName = "Test Farmer" };
+        context.Farmers.Add(new Farmer { Id = farmerId, FullName = "Test Farmer" });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePlotsCommandHandler(context, _mockMediator.Object, _mockLogger.Object);
 
         var command = new CreatePlotsCommand
         {
@@ -486,30 +359,12 @@ public class CreatePlotsCommandHandlerTests
             }
         };
 
-        _mockFarmerRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Farmer, bool>>>(), null, null))
-            .ReturnsAsync(new List<Farmer> { farmer });
-
-        _mockPlotRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Plot, bool>>>(), null, null))
-            .ReturnsAsync(new List<Plot>());
-
-        _mockSeasonRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<Season, bool>>>(), null, null))
-            .ReturnsAsync(new List<Season>());
-
-        _mockRiceVarietyRepo.Setup(r => r.ListAsync(It.IsAny<Expression<Func<RiceVariety, bool>>>(), null, null))
-            .ReturnsAsync(new List<RiceVariety>());
-
-        _mockPlotRepo.Setup(r => r.GenerateNewGuid(It.IsAny<Guid>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        _mockUnitOfWork.Setup(u => u.CompleteAsync())
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        result.Data.First().Status.Should().Be(PlotStatus.PendingPolygon);
+        result.Data!.First().Status.Should().Be(PlotStatus.PendingPolygon);
     }
 }
 

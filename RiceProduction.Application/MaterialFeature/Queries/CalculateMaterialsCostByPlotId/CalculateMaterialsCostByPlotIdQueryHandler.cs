@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Helpers;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -14,12 +15,12 @@ namespace RiceProduction.Application.MaterialFeature.Queries.CalculateMaterialsC
 
 public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<CalculateMaterialsCostByPlotIdQuery, Result<CalculateMaterialsCostByAreaResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CalculateMaterialsCostByPlotIdQueryHandler> _logger;
 
-    public CalculateMaterialsCostByPlotIdQueryHandler(IUnitOfWork unitOfWork, ILogger<CalculateMaterialsCostByPlotIdQueryHandler> logger)
+    public CalculateMaterialsCostByPlotIdQueryHandler(IApplicationDbContext context, ILogger<CalculateMaterialsCostByPlotIdQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,9 +28,11 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
     {
         try
         {
-            var plot = await _unitOfWork.Repository<Plot>().FindAsync(
-                match: p => p.Id == request.PlotId
-            );
+            var plot = await _context.Plots
+                .AsNoTracking()
+                .Where(p => p.Id == request.PlotId)
+                .Select(p => new { p.Id, p.Area })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (plot == null)
             {
@@ -50,9 +53,10 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
                 .Distinct()
                 .ToList();
 
-            var materials = await _unitOfWork.Repository<Material>().ListAsync(
-                filter: m => allMaterialIds.Contains(m.Id) && m.IsActive
-            );
+            var materials = await _context.Materials
+                .AsNoTracking()
+                .Where(m => allMaterialIds.Contains(m.Id) && m.IsActive)
+                .ToListAsync(cancellationToken);
 
             if (!materials.Any())
             {
@@ -60,7 +64,7 @@ public class CalculateMaterialsCostByPlotIdQueryHandler : IRequestHandler<Calcul
             }
 
             var materialsDict = materials.ToDictionary(m => m.Id, m => m);
-            var currentPrices = await MaterialCostHelper.GetCurrentPricesAsync(_unitOfWork, allMaterialIds, currentDate);
+            var currentPrices = await MaterialCostHelper.GetCurrentPricesAsync(_context, allMaterialIds, currentDate, cancellationToken);
 
             decimal totalCost = 0M;
             var taskCostBreakdowns = new List<TaskCostBreakdown>();

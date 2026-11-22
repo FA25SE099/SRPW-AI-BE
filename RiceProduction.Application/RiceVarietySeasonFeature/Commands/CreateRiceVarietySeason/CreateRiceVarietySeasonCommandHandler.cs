@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -7,12 +8,12 @@ namespace RiceProduction.Application.RiceVarietySeasonFeature.Commands.CreateRic
 {
     public class CreateRiceVarietySeasonCommandHandler : IRequestHandler<CreateRiceVarietySeasonCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<CreateRiceVarietySeasonCommandHandler> _logger;
 
-        public CreateRiceVarietySeasonCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateRiceVarietySeasonCommandHandler> logger)
+        public CreateRiceVarietySeasonCommandHandler(IApplicationDbContext context, ILogger<CreateRiceVarietySeasonCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -20,30 +21,33 @@ namespace RiceProduction.Application.RiceVarietySeasonFeature.Commands.CreateRic
         {
             try
             {
-                var riceVarietySeasonRepo = _unitOfWork.Repository<RiceVarietySeason>();
-                var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
-                var seasonRepo = _unitOfWork.Repository<Season>();
-
-                var riceVariety = await riceVarietyRepo.FindAsync(rv => rv.Id == request.RiceVarietyId);
-                if (riceVariety == null)
+                var riceVarietyExists = await _context.RiceVarieties
+                    .AsNoTracking()
+                    .AnyAsync(rv => rv.Id == request.RiceVarietyId, cancellationToken);
+                if (!riceVarietyExists)
                 {
                     return Result<Guid>.Failure($"Rice variety with ID {request.RiceVarietyId} not found");
                 }
 
-                var season = await seasonRepo.FindAsync(s => s.Id == request.SeasonId);
-                if (season == null)
+                var seasonExists = await _context.Seasons
+                    .AsNoTracking()
+                    .AnyAsync(s => s.Id == request.SeasonId, cancellationToken);
+                if (!seasonExists)
                 {
                     return Result<Guid>.Failure($"Season with ID {request.SeasonId} not found");
                 }
 
-                var duplicate = await riceVarietySeasonRepo.FindAsync(rvs => 
-                    rvs.RiceVarietyId == request.RiceVarietyId && rvs.SeasonId == request.SeasonId);
-                if (duplicate != null)
+                var duplicateExists = await _context.RiceVarietySeasons
+                    .AsNoTracking()
+                    .AnyAsync(rvs =>
+                        rvs.RiceVarietyId == request.RiceVarietyId && rvs.SeasonId == request.SeasonId,
+                        cancellationToken);
+                if (duplicateExists)
                 {
                     return Result<Guid>.Failure($"Rice variety is already associated with this season");
                 }
 
-                var id = await riceVarietySeasonRepo.GenerateNewGuid(Guid.NewGuid());
+                var id = Guid.NewGuid();
                 var newRiceVarietySeason = new RiceVarietySeason
                 {
                     Id = id,
@@ -58,8 +62,8 @@ namespace RiceProduction.Application.RiceVarietySeasonFeature.Commands.CreateRic
                     IsRecommended = request.IsRecommended
                 };
 
-                await riceVarietySeasonRepo.AddAsync(newRiceVarietySeason);
-                await _unitOfWork.CompleteAsync();
+                _context.RiceVarietySeasons.Add(newRiceVarietySeason);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation("Created rice variety season association with ID: {Id}", id);
                 return Result<Guid>.Success(id, "Rice variety season association created successfully");

@@ -15,13 +15,13 @@ namespace RiceProduction.Application.UAVFeature.Commands.CreateUavOrder;
 
 public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CreateUavOrderCommandHandler> _logger;
     private readonly GeometryFactory _geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
-    public CreateUavOrderCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateUavOrderCommandHandler> logger)
+    public CreateUavOrderCommandHandler(IApplicationDbContext context, ILogger<CreateUavOrderCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -36,11 +36,14 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             }
             
             // Tải Group cùng với Plots và PlotCultivations (để lấy Area)
-            var group = await _unitOfWork.Repository<Group>().FindAsync(
-                g => g.Id == request.GroupId,
-                includeProperties: q => q.Include(g => g.GroupPlots).ThenInclude(gp => gp.Plot).ThenInclude(p => p.PlotCultivations)
-            );
-            var vendor = await _unitOfWork.UavVendorRepository.GetUavVendorByIdAsync(request.UavVendorId);
+            var group = await _context.Groups
+                .Include(g => g.GroupPlots)
+                    .ThenInclude(gp => gp.Plot)
+                        .ThenInclude(p => p.PlotCultivations)
+                .FirstOrDefaultAsync(g => g.Id == request.GroupId, cancellationToken);
+            var vendor = await _context.UavVendors
+                .AsNoTracking()
+                .FirstOrDefaultAsync(v => v.Id == request.UavVendorId, cancellationToken);
 
             if (group == null) return Result<Guid>.Failure("Group not found.", "GroupNotFound");
             if (vendor == null) return Result<Guid>.Failure("UAV Vendor not found.", "VendorNotFound");
@@ -59,27 +62,29 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                 .ToList();
             
             // Tìm CultivationTask phù hợp
-            IReadOnlyList<CultivationTask> cultivationTasks;
+            List<CultivationTask> cultivationTasks;
             
             if (request.CultivationTaskIds != null && request.CultivationTaskIds.Any())
             {
                 // Sử dụng CultivationTaskIds cụ thể nếu được cung cấp
-                cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                    filter: ct => 
+                cultivationTasks = await _context.CultivationTasks
+                    .Include(ct => ct.PlotCultivation)
+                    .Where(ct => 
                         request.CultivationTaskIds.Contains(ct.Id) &&
                         selectedPlotCultivationIds.Contains(ct.PlotCultivationId) &&
                         (ct.Status == RiceProduction.Domain.Enums.TaskStatus.Draft || 
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed ||
-                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
-                );
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency))
+                    .ToListAsync(cancellationToken);
             }
             else
             {
                 // Fallback: Tìm CultivationTask phù hợp (Spraying/Fertilization) tự động
-                cultivationTasks = await _unitOfWork.Repository<CultivationTask>().ListAsync(
-                    filter: ct => 
+                cultivationTasks = await _context.CultivationTasks
+                    .Include(ct => ct.PlotCultivation)
+                    .Where(ct => 
                         selectedPlotCultivationIds.Contains(ct.PlotCultivationId) 
                         &&
                         (ct.TaskType == TaskType.Harvesting || ct.TaskType == TaskType.LandPreparation
@@ -89,8 +94,8 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Approved ||
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.InProgress || 
                          ct.Status == RiceProduction.Domain.Enums.TaskStatus.Completed ||
-                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency)
-                );
+                         ct.Status == RiceProduction.Domain.Enums.TaskStatus.Emergency))
+                    .ToListAsync(cancellationToken);
             }
 
             if (cultivationTasks.Count == 0)
@@ -102,8 +107,10 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             var totalArea = group.TotalArea.Value;
             var estimatedCost = totalArea * vendor.ServiceRatePerHa;
             var totalPlots = request.SelectedPlotIds.Count; // Tổng Plots được chọn
-            var cluster = await _unitOfWork.Repository<Cluster>().FindAsync(c => c.Id == group.ClusterId);
-            var orderName = request.OrderNameOverride ?? $"{cluster.ClusterName ?? ""} - Dịch vụ UAV {DateTime.Now:yyyyMMdd}";
+            var cluster = await _context.Clusters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == group.ClusterId, cancellationToken);
+            var orderName = request.OrderNameOverride ?? $"{cluster?.ClusterName ?? ""} - Dịch vụ UAV {DateTime.Now:yyyyMMdd}";
 
             var plotCoordinates = selectedPlots
                 .Where(p => p.Coordinate != null)
@@ -151,7 +158,7 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             }
             
             // Update cultivation tasks in database
-            _unitOfWork.Repository<CultivationTask>().UpdateRange(cultivationTasks);
+            _context.CultivationTasks.UpdateRange(cultivationTasks);
             
             // 6. Tạo UavOrderPlotAssignments cho từng CultivationTask/Plot
             var assignments = new List<UavOrderPlotAssignment>();
@@ -178,8 +185,8 @@ public class CreateUavOrderCommandHandler : IRequestHandler<CreateUavOrderComman
             uavOrder.PlotAssignments = assignments;
             
             // 6. Lưu DB
-            await _unitOfWork.Repository<UavServiceOrder>().AddAsync(uavOrder);
-            await _unitOfWork.Repository<UavServiceOrder>().SaveChangesAsync();
+            _context.UavServiceOrders.Add(uavOrder);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("UAV Order {OrderId} created successfully for Group {GroupId}. Cost: {Cost}", uavOrder.Id, request.GroupId, estimatedCost);
             

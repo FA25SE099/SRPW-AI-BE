@@ -1,21 +1,21 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.MaterialFeature.Events;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial
 {
     public class DeleteMaterialCommandHandler : IRequestHandler<DeleteMaterialCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<DeleteMaterialCommandHandler> _logger;
 
-        public DeleteMaterialCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<DeleteMaterialCommandHandler> logger)
+        public DeleteMaterialCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<DeleteMaterialCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,17 +24,16 @@ namespace RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial
         {
             try
             {
-                var materialRepo = _unitOfWork.Repository<Material>();
-
-                var material = await materialRepo.FindAsync(m => m.Id == request.MaterialId);
+                var material = await _context.Materials
+                    .FirstOrDefaultAsync(m => m.Id == request.MaterialId, cancellationToken);
                 if (material == null)
                 {
                     return Result<Guid>.Failure($"Material with ID {request.MaterialId} not found");
                 }
 
                 material.IsActive = false;
-                materialRepo.Update(material);
-                await _unitOfWork.CompleteAsync();
+                _context.Materials.Update(material);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new MaterialChangedEvent(request.MaterialId, ChangeType.Deleted), cancellationToken);
 
@@ -49,4 +48,3 @@ namespace RiceProduction.Application.MaterialFeature.Commands.DeleteMaterial
         }
     }
 }
-

@@ -17,14 +17,14 @@ namespace RiceProduction.Application.ProductionPlanFeature.Commands.EditPlan;
 public class EditPlanCommandHandler :
     IRequestHandler<EditPlanCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<EditPlanCommandHandler> _logger;
 
     public EditPlanCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<EditPlanCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -38,13 +38,12 @@ public class EditPlanCommandHandler :
                 return Result<Guid>.Failure("Current expert user ID not found.", "AuthenticationRequired");
             }
 
-            var plan = await _unitOfWork.Repository<ProductionPlan>().FindAsync(
-                match: p => p.Id == request.PlanId,
-                includeProperties: q => q
-                    .Include(p => p.Group)
-                    .Include(p => p.CurrentProductionStages)
-                        .ThenInclude(s => s.ProductionPlanTasks)
-                            .ThenInclude(t => t.ProductionPlanTaskMaterials));
+            var plan = await _context.ProductionPlans
+                .Include(p => p.Group)
+                .Include(p => p.CurrentProductionStages)
+                    .ThenInclude(s => s.ProductionPlanTasks)
+                        .ThenInclude(t => t.ProductionPlanTaskMaterials)
+                .FirstOrDefaultAsync(p => p.Id == request.PlanId, cancellationToken);
 
             if (plan == null)
             {
@@ -76,15 +75,19 @@ public class EditPlanCommandHandler :
 
             var priceReferenceDate = DateTime.SpecifyKind(request.BasePlantingDate.Date, DateTimeKind.Utc);
 
-            var potentialPrices = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate);
+            var potentialPrices = await _context.MaterialPrices
+                .AsNoTracking()
+                .Where(p => materialIds.Contains(p.MaterialId) && p.ValidFrom.Date <= priceReferenceDate)
+                .ToListAsync(cancellationToken);
             var materialPriceMap = potentialPrices
                 .GroupBy(p => p.MaterialId)
                 .Select(g => g.OrderByDescending(p => p.ValidFrom).First())
                 .ToDictionary(p => p.MaterialId, p => p.PricePerMaterial);
 
-            var materialDetailsList = await _unitOfWork.Repository<Material>().ListAsync(
-                filter: m => materialIds.Contains(m.Id));
+            var materialDetailsList = await _context.Materials
+                .AsNoTracking()
+                .Where(m => materialIds.Contains(m.Id))
+                .ToListAsync(cancellationToken);
             var materialDetailMap = materialDetailsList.ToDictionary(m => m.Id, m => m);
 
             RemoveExistingStages(plan);
@@ -92,8 +95,8 @@ public class EditPlanCommandHandler :
             plan.CurrentProductionStages = BuildStages(
                 plan, request, expertId, effectiveTotalArea, materialPriceMap, materialDetailMap);
 
-            _unitOfWork.Repository<ProductionPlan>().Update(plan);
-            await _unitOfWork.Repository<ProductionPlan>().SaveChangesAsync();
+            _context.ProductionPlans.Update(plan);
+            await _context.SaveChangesAsync(cancellationToken);
 
             return Result<Guid>.Success(plan.Id, $"Production Plan '{plan.PlanName}' updated successfully.");
         }
@@ -132,9 +135,9 @@ public class EditPlanCommandHandler :
         var oldTasks = oldStages.SelectMany(s => s.ProductionPlanTasks).ToList();
         var oldMaterials = oldTasks.SelectMany(t => t.ProductionPlanTaskMaterials).ToList();
 
-        _unitOfWork.Repository<ProductionPlanTaskMaterial>().DeleteRange(oldMaterials);
-        _unitOfWork.Repository<ProductionPlanTask>().DeleteRange(oldTasks);
-        _unitOfWork.Repository<ProductionStage>().DeleteRange(oldStages);
+        _context.ProductionPlanTaskMaterials.RemoveRange(oldMaterials);
+        _context.ProductionPlanTasks.RemoveRange(oldTasks);
+        _context.ProductionStages.RemoveRange(oldStages);
 
         plan.CurrentProductionStages.Clear();
     }

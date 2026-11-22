@@ -8,29 +8,14 @@ namespace RiceProduction.Application.CultivationFeature.Event;
 
 public class ProductionPlanApprovalEventHandler : INotificationHandler<ProductionPlanApprovalEvent>
 {
-    private readonly IGenericRepository<ProductionPlan> _planRepo;
-    private readonly IGenericRepository<MaterialPrice> _priceRepo;
-    private readonly IGenericRepository<Material> _materialRepo;
-    private readonly IGenericRepository<CultivationTask> _taskRepo;
-    private readonly IGenericRepository<CultivationTaskMaterial> _materialTaskRepo;
-    private readonly IGenericRepository<CultivationVersion> _versionRepo;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ProductionPlanApprovalEventHandler> _logger;
 
     public ProductionPlanApprovalEventHandler(
-        IGenericRepository<ProductionPlan> planRepo,
-        IGenericRepository<MaterialPrice> priceRepo,
-        IGenericRepository<Material> materialRepo,
-        IGenericRepository<CultivationTask> taskRepo,
-        IGenericRepository<CultivationTaskMaterial> materialTaskRepo,
-        IGenericRepository<CultivationVersion> versionRepo,
+        IApplicationDbContext context,
         ILogger<ProductionPlanApprovalEventHandler> logger)
     {
-        _planRepo = planRepo;
-        _priceRepo = priceRepo;
-        _materialRepo = materialRepo;
-        _taskRepo = taskRepo;
-        _materialTaskRepo = materialTaskRepo;
-        _versionRepo = versionRepo;
+        _context = context;
         _logger = logger;
     }
 
@@ -38,7 +23,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
     {
         _logger.LogInformation("ProductionPlanApprovalEvent received for Plan ID: {PlanId}", notification.PlanId);
 
-        var plan = await FetchPlanWithRelationsAsync(notification.PlanId);
+        var plan = await FetchPlanWithRelationsAsync(notification.PlanId, cancellationToken);
         if (!IsValidForTaskCreation(plan))
         {
             _logger.LogWarning("No stages found for approved plan {PlanId}", notification.PlanId);
@@ -50,7 +35,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             return;
         }
 
-        var (materialDict, priceDict) = await LoadMaterialsAndPricesAsync(plan!);
+        var (materialDict, priceDict) = await LoadMaterialsAndPricesAsync(plan!, cancellationToken);
         if (!materialDict.Any())
         {
             _logger.LogInformation("No materials found for plan {PlanId}", notification.PlanId);
@@ -87,29 +72,28 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             return;
         }
 
-        await SaveTasksAndMaterialsAsync(cultivationTasks, cultivationTaskMaterials);
+        await SaveTasksAndMaterialsAsync(cultivationTasks, cultivationTaskMaterials, cancellationToken);
 
         _logger.LogInformation(
             "Created {TaskCount} cultivation tasks with {MaterialCount} task materials for {PlotCount} plots in plan {PlanId}",
             cultivationTasks.Count, cultivationTaskMaterials.Count, plotCultivations.Count, notification.PlanId);
     }
 
-    private async Task<ProductionPlan?> FetchPlanWithRelationsAsync(Guid planId)
+    private async Task<ProductionPlan?> FetchPlanWithRelationsAsync(Guid planId, CancellationToken cancellationToken)
     {
-        var plans = await _planRepo.ListAsync(
-            filter: p => p.Id == planId,
-            includeProperties: q => q
-                .Include(p => p.CurrentProductionStages)
-                    .ThenInclude(s => s.ProductionPlanTasks)
-                        .ThenInclude(t => t.ProductionPlanTaskMaterials)
-                .Include(p => p.Group)
-                    .ThenInclude(g => g!.YearSeason)
-                .Include(p => p.Group)
-                    .ThenInclude(g => g!.GroupPlots)
-                        .ThenInclude(gp => gp.Plot)
-                            .ThenInclude(pl => pl.PlotCultivations));
-
-        return plans.FirstOrDefault();
+        return await _context.ProductionPlans
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(p => p.CurrentProductionStages)
+                .ThenInclude(s => s.ProductionPlanTasks)
+                    .ThenInclude(t => t.ProductionPlanTaskMaterials)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.YearSeason)
+            .Include(p => p.Group)
+                .ThenInclude(g => g!.GroupPlots)
+                    .ThenInclude(gp => gp.Plot)
+                        .ThenInclude(pl => pl.PlotCultivations)
+            .FirstOrDefaultAsync(p => p.Id == planId, cancellationToken);
     }
 
     private static bool IsValidForTaskCreation(ProductionPlan? plan) =>
@@ -130,7 +114,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             return false;
         }
 
-        var existingTasksCount = await _taskRepo.GetQueryable()
+        var existingTasksCount = await _context.CultivationTasks
             .Where(ct => ct.ProductionPlanTaskId != null && planTaskIds.Contains(ct.ProductionPlanTaskId.Value))
             .CountAsync(cancellationToken);
 
@@ -158,18 +142,24 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
         List<PlotCultivation> plotCultivations,
         CancellationToken cancellationToken)
     {
+        var plotCultivationIds = plotCultivations.Select(pc => pc.Id).Distinct().ToList();
+        var existingVersions = await _context.CultivationVersions
+            .AsNoTracking()
+            .Where(v => plotCultivationIds.Contains(v.PlotCultivationId))
+            .OrderByDescending(v => v.VersionOrder)
+            .ToListAsync(cancellationToken);
+
+        var latestVersionByPlotCultivation = existingVersions
+            .GroupBy(v => v.PlotCultivationId)
+            .ToDictionary(g => g.Key, g => g.First());
+
         var versionLookup = new Dictionary<Guid, Guid>();
         var newVersionsCreated = 0;
         var existingVersionsUsed = 0;
 
         foreach (var plotCultivation in plotCultivations)
         {
-            var existingVersion = await _versionRepo.GetQueryable()
-                .Where(v => v.PlotCultivationId == plotCultivation.Id)
-                .OrderByDescending(v => v.VersionOrder)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (existingVersion != null)
+            if (latestVersionByPlotCultivation.TryGetValue(plotCultivation.Id, out var existingVersion))
             {
                 versionLookup[plotCultivation.Id] = existingVersion.Id;
                 existingVersionsUsed++;
@@ -188,9 +178,9 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
                 reason: "Version 0 created upon plan approval",
                 activateImmediately: true,
                 activatedAt: now);
-            newVersion.Id = await _versionRepo.GenerateNewGuid(Guid.NewGuid());
+            newVersion.Id = Guid.NewGuid();
             newVersion.CreatedAt = now;
-            await _versionRepo.AddAsync(newVersion);
+            _context.CultivationVersions.Add(newVersion);
             versionLookup[plotCultivation.Id] = newVersion.Id;
             newVersionsCreated++;
 
@@ -201,7 +191,7 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
 
         if (newVersionsCreated > 0)
         {
-            await _versionRepo.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         _logger.LogInformation(
@@ -212,7 +202,8 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
     }
 
     private async Task<(Dictionary<Guid, Material> MaterialDict, Dictionary<Guid, MaterialPrice> PriceDict)> LoadMaterialsAndPricesAsync(
-        ProductionPlan plan)
+        ProductionPlan plan,
+        CancellationToken cancellationToken)
     {
         var materialIds = plan.CurrentProductionStages
             .SelectMany(s => s.ProductionPlanTasks ?? Enumerable.Empty<ProductionPlanTask>())
@@ -228,14 +219,18 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
 
         var now = DateTime.UtcNow;
 
-        var materials = await _materialRepo.ListAsync(filter: m => materialIds.Contains(m.Id));
-        var materialDict = materials.ToDictionary(m => m.Id);
+        var materialDict = await _context.Materials
+            .AsNoTracking()
+            .Where(m => materialIds.Contains(m.Id))
+            .ToDictionaryAsync(m => m.Id, cancellationToken);
 
-        var currentPrices = await _priceRepo.ListAsync(
-            filter: mp => materialIds.Contains(mp.MaterialId)
-                       && mp.ValidFrom <= now
-                       && (!mp.ValidTo.HasValue || mp.ValidTo > now),
-            orderBy: q => q.OrderByDescending(mp => mp.ValidFrom));
+        var currentPrices = await _context.MaterialPrices
+            .AsNoTracking()
+            .Where(mp => materialIds.Contains(mp.MaterialId)
+                      && mp.ValidFrom <= now
+                      && (!mp.ValidTo.HasValue || mp.ValidTo > now))
+            .OrderByDescending(mp => mp.ValidFrom)
+            .ToListAsync(cancellationToken);
 
         var priceDict = currentPrices
             .GroupBy(p => p.MaterialId)
@@ -330,6 +325,10 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
             }
 
             var amountPerUnit = material.AmmountPerMaterial.GetValueOrDefault(1m);
+            if (amountPerUnit <= 0m)
+            {
+                amountPerUnit = 1m;
+            }
             var requiredQuantity = planTaskMaterial.QuantityPerHa * plotCultivation.Area;
 
             // Round up to full material units
@@ -354,17 +353,18 @@ public class ProductionPlanApprovalEventHandler : INotificationHandler<Productio
 
     private async Task SaveTasksAndMaterialsAsync(
         List<CultivationTask> tasks,
-        List<CultivationTaskMaterial> materials)
+        List<CultivationTaskMaterial> materials,
+        CancellationToken cancellationToken)
     {
         if (!tasks.Any()) return;
 
-        await _taskRepo.AddRangeAsync(tasks);
+        _context.CultivationTasks.AddRange(tasks);
         if (materials.Any())
         {
-            await _materialTaskRepo.AddRangeAsync(materials);
+            _context.CultivationTaskMaterials.AddRange(materials);
         }
 
-        await _taskRepo.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
     }
 }
 

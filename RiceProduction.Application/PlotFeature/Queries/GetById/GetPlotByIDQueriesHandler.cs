@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
@@ -13,11 +14,11 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetById
     public class GetPlotByIDQueriesHandler : IRequestHandler<GetPlotByIDQueries, PlotDTO>
     {
         private readonly ILogger<GetPlotByIDQueriesHandler> _logger;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
 
-        public GetPlotByIDQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetPlotByIDQueriesHandler> logger)
+        public GetPlotByIDQueriesHandler(IApplicationDbContext context, ILogger<GetPlotByIDQueriesHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -26,15 +27,18 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetById
             try
             {
                 _logger.LogInformation("Retrieving Plot with id:{PlotId}", request.PlotId);
-                var plot = await _unitOfWork.PlotRepository.GetPlotByIDAsync(request.PlotId, cancellationToken);
+                var plot = await _context.Plots
+                    .AsNoTracking()
+                    .Include(p => p.Farmer)
+                    .FirstOrDefaultAsync(p => p.Id == request.PlotId, cancellationToken);
                 if (plot == null)
                 {
-                    _logger.LogWarning("Farmer with Id:{PlotId} not found", request.PlotId);
+                    _logger.LogWarning("Plot with Id:{PlotId} not found", request.PlotId);
                     return null;
                 }
                 var plotDTOs = plot.ToDto();
                 _logger.LogInformation(
-                    "Successfully retrieve plo with ID: {PlotId})",
+                    "Successfully retrieved plot with ID: {PlotId}",
                     plot.Id
                     );
                 return plotDTOs;

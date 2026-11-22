@@ -1,25 +1,19 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.Common.Models.Response.AgronomyExpertResponses;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyExpertList
 {
     public class GetAgronomyExpertsQueryHandler : IRequestHandler<GetAgronomyExpertsQuery, PagedResult<List<AgronomyExpertResponse>>>
     {
-        private readonly IAgronomyExpertRepository _expertRepo;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetAgronomyExpertsQueryHandler> _logger;
 
-        public GetAgronomyExpertsQueryHandler(IUnitOfWork unitOfWork, ILogger<GetAgronomyExpertsQueryHandler> logger)
+        public GetAgronomyExpertsQueryHandler(IApplicationDbContext context, ILogger<GetAgronomyExpertsQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork;
-            _expertRepo = _unitOfWork.AgronomyExpertRepository;
+            _context = context;
             _logger = logger;
         }
 
@@ -27,26 +21,47 @@ namespace RiceProduction.Application.AgronomyExpertFeature.Queries.GetAgronomyEx
         {
             try
             {
-                var (result, totalCount) = await _expertRepo.GetAllAgronomyExpertAssignedOrNotByNameOrEmailAndPhoneNumberPagingAsync(
-                    request.CurrentPage,
-                    request.PageSize,
-                    request.Search,
-                    request.PhoneNumber,
-                    request.FreeOrAssigned,
-                    cancellationToken);
+                var query = _context.AgronomyExperts.AsNoTracking();
 
-                var resultList = result.ToList();
-
-                var agronomyExpertResponse = resultList.Select(expert => new AgronomyExpertResponse
+                if (request.FreeOrAssigned.HasValue)
                 {
-                    ExpertId = expert.Id,
-                    ExpertName = expert.FullName,
-                    ExpertPhoneNumber = expert.PhoneNumber,
-                    Email = expert.Email,
-                    ClusterId = expert.ClusterId,
-                    ClusterName = expert.ManagedCluster?.ClusterName,
-                    AssignedDate = expert.AssignedDate
-                }).ToList();
+                    query = request.FreeOrAssigned.Value
+                        ? query.Where(e => !e.ClusterId.HasValue)
+                        : query.Where(e => e.ClusterId.HasValue);
+                }
+
+                var search = request.Search?.ToLower();
+                if (!string.IsNullOrEmpty(search))
+                {
+                    query = query.Where(e => (e.FullName != null && e.FullName.ToLower().Contains(search)) ||
+                                             (e.Email != null && e.Email.ToLower().Contains(search)));
+                }
+
+                if (!string.IsNullOrEmpty(request.PhoneNumber))
+                {
+                    var phoneNumber = request.PhoneNumber;
+                    query = query.Where(e => e.PhoneNumber != null && e.PhoneNumber.Contains(phoneNumber));
+                }
+
+                var totalCount = await query.CountAsync(cancellationToken);
+
+                var orderedQuery = query.OrderBy(e => e.FullName);
+                var pagedQuery = request.PageSize == 0
+                    ? orderedQuery
+                    : orderedQuery.Skip((request.CurrentPage - 1) * request.PageSize).Take(request.PageSize);
+
+                var agronomyExpertResponse = await pagedQuery
+                    .Select(e => new AgronomyExpertResponse
+                    {
+                        ExpertId = e.Id,
+                        ExpertName = e.FullName,
+                        ExpertPhoneNumber = e.PhoneNumber,
+                        Email = e.Email,
+                        ClusterId = e.ClusterId,
+                        ClusterName = e.ManagedCluster != null ? e.ManagedCluster.ClusterName : null,
+                        AssignedDate = e.AssignedDate
+                    })
+                    .ToListAsync(cancellationToken);
 
                 return PagedResult<List<AgronomyExpertResponse>>.Success(
                     agronomyExpertResponse,

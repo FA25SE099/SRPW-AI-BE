@@ -12,16 +12,16 @@ namespace RiceProduction.Application.GroupFeature.Commands.FormGroups;
 
 public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Result<FormGroupsResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<FormGroupsCommandHandler> _logger;
     private readonly GroupFormationService _groupFormationService;
     private readonly WKTWriter _wktWriter;
 
     public FormGroupsCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<FormGroupsCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
         _groupFormationService = new GroupFormationService();
         _wktWriter = new WKTWriter();
@@ -34,17 +34,21 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
         try
         {
             // Verify cluster exists
-            var cluster = await _unitOfWork.Repository<Cluster>()
-                .FindAsync(c => c.Id == request.ClusterId);
+            var clusterExists = await _context.Clusters
+                .AsNoTracking()
+                .AnyAsync(c => c.Id == request.ClusterId, cancellationToken);
 
-            if (cluster == null)
+            if (!clusterExists)
             {
                 return Result<FormGroupsResponse>.Failure($"Cluster {request.ClusterId} not found");
             }
 
             // Verify season exists
-            var season = await _unitOfWork.Repository<Season>()
-                .FindAsync(s => s.Id == request.SeasonId);
+            var season = await _context.Seasons
+                .AsNoTracking()
+                .Where(s => s.Id == request.SeasonId)
+                .Select(s => new { s.Id, s.SeasonName })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (season == null)
             {
@@ -52,10 +56,12 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
             }
 
             // Get or verify YearSeason exists
-            var yearSeason = await _unitOfWork.Repository<YearSeason>()
-                .FindAsync(ys => ys.ClusterId == request.ClusterId && 
-                                ys.SeasonId == request.SeasonId && 
-                                ys.Year == request.Year);
+            var yearSeason = await _context.YearSeasons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ys => ys.ClusterId == request.ClusterId && 
+                                           ys.SeasonId == request.SeasonId && 
+                                           ys.Year == request.Year,
+                    cancellationToken);
 
             if (yearSeason == null)
             {
@@ -65,12 +71,14 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
             }
 
             // Check if groups already exist for this cluster/season/year
-            var existingGroups = await _unitOfWork.Repository<Group>()
-                .ListAsync(g => g.ClusterId == request.ClusterId && 
+            var existingGroupsExist = await _context.Groups
+                .AsNoTracking()
+                .AnyAsync(g => g.ClusterId == request.ClusterId && 
                                g.YearSeasonId == yearSeason.Id && 
-                               g.Year == request.Year);
+                               g.Year == request.Year,
+                    cancellationToken);
 
-            if (existingGroups.Any())
+            if (existingGroupsExist)
             {
                 return Result<FormGroupsResponse>.Failure(
                     $"Groups already exist for this cluster in {season.SeasonName} {request.Year}. " +
@@ -89,22 +97,25 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
             };
 
             // Get all farmers in cluster
-            var farmers = await _unitOfWork.FarmerRepository
-                .ListAsync(f => f.ClusterId == request.ClusterId);
-            var farmersList = farmers.ToList();
-            var farmerIds = farmersList.Select(f => f.Id).ToList();
+            var farmerIds = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => f.ClusterId == request.ClusterId)
+                .Select(f => f.Id)
+                .ToListAsync(cancellationToken);
 
             // Get all plots for these farmers
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => farmerIds.Contains(p.FarmerId));
-            var plotsList = plots.ToList();
+            var plotsList = await _context.Plots
+                .AsNoTracking()
+                .Where(p => farmerIds.Contains(p.FarmerId))
+                .ToListAsync(cancellationToken);
             var plotIds = plotsList.Select(p => p.Id).ToList();
 
             // Get plot cultivations for this season
-            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .ListAsync(pc => plotIds.Contains(pc.PlotId) && 
-                                pc.SeasonId == request.SeasonId);
-            var cultivationsList = plotCultivations.ToList();
+            var cultivationsList = await _context.PlotCultivations
+                .AsNoTracking()
+                .Where(pc => plotIds.Contains(pc.PlotId) && 
+                             pc.SeasonId == request.SeasonId)
+                .ToListAsync(cancellationToken);
 
             if (!cultivationsList.Any())
             {
@@ -112,6 +123,18 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                     "No plot cultivations found for this season. " +
                     "Farmers must select rice varieties before forming groups.");
             }
+
+            // Find plots already grouped for THIS SEASON in one query
+            // Business rule: A plot can belong to multiple groups, but only one group per season
+            var alreadyGroupedPlotIds = (await _context.GroupPlots
+                .AsNoTracking()
+                .Where(gp => plotIds.Contains(gp.PlotId) &&
+                             gp.Group.YearSeason != null &&
+                             gp.Group.YearSeason.SeasonId == request.SeasonId)
+                .Select(gp => gp.PlotId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+                .ToHashSet();
 
             // Build PlotClusterInfo list
             var plotDict = plotsList.ToDictionary(p => p.Id);
@@ -122,11 +145,7 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 if (!plotDict.TryGetValue(cultivation.PlotId, out var plot))
                     continue;
 
-                // Skip plots already grouped for THIS SEASON
-                // Business rule: A plot can belong to multiple groups, but only one group per season
-                var isAlreadyGroupedForSeason = await _unitOfWork.PlotRepository
-                    .IsPlotAssignedToGroupForSeasonAsync(plot.Id, request.SeasonId, cancellationToken);
-                if (isAlreadyGroupedForSeason)
+                if (alreadyGroupedPlotIds.Contains(plot.Id))
                     continue;
 
                 var coordinate = plot.Coordinate ?? plot.Boundary?.Centroid;
@@ -164,20 +183,25 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
 
             // Get rice varieties
             var varietyIds = plotClusterInfos.Select(p => p.RiceVarietyId).Distinct().ToList();
-            var riceVarieties = await _unitOfWork.Repository<RiceVariety>()
-                .ListAsync(rv => varietyIds.Contains(rv.Id));
+            if (yearSeason.RiceVarietyId.HasValue && !varietyIds.Contains(yearSeason.RiceVarietyId.Value))
+            {
+                varietyIds.Add(yearSeason.RiceVarietyId.Value);
+            }
+            var riceVarieties = await _context.RiceVarieties
+                .AsNoTracking()
+                .Where(rv => varietyIds.Contains(rv.Id))
+                .ToListAsync(cancellationToken);
             var varietyDict = riceVarieties.ToDictionary(rv => rv.Id);
 
             // Get supervisors if auto-assign
             List<Supervisor> availableSupervisors = new();
             if (request.AutoAssignSupervisors)
             {
-                var supervisors = await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => s.IsActive);
-                availableSupervisors = supervisors
-                    .Where(s => s.CurrentFarmerCount < s.MaxFarmerCapacity)
+                availableSupervisors = await _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => s.IsActive && s.CurrentFarmerCount < s.MaxFarmerCapacity)
                     .OrderBy(s => s.CurrentFarmerCount)
-                    .ToList();
+                    .ToListAsync(cancellationToken);
             }
 
             // Create groups
@@ -212,7 +236,7 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 }
 
                 // Add group
-                await _unitOfWork.Repository<Group>().AddAsync(group);
+                _context.Groups.Add(group);
                 createdGroups.Add(group);
 
                 // Assign plots to group using many-to-many relationship
@@ -223,12 +247,12 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                         GroupId = group.Id,
                         PlotId = plotInfo.Plot.Id
                     };
-                    await _unitOfWork.Repository<GroupPlot>().AddAsync(groupPlot);
+                    _context.GroupPlots.Add(groupPlot);
                 }
             }
 
             // Save all changes
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Created {GroupCount} groups for cluster {ClusterId}, season {SeasonId}, year {Year}",
@@ -244,9 +268,10 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
             var supervisorsForResponse = new Dictionary<Guid, string>();
             if (supervisorIds.Any())
             {
-                var supervisorsList = await _unitOfWork.SupervisorRepository
-                    .ListAsync(s => supervisorIds.Contains(s.Id));
-                supervisorsForResponse = supervisorsList.ToDictionary(s => s.Id, s => s.FullName);
+                supervisorsForResponse = await _context.Supervisors
+                    .AsNoTracking()
+                    .Where(s => supervisorIds.Contains(s.Id))
+                    .ToDictionaryAsync(s => s.Id, s => s.FullName ?? string.Empty, cancellationToken);
             }
 
             var response = new FormGroupsResponse
@@ -258,7 +283,7 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
                 PlotsGrouped = createdGroups.Sum(g => g.GroupPlots.Count),
                 UngroupedPlots = ungroupedPlots.Count,
                 Groups = createdGroups
-                    .Select(g => MapToCreatedGroupDto(g, varietyDict, supervisorsForResponse))
+                    .Select(g => MapToCreatedGroupDto(g, yearSeason.RiceVarietyId, varietyDict, supervisorsForResponse))
                     .ToList(),
                 UngroupedPlotIds = ungroupedPlots.Select(u => u.Plot.Plot.Id).ToList(),
                 Warnings = warnings
@@ -282,14 +307,16 @@ public class FormGroupsCommandHandler : IRequestHandler<FormGroupsCommand, Resul
 
     private CreatedGroupDto MapToCreatedGroupDto(
         Group group,
+        Guid? yearSeasonRiceVarietyId,
         Dictionary<Guid, RiceVariety> varietyDict,
         Dictionary<Guid, string> supervisorsForResponse)
     {
+        var effectiveVarietyId = group.YearSeason?.RiceVarietyId ?? yearSeasonRiceVarietyId;
         return new CreatedGroupDto
         {
             GroupId = group.Id,
-            RiceVarietyId = (Guid)(group.YearSeason?.RiceVarietyId),
-            RiceVarietyName = group.YearSeason?.RiceVarietyId is Guid riceVarietyId
+            RiceVarietyId = effectiveVarietyId ?? Guid.Empty,
+            RiceVarietyName = effectiveVarietyId is Guid riceVarietyId
                 ? varietyDict.GetValueOrDefault(riceVarietyId)?.VarietyName ?? "Unknown"
                 : "Not Set",
             SupervisorId = group.SupervisorId,

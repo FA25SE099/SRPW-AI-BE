@@ -9,16 +9,16 @@ namespace RiceProduction.Application.FarmerFeature.Command.UpdateFarmer
     public class UpdateFarmerCommandHandler : IRequestHandler<UpdateFarmerCommand, Result<Guid>>
     {
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<UpdateFarmerCommandHandler> _logger;
 
         public UpdateFarmerCommandHandler(
             UserManager<ApplicationUser> userManager,
-            IUnitOfWork unitOfWork,
+            IApplicationDbContext context,
             ILogger<UpdateFarmerCommandHandler> logger)
         {
             _userManager = userManager;
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -33,7 +33,8 @@ namespace RiceProduction.Application.FarmerFeature.Command.UpdateFarmer
                 }
 
                 // Get existing farmer
-                var farmer = await _unitOfWork.FarmerRepository.GetFarmerByIdAsync(request.FarmerId, cancellationToken);
+                var farmer = await _context.Farmers
+                    .FirstOrDefaultAsync(f => f.Id == request.FarmerId, cancellationToken);
                 if (farmer == null)
                 {
                     return Result<Guid>.Failure($"Farmer with ID '{request.FarmerId}' not found");

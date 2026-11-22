@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
@@ -14,12 +15,12 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved
 {
     public class GetAppprovedQueriesHandler : IRequestHandler<GetApprovedQueries, Result<List<ProductionPlanDTO>>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetAppprovedQueriesHandler> _logger;
 
-        public GetAppprovedQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetAppprovedQueriesHandler> logger)
+        public GetAppprovedQueriesHandler(IApplicationDbContext context, ILogger<GetAppprovedQueriesHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
 
@@ -29,20 +30,50 @@ namespace RiceProduction.Application.ProductionPlanFeature.Queries.GetApproved
             {
                 _logger.LogInformation("Starting to retrieve approved production plans with filters: GroupId={GroupId}, SupervisorId={SupervisorId}, FromDate={FromDate}, ToDate={ToDate}",
                      request.GroupId, request.SupervisorId, request.FromDate, request.ToDate);
-                var query = _unitOfWork.Repository<ProductionPlan>().GetQueryable()
-                     .Include(g => g.Group).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Plot)
-                     .Include(g => g.Group).ThenInclude(ys => ys.YearSeason).ThenInclude(ys => ys.RiceVariety)
-                     .Include(g => g.Group).ThenInclude(c => c.Cluster)
-                     .Include(g => g.Group).ThenInclude(s => s.Supervisor)
-                     .Include(st => st.StandardPlan)
-                     .Include(su => su.Submitter)
-                     .Include(ap => ap.Approver)
-                     .Include(s => s.CurrentProductionStages).ThenInclude(t => t.ProductionPlanTasks)
-                     .Where(st => st.Status == RiceProduction.Domain.Enums.TaskStatus.Approved);
 
-                var productionPlan = await query.OrderByDescending(PP => PP.ApprovedAt)
-                                    .ThenBy(pp => pp.BasePlantingDate)
-                                    .ToListAsync(cancellationToken);
+                var query = _context.ProductionPlans
+                    .AsNoTracking()
+                    .Where(st => st.Status == RiceProduction.Domain.Enums.TaskStatus.Approved);
+
+                if (request.GroupId.HasValue)
+                {
+                    var groupId = request.GroupId.Value;
+                    query = query.Where(pp => pp.GroupId == groupId);
+                }
+
+                if (request.SupervisorId.HasValue)
+                {
+                    var supervisorId = request.SupervisorId.Value;
+                    query = query.Where(pp => pp.SubmittedBy == supervisorId ||
+                                              (pp.Group != null && pp.Group.SupervisorId == supervisorId));
+                }
+
+                if (request.FromDate.HasValue)
+                {
+                    var fromUtc = request.FromDate.Value.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(request.FromDate.Value, DateTimeKind.Utc)
+                        : request.FromDate.Value.ToUniversalTime();
+                    query = query.Where(pp => pp.ApprovedAt >= fromUtc);
+                }
+
+                if (request.ToDate.HasValue)
+                {
+                    var toUtc = request.ToDate.Value.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(request.ToDate.Value, DateTimeKind.Utc)
+                        : request.ToDate.Value.ToUniversalTime();
+                    query = query.Where(pp => pp.ApprovedAt <= toUtc);
+                }
+
+                var productionPlan = await query
+                    .Include(g => g.Group)
+                    .Include(su => su.Submitter)
+                    .Include(ap => ap.Approver)
+                    .Include(s => s.CurrentProductionStages).ThenInclude(t => t.ProductionPlanTasks)
+                    .AsSplitQuery()
+                    .OrderByDescending(pp => pp.ApprovedAt)
+                    .ThenBy(pp => pp.BasePlantingDate)
+                    .ToListAsync(cancellationToken);
+
                 _logger.LogInformation("Found {Count} approved production plans", productionPlan.Count);
 
                 if (!productionPlan.Any())

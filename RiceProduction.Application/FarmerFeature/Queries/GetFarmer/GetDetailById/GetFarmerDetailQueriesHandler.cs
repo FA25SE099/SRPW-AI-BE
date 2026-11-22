@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Mappings;
@@ -12,12 +12,12 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailBy
 {
     public class GetFarmerDetailQueriesHandler : IRequestHandler<GetFarmerDetailQueries, FarmerDetailDTO>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly ILogger<GetFarmerDetailQueriesHandler> _logger;
 
-        public GetFarmerDetailQueriesHandler(IUnitOfWork unitOfWork, ILogger<GetFarmerDetailQueriesHandler> logger)
+        public GetFarmerDetailQueriesHandler(IApplicationDbContext context, ILogger<GetFarmerDetailQueriesHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
         public async Task<FarmerDetailDTO> Handle(GetFarmerDetailQueries request, CancellationToken cancellationToken)
@@ -25,7 +25,23 @@ namespace RiceProduction.Application.FarmerFeature.Queries.GetFarmer.GetDetailBy
             try
             {
                 _logger.LogInformation("Retrieving detail farmer data with ID: {FarmerId}", request.FarmerId);
-                var farmer = await _unitOfWork.FarmerRepository.GetFarmerDetailByIdAsync(request.FarmerId, cancellationToken);
+
+                // Identity resolution keeps shared Group instances identical so Distinct() in ToDetailDto still works without tracking
+                var farmer = await _context.Farmers
+                    .AsNoTrackingWithIdentityResolution()
+                    .AsSplitQuery()
+                    .Include(f => f.OwnedPlots)
+                        .ThenInclude(p => p.GroupPlots)
+                            .ThenInclude(gp => gp.Group)
+                                .ThenInclude(g => g.ProductionPlans)
+                                    .ThenInclude(pp => pp.CurrentProductionStages)
+                                        .ThenInclude(ps => ps.ProductionPlanTasks)
+                    .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(g => g.YearSeason).ThenInclude(ys => ys.RiceVariety)
+                    .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(c => c.Cluster)
+                    .Include(f => f.OwnedPlots).ThenInclude(p => p.GroupPlots).ThenInclude(gp => gp.Group).ThenInclude(s => s.Supervisor)
+                    .Include(f => f.FarmerAssignments).ThenInclude(a => a.Supervisor)
+                    .FirstOrDefaultAsync(f => f.Id == request.FarmerId, cancellationToken);
+
                 if (farmer == null)
                 {
                     _logger.LogWarning("Farmer with Id:{FarmerId} not found", request.FarmerId);

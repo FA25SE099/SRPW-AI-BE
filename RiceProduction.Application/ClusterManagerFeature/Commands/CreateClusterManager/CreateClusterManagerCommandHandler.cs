@@ -1,17 +1,10 @@
 ﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.ClusterManagerFeature.Events;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
-using RiceProduction.Application.FarmerFeature.Events.SendEmailEvent;
 using RiceProduction.Domain.Entities;
 using RiceProduction.Domain.Enums;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using static RiceProduction.Application.Common.Constants.ApplicationMessages;
 
 namespace RiceProduction.Application.ClusterManagerFeature.Commands.CreateClusterManager
 {
@@ -19,20 +12,15 @@ namespace RiceProduction.Application.ClusterManagerFeature.Commands.CreateCluste
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILogger<CreateClusterManagerCommandHandler> _logger;
-        private readonly IPublisher _publisher;
-        private readonly IUnitOfWork _unitOfWork;
         private readonly IMediator _mediator;
+
         public CreateClusterManagerCommandHandler(
             UserManager<ApplicationUser> userManager,
             ILogger<CreateClusterManagerCommandHandler> logger,
-            IPublisher publisher,
-            IUnitOfWork unitOfWork,
             IMediator mediator)
         {
             _userManager = userManager;
             _logger = logger;
-            _publisher = publisher;
-            _unitOfWork = unitOfWork;
             _mediator = mediator;
         }
 
@@ -48,7 +36,8 @@ namespace RiceProduction.Application.ClusterManagerFeature.Commands.CreateCluste
                 }
 
                 // Check if phone number already exists
-                var existingPhone = _userManager.Users.Any(u => u.PhoneNumber == request.PhoneNumber);
+                var existingPhone = await _userManager.Users
+                    .AnyAsync(u => u.PhoneNumber == request.PhoneNumber, cancellationToken);
                 if (existingPhone)
                 {
                     return Result<Guid>.Failure($"User with phone number '{request.PhoneNumber}' already exists");

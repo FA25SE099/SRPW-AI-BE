@@ -17,14 +17,14 @@ namespace RiceProduction.Application.PlotFeature.Queries.GetPlotsAwaitingPolygon
 public class GetPlotsAwaitingPolygonQueryHandler 
     : IRequestHandler<GetPlotsAwaitingPolygonQuery, PagedResult<IEnumerable<PlotAwaitingPolygonDto>>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<GetPlotsAwaitingPolygonQueryHandler> _logger;
 
     public GetPlotsAwaitingPolygonQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<GetPlotsAwaitingPolygonQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
+        _context = context ?? throw new ArgumentNullException(nameof(context));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -40,14 +40,19 @@ public class GetPlotsAwaitingPolygonQueryHandler
                 "Fetching plots awaiting polygon - Page: {PageNumber}, PageSize: {PageSize}, ClusterManagerId: {ClusterManagerId}",
                 request.PageNumber, request.PageSize, request.ClusterManagerId);
 
-            Expression<Func<Plot, bool>> predicate = p => 
-                (p.Boundary == null || p.Status == PlotStatus.PendingPolygon) && 
-                p.Status != PlotStatus.Inactive;
+            var plotsQuery = _context.Plots
+                .AsNoTracking()
+                .Include(p => p.Farmer)
+                .Where(p => (p.Boundary == null || p.Status == PlotStatus.PendingPolygon) &&
+                            p.Status != PlotStatus.Inactive);
 
             if (request.ClusterManagerId.HasValue)
             {
-                var clusterManager = await _unitOfWork.ClusterManagerRepository
-                    .GetClusterManagerByIdAsync(request.ClusterManagerId.Value, cancellationToken);
+                var clusterManager = await _context.ClusterManagers
+                    .AsNoTracking()
+                    .Where(cm => cm.Id == request.ClusterManagerId.Value)
+                    .Select(cm => new { cm.ClusterId })
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 if (clusterManager == null)
                 {
@@ -61,34 +66,31 @@ public class GetPlotsAwaitingPolygonQueryHandler
                 }
 
                 var targetClusterId = clusterManager.ClusterId;
-                predicate = predicate.And(p => p.Farmer != null && p.Farmer.ClusterId == targetClusterId);
+                plotsQuery = plotsQuery.Where(p => p.Farmer != null && p.Farmer.ClusterId == targetClusterId);
             }
             else if (request.ClusterId.HasValue)
             {
-                predicate = predicate.And(p => p.Farmer != null && p.Farmer.ClusterId == request.ClusterId.Value);
+                var clusterId = request.ClusterId.Value;
+                plotsQuery = plotsQuery.Where(p => p.Farmer != null && p.Farmer.ClusterId == clusterId);
             }
 
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var search = request.SearchTerm.Trim();
-                predicate = predicate.And(p =>
+                var searchLower = search.ToLower();
+                plotsQuery = plotsQuery.Where(p =>
                     (p.SoThua.HasValue && p.SoThua.Value.ToString().Contains(search)) ||
                     (p.SoTo.HasValue && p.SoTo.Value.ToString().Contains(search)) ||
-                    (p.Farmer != null && p.Farmer.FullName.Contains(search, StringComparison.OrdinalIgnoreCase))
+                    (p.Farmer != null && p.Farmer.FullName != null && p.Farmer.FullName.ToLower().Contains(searchLower))
                 );
             }
 
-            var plotsQuery = _unitOfWork.Repository<Plot>()
-                .GetQueryable()
-                .Include(p => p.Farmer)
-                .Where(predicate);
+            await MarkOverdueTasksLateAsync(cancellationToken);
 
-            var activeTasksQuery = _unitOfWork.Repository<PlotPolygonTask>()
-                .GetQueryable()
+            var activeTasksQuery = _context.PlotPolygonTasks
+                .AsNoTracking()
                 .Include(t => t.AssignedToSupervisor)
                 .Where(t => t.Status != "Completed" && t.Status != "Cancelled");
-
-            await MarkOverdueTasksLateAsync(activeTasksQuery, cancellationToken);
 
             var combinedQuery = from plot in plotsQuery
                                 join task in activeTasksQuery on plot.Id equals task.PlotId into taskGroup
@@ -142,14 +144,15 @@ public class GetPlotsAwaitingPolygonQueryHandler
         }
     }
 
-    private async Task MarkOverdueTasksLateAsync(
-        IQueryable<PlotPolygonTask> activeTasksQuery,
-        CancellationToken cancellationToken)
+    private async Task MarkOverdueTasksLateAsync(CancellationToken cancellationToken)
     {
-        var tasksToUpdate = await activeTasksQuery
-            .Where(t => t.Status != "Late" &&
-                       (t.Status == "Pending" || t.Status == "InProgress") &&
-                       (DateTime.UtcNow - t.AssignedAt).Days > 5)
+        // Keep tracking enabled on this query so overdue task status mutations are persisted.
+        var tasksToUpdate = await _context.PlotPolygonTasks
+            .Where(t => t.Status != "Completed" &&
+                        t.Status != "Cancelled" &&
+                        t.Status != "Late" &&
+                        (t.Status == "Pending" || t.Status == "InProgress") &&
+                        (DateTime.UtcNow - t.AssignedAt).Days > 5)
             .ToListAsync(cancellationToken);
 
         if (!tasksToUpdate.Any())
@@ -162,7 +165,7 @@ public class GetPlotsAwaitingPolygonQueryHandler
             task.Status = "Late";
         }
 
-        await _unitOfWork.CompleteAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Updated {Count} polygon tasks to Late status", tasksToUpdate.Count);
     }
 
@@ -265,4 +268,3 @@ public static class ExpressionExtensions
         return Expression.Lambda<Func<T, bool>>(body, parameter);
     }
 }
-

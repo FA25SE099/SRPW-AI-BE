@@ -1,39 +1,41 @@
 using FluentAssertions;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
+using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.StandardPlanFeature.Commands.UpdateStandardPlan;
+using RiceProduction.Application.StandardPlanFeature.Events;
 using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.StandardPlanFeature;
 
 /// <summary>
 /// Tests for UpdateStandardPlanCommandHandler - validates standard plan updates
 /// </summary>
-public class UpdateStandardPlanCommandHandlerTests
+public class UpdateStandardPlanCommandHandlerTests : IDisposable
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<StandardPlan>> _mockStandardPlanRepo;
+    private readonly TestApplicationDbContext _context;
     private readonly Mock<IMediator> _mockMediator;
     private readonly Mock<ILogger<UpdateStandardPlanCommandHandler>> _mockLogger;
     private readonly UpdateStandardPlanCommandHandler _handler;
 
     public UpdateStandardPlanCommandHandlerTests()
     {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockStandardPlanRepo = new Mock<IGenericRepository<StandardPlan>>();
+        _context = TestApplicationDbContext.Create();
         _mockMediator = new Mock<IMediator>();
         _mockLogger = new Mock<ILogger<UpdateStandardPlanCommandHandler>>();
 
-        _mockUnitOfWork.Setup(u => u.Repository<StandardPlan>()).Returns(_mockStandardPlanRepo.Object);
-
         _handler = new UpdateStandardPlanCommandHandler(
-            _mockUnitOfWork.Object,
+            _context,
             _mockMediator.Object,
             _mockLogger.Object);
+    }
+
+    public void Dispose()
+    {
+        _context.Dispose();
     }
 
     [Fact]
@@ -49,6 +51,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var command = new UpdateStandardPlanCommand
         {
@@ -59,15 +63,6 @@ public class UpdateStandardPlanCommandHandlerTests
             IsActive = true
         };
 
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.Update(It.IsAny<StandardPlan>()))
-            .Verifiable();
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
 
@@ -77,7 +72,6 @@ public class UpdateStandardPlanCommandHandlerTests
         existingPlan.PlanName.Should().Be("Updated Plan Name");
         existingPlan.Description.Should().Be("Updated Description");
         existingPlan.TotalDurationDays.Should().Be(100);
-        _mockStandardPlanRepo.Verify(r => r.Update(It.IsAny<StandardPlan>()), Times.Once);
     }
 
     [Fact]
@@ -90,9 +84,6 @@ public class UpdateStandardPlanCommandHandlerTests
             PlanName = "Test",
             TotalDurationDays = 90
         };
-
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync((StandardPlan?)null);
 
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
@@ -115,6 +106,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var command = new UpdateStandardPlanCommand
         {
@@ -124,12 +117,6 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
-
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
 
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
@@ -152,6 +139,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var command = new UpdateStandardPlanCommand
         {
@@ -160,12 +149,6 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 120,
             IsActive = true
         };
-
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
 
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
@@ -187,6 +170,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var command = new UpdateStandardPlanCommand
         {
@@ -195,12 +180,6 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = false
         };
-
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
 
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
@@ -222,6 +201,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = false
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var command = new UpdateStandardPlanCommand
         {
@@ -230,12 +211,6 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
-
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
 
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
@@ -258,6 +233,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var longDescription = string.Join(" ", Enumerable.Repeat("Detailed plan description with comprehensive information.", 20));
 
@@ -269,12 +246,6 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
-
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
 
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
@@ -296,6 +267,10 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
+
+        _context.SaveChangesException = new Exception("Database error");
 
         var command = new UpdateStandardPlanCommand
         {
@@ -304,12 +279,6 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
-
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ThrowsAsync(new Exception("Database error"));
 
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
@@ -330,6 +299,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var command = new UpdateStandardPlanCommand
         {
@@ -339,19 +310,13 @@ public class UpdateStandardPlanCommandHandlerTests
             IsActive = false // Status change
         };
 
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         _mockMediator.Verify(m => m.Publish(
-            It.IsAny<INotification>(),
+            It.Is<StandardPlanChangedEvent>(e => e.StandardPlanId == planId && e.ChangeType == ChangeType.StatusChanged),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -367,6 +332,8 @@ public class UpdateStandardPlanCommandHandlerTests
             TotalDurationDays = 90,
             IsActive = true
         };
+        _context.StandardPlans.Add(existingPlan);
+        await _context.SaveChangesAsync();
 
         var command = new UpdateStandardPlanCommand
         {
@@ -376,20 +343,13 @@ public class UpdateStandardPlanCommandHandlerTests
             IsActive = true // No status change
         };
 
-        _mockStandardPlanRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<StandardPlan, bool>>>()))
-            .ReturnsAsync(existingPlan);
-
-        _mockStandardPlanRepo.Setup(r => r.SaveChangesAsync())
-            .ReturnsAsync(1);
-
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         _mockMediator.Verify(m => m.Publish(
-            It.IsAny<INotification>(),
+            It.Is<StandardPlanChangedEvent>(e => e.StandardPlanId == planId && e.ChangeType == ChangeType.Updated),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }
-

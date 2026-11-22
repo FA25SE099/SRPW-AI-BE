@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
@@ -14,14 +15,14 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
 {
     private const decimal DefaultTolerancePercent = 10;
 
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<ValidatePolygonAreaQueryHandler> _logger;
 
     public ValidatePolygonAreaQueryHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<ValidatePolygonAreaQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -31,11 +32,14 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
         {
             // When caller passes the default value, fall back to the configured system setting
             var tolerancePercent = request.TolerancePercent == DefaultTolerancePercent
-                ? await GetToleranceFromSystemSettings()
+                ? await GetToleranceFromSystemSettings(cancellationToken)
                 : request.TolerancePercent;
 
-            var plot = await _unitOfWork.Repository<Plot>()
-                .FindAsync(p => p.Id == request.PlotId);
+            var plot = await _context.Plots
+                .AsNoTracking()
+                .Where(p => p.Id == request.PlotId)
+                .Select(p => new Plot { Id = p.Id, Area = p.Area })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (plot == null)
             {
@@ -111,14 +115,17 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
         }
     }
 
-    private async Task<decimal> GetToleranceFromSystemSettings()
+    private async Task<decimal> GetToleranceFromSystemSettings(CancellationToken cancellationToken)
     {
         try
         {
-            var setting = await _unitOfWork.Repository<SystemSetting>()
-                .FindAsync(s => s.SettingKey == "PolygonAreaTolerancePercent");
+            var settingValue = await _context.SystemSettings
+                .AsNoTracking()
+                .Where(s => s.SettingKey == "PolygonAreaTolerancePercent")
+                .Select(s => s.SettingValue)
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (setting != null && decimal.TryParse(setting.SettingValue, out var value))
+            if (settingValue != null && decimal.TryParse(settingValue, out var value))
             {
                 return value;
             }
@@ -131,4 +138,3 @@ public class ValidatePolygonAreaQueryHandler : IRequestHandler<ValidatePolygonAr
         return DefaultTolerancePercent;
     }
 }
-

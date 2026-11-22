@@ -1,21 +1,21 @@
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
 using RiceProduction.Application.RiceVarietyFeature.Events;
-using RiceProduction.Domain.Entities;
 
 namespace RiceProduction.Application.RiceVarietyFeature.Commands.DeleteRiceVariety
 {
     public class DeleteRiceVarietyCommandHandler : IRequestHandler<DeleteRiceVarietyCommand, Result<Guid>>
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IApplicationDbContext _context;
         private readonly IMediator _mediator;
         private readonly ILogger<DeleteRiceVarietyCommandHandler> _logger;
 
-        public DeleteRiceVarietyCommandHandler(IUnitOfWork unitOfWork, IMediator mediator, ILogger<DeleteRiceVarietyCommandHandler> logger)
+        public DeleteRiceVarietyCommandHandler(IApplicationDbContext context, IMediator mediator, ILogger<DeleteRiceVarietyCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _mediator = mediator;
             _logger = logger;
         }
@@ -24,17 +24,16 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.DeleteRiceVarie
         {
             try
             {
-                var riceVarietyRepo = _unitOfWork.Repository<RiceVariety>();
-
-                var variety = await riceVarietyRepo.FindAsync(v => v.Id == request.RiceVarietyId);
+                var variety = await _context.RiceVarieties
+                    .FirstOrDefaultAsync(v => v.Id == request.RiceVarietyId, cancellationToken);
                 if (variety == null)
                 {
                     return Result<Guid>.Failure($"Rice variety with ID {request.RiceVarietyId} not found");
                 }
 
                 variety.IsActive = false;
-                riceVarietyRepo.Update(variety);
-                await _unitOfWork.CompleteAsync();
+                _context.RiceVarieties.Update(variety);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 await _mediator.Publish(new RiceVarietyChangedEvent(request.RiceVarietyId, ChangeType.Deleted), cancellationToken);
 
@@ -49,4 +48,3 @@ namespace RiceProduction.Application.RiceVarietyFeature.Commands.DeleteRiceVarie
         }
     }
 }
-

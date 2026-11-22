@@ -8,12 +8,12 @@ namespace RiceProduction.Application.LateFarmerRecordFeature.Commands.CreateLate
 
 public class CreateLateFarmerRecordCommandHandler : IRequestHandler<CreateLateFarmerRecordCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CreateLateFarmerRecordCommandHandler> _logger;
 
-    public CreateLateFarmerRecordCommandHandler(IUnitOfWork unitOfWork, ILogger<CreateLateFarmerRecordCommandHandler> logger)
+    public CreateLateFarmerRecordCommandHandler(IApplicationDbContext context, ILogger<CreateLateFarmerRecordCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -24,8 +24,8 @@ public class CreateLateFarmerRecordCommandHandler : IRequestHandler<CreateLateFa
             _logger.LogInformation("Creating late farmer record for cultivation task {TaskId}", request.CultivationTaskId);
 
             // 1. Get the cultivation task with all necessary navigation properties for validation
-            var cultivationTask = await _unitOfWork.Repository<CultivationTask>()
-                .GetQueryable()
+            var cultivationTask = await _context.CultivationTasks
+                .AsNoTracking()
                 .Include(ct => ct.PlotCultivation)
                     .ThenInclude(pc => pc.Plot)
                 .FirstOrDefaultAsync(ct => ct.Id == request.CultivationTaskId, cancellationToken);
@@ -59,8 +59,8 @@ public class CreateLateFarmerRecordCommandHandler : IRequestHandler<CreateLateFa
             };
 
             // 3. Add and save
-            await _unitOfWork.LateFarmerRecordRepository.AddAsync(lateFarmerRecord, cancellationToken);
-            await _unitOfWork.CompleteAsync();
+            _context.LateFarmerRecords.Add(lateFarmerRecord);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Successfully created late farmer record {RecordId} for farmer {FarmerId} on task {TaskId}",

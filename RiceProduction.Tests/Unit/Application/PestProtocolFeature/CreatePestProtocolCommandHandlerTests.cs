@@ -1,12 +1,11 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.PestProtocolFeature.Commands.CreatePestProtocol;
 using RiceProduction.Domain.Entities;
-using System.Linq.Expressions;
+using RiceProduction.Tests.Fixtures;
 using Xunit;
-using MediatR;
 
 namespace RiceProduction.Tests.Unit.Application.PestProtocolFeature;
 
@@ -15,37 +14,15 @@ namespace RiceProduction.Tests.Unit.Application.PestProtocolFeature;
 /// </summary>
 public class CreatePestProtocolCommandHandlerTests
 {
-    private readonly Mock<IUnitOfWork> _mockUnitOfWork;
-    private readonly Mock<IGenericRepository<PestProtocol>> _mockPestProtocolRepo;
-    private readonly Mock<IUser> _mockUser;
-    private readonly Mock<IMediator> _mockMediator;
-    private readonly Mock<ILogger<CreatePestProtocolCommandHandler>> _mockLogger;
-    private readonly CreatePestProtocolCommandHandler _handler;
-
-    public CreatePestProtocolCommandHandlerTests()
-    {
-        _mockUnitOfWork = new Mock<IUnitOfWork>();
-        _mockPestProtocolRepo = new Mock<IGenericRepository<PestProtocol>>();
-        _mockUser = new Mock<IUser>();
-        _mockMediator = new Mock<IMediator>();
-        _mockLogger = new Mock<ILogger<CreatePestProtocolCommandHandler>>();
-
-        _mockUnitOfWork.Setup(u => u.Repository<PestProtocol>()).Returns(_mockPestProtocolRepo.Object);
-
-        // Setup default authenticated user
-        _mockUser.Setup(u => u.Id).Returns(Guid.NewGuid());
-
-        _handler = new CreatePestProtocolCommandHandler(
-            _mockUnitOfWork.Object,
-            _mockUser.Object,
-            _mockMediator.Object,
-            _mockLogger.Object);
-    }
+    private readonly Mock<ILogger<CreatePestProtocolCommandHandler>> _mockLogger = new();
 
     [Fact]
     public async Task Handle_ValidProtocol_CreatesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Brown Planthopper Control",
@@ -56,47 +33,33 @@ public class CreatePestProtocolCommandHandlerTests
             Notes = "Apply during early morning or late evening"
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Callback<PestProtocol>(e => { if (e.Id == Guid.Empty) e.Id = Guid.NewGuid(); })
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Data.Should().NotBe(Guid.Empty);
-        _mockPestProtocolRepo.Verify(r => r.AddAsync(It.Is<PestProtocol>(
-            p => p.Name == command.Name && p.Type == command.Type)), Times.Once);
+        var saved = await context.PestProtocols.AsNoTracking().FirstOrDefaultAsync(p => p.Id == result.Data);
+        saved.Should().NotBeNull();
+        saved!.Name.Should().Be(command.Name);
+        saved.Type.Should().Be(command.Type);
     }
 
     [Fact]
     public async Task Handle_ProtocolWithoutOptionalFields_CreatesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Manual Pest Removal",
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -106,6 +69,18 @@ public class CreatePestProtocolCommandHandlerTests
     public async Task Handle_DuplicateProtocolName_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        context.PestProtocols.Add(new PestProtocol
+        {
+            Id = Guid.NewGuid(),
+            Name = "Existing Protocol",
+            Type = "Disease",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Existing Protocol",
@@ -113,22 +88,22 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(true);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("already exists"));
-        _mockPestProtocolRepo.Verify(r => r.AddAsync(It.IsAny<PestProtocol>()), Times.Never);
+        (await context.PestProtocols.CountAsync()).Should().Be(1);
     }
 
     [Fact]
     public async Task Handle_ProtocolWithMultipleImages_CreatesSuccessfully()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Comprehensive Pest Control",
@@ -143,28 +118,22 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        _mockPestProtocolRepo.Verify(r => r.AddAsync(It.Is<PestProtocol>(
-            p => p.ImageLinks != null && p.ImageLinks.Count == 3)), Times.Once);
+        var saved = await context.PestProtocols.AsNoTracking().FirstAsync(p => p.Id == result.Data);
+        saved.ImageLinks.Should().NotBeNull().And.HaveCount(3);
     }
 
     [Fact]
     public async Task Handle_LongDescription_StoresFullDescription()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var longDescription = string.Join(" ", Enumerable.Repeat(
             "Apply protocol according to guidelines. Monitor field conditions regularly.", 20));
 
@@ -176,28 +145,22 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        _mockPestProtocolRepo.Verify(r => r.AddAsync(It.Is<PestProtocol>(
-            p => p.Description != null && p.Description.Contains("Monitor field conditions"))), Times.Once);
+        var saved = await context.PestProtocols.AsNoTracking().FirstAsync(p => p.Id == result.Data);
+        saved.Description.Should().NotBeNull().And.Contain("Monitor field conditions");
     }
 
     [Fact]
     public async Task Handle_InactiveProtocol_CreatesWithInactiveStatus()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Archived Protocol",
@@ -205,28 +168,23 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = false
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        _mockPestProtocolRepo.Verify(r => r.AddAsync(It.Is<PestProtocol>(
-            p => p.IsActive == false)), Times.Once);
+        var saved = await context.PestProtocols.AsNoTracking().FirstAsync(p => p.Id == result.Data);
+        saved.IsActive.Should().BeFalse();
     }
 
     [Fact]
     public async Task Handle_DatabaseError_ReturnsFailure()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        context.SaveChangesException = new Exception("Database connection failed");
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Test Protocol",
@@ -234,17 +192,8 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Database connection failed"));
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();
@@ -255,6 +204,9 @@ public class CreatePestProtocolCommandHandlerTests
     public async Task Handle_ProtocolWithNotes_StoresNotes()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Standard Protocol",
@@ -264,28 +216,22 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        _mockPestProtocolRepo.Verify(r => r.AddAsync(It.Is<PestProtocol>(
-            p => p.Notes != null && p.Notes.Contains("safety precautions"))), Times.Once);
+        var saved = await context.PestProtocols.AsNoTracking().FirstAsync(p => p.Id == result.Data);
+        saved.Notes.Should().NotBeNull().And.Contain("safety precautions");
     }
 
     [Fact]
     public async Task Handle_SpecialCharactersInName_HandlesCorrectly()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Giao thức kiểm soát sâu bệnh #1",
@@ -294,17 +240,8 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -314,6 +251,9 @@ public class CreatePestProtocolCommandHandlerTests
     public async Task Handle_EmptyImageLinks_FiltersOut()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "Test Protocol",
@@ -322,29 +262,31 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(false);
-
-        _mockPestProtocolRepo.Setup(r => r.AddAsync(It.IsAny<PestProtocol>()))
-            .Returns(Task.CompletedTask);
-
-        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeTrue();
-        // The handler filters out empty/whitespace links, so only 2 valid links should remain
-        _mockPestProtocolRepo.Verify(r => r.AddAsync(It.Is<PestProtocol>(
-            p => p.ImageLinks != null && p.ImageLinks.Count == 2)), Times.Once);
+        var saved = await context.PestProtocols.AsNoTracking().FirstAsync(p => p.Id == result.Data);
+        saved.ImageLinks.Should().NotBeNull().And.HaveCount(2);
     }
 
     [Fact]
     public async Task Handle_CaseInsensitiveDuplicateCheck_DetectsDuplicate()
     {
         // Arrange
+        await using var context = TestApplicationDbContext.Create();
+        context.PestProtocols.Add(new PestProtocol
+        {
+            Id = Guid.NewGuid(),
+            Name = "brown planthopper",
+            Type = "Insect",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new CreatePestProtocolCommandHandler(context, _mockLogger.Object);
+
         var command = new CreatePestProtocolCommand
         {
             Name = "BROWN PLANTHOPPER",
@@ -352,12 +294,8 @@ public class CreatePestProtocolCommandHandlerTests
             IsActive = true
         };
 
-        // Simulate that "brown planthopper" already exists (lowercase)
-        _mockPestProtocolRepo.Setup(r => r.ExistsAsync(It.IsAny<Expression<Func<PestProtocol, bool>>>()))
-            .ReturnsAsync(true);
-
         // Act
-        var result = await _handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.Succeeded.Should().BeFalse();

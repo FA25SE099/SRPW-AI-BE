@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiceProduction.Application.Common.Interfaces;
 using RiceProduction.Application.Common.Models;
@@ -10,14 +11,14 @@ namespace RiceProduction.Application.MaterialDistributionFeature.Commands.Initia
 public class InitiateMaterialDistributionCommandHandler 
     : IRequestHandler<InitiateMaterialDistributionCommand, Result<InitiateMaterialDistributionResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<InitiateMaterialDistributionCommandHandler> _logger;
 
     public InitiateMaterialDistributionCommandHandler(
-        IUnitOfWork unitOfWork,
+        IApplicationDbContext context,
         ILogger<InitiateMaterialDistributionCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,8 +28,9 @@ public class InitiateMaterialDistributionCommandHandler
     {
         try
         {
-            var group = await _unitOfWork.Repository<Group>()
-                .FindAsync(g => g.Id == request.GroupId);
+            var group = await _context.Groups
+                .AsNoTracking()
+                .FirstOrDefaultAsync(g => g.Id == request.GroupId, cancellationToken);
 
             if (group == null)
                 return Result<InitiateMaterialDistributionResponse>.Failure("Group not found");
@@ -36,8 +38,9 @@ public class InitiateMaterialDistributionCommandHandler
             if (group.Status != GroupStatus.Active)
                 return Result<InitiateMaterialDistributionResponse>.Failure("Group must be in Active status");
 
-            var productionPlan = await _unitOfWork.Repository<ProductionPlan>()
-                .FindAsync(pp => pp.Id == request.ProductionPlanId && pp.GroupId == request.GroupId);
+            var productionPlan = await _context.ProductionPlans
+                .AsNoTracking()
+                .FirstOrDefaultAsync(pp => pp.Id == request.ProductionPlanId && pp.GroupId == request.GroupId, cancellationToken);
 
             if (productionPlan == null)
                 return Result<InitiateMaterialDistributionResponse>.Failure("Production plan not found");
@@ -45,29 +48,36 @@ public class InitiateMaterialDistributionCommandHandler
             if (productionPlan.Status != TaskStatus.Approved)
                 return Result<InitiateMaterialDistributionResponse>.Failure("Production plan must be approved");
 
-            var settings = await GetDistributionSettings();
+            var settings = await GetDistributionSettings(cancellationToken);
 
             var distributions = new List<MaterialDistribution>();
             var plotCultivationIds = request.Materials.Select(m => m.PlotCultivationId).Distinct().ToList();
             
-            var plotCultivations = await _unitOfWork.Repository<PlotCultivation>()
-                .ListAsync(pc => plotCultivationIds.Contains(pc.Id));
-            var plotCultivationDict = plotCultivations.ToDictionary(pc => pc.Id);
+            var plotCultivationDict = await _context.PlotCultivations
+                .AsNoTracking()
+                .Where(pc => plotCultivationIds.Contains(pc.Id))
+                .ToDictionaryAsync(pc => pc.Id, cancellationToken);
 
-            var plotIds = plotCultivations.Select(pc => pc.PlotId).ToList();
-            var plots = await _unitOfWork.Repository<Plot>()
-                .ListAsync(p => plotIds.Contains(p.Id));
-            var plotDict = plots.ToDictionary(p => p.Id);
+            var plotIds = plotCultivationDict.Values.Select(pc => pc.PlotId).Distinct().ToList();
+            var plotDict = await _context.Plots
+                .AsNoTracking()
+                .Where(p => plotIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.FarmerId })
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
 
-            var farmerIds = plots.Select(p => p.FarmerId).Distinct().ToList();
-            var farmers = await _unitOfWork.FarmerRepository
-                .ListAsync(f => farmerIds.Contains(f.Id));
-            var farmerDict = farmers.ToDictionary(f => f.Id);
+            var farmerIds = plotDict.Values.Select(p => p.FarmerId).Distinct().ToList();
+            var farmerDict = await _context.Farmers
+                .AsNoTracking()
+                .Where(f => farmerIds.Contains(f.Id))
+                .Select(f => new { f.Id, f.FullName })
+                .ToDictionaryAsync(f => f.Id, cancellationToken);
 
             var materialIds = request.Materials.Select(m => m.MaterialId).Distinct().ToList();
-            var materials = await _unitOfWork.Repository<Material>()
-                .ListAsync(m => materialIds.Contains(m.Id));
-            var materialDict = materials.ToDictionary(m => m.Id);
+            var materialDict = await _context.Materials
+                .AsNoTracking()
+                .Where(m => materialIds.Contains(m.Id))
+                .Select(m => new { m.Id, m.Name })
+                .ToDictionaryAsync(m => m.Id, cancellationToken);
 
             foreach (var item in request.Materials)
             {
@@ -77,12 +87,14 @@ public class InitiateMaterialDistributionCommandHandler
                 if (!materialDict.ContainsKey(item.MaterialId))
                     return Result<InitiateMaterialDistributionResponse>.Failure($"Material {item.MaterialId} not found");
 
-                var existingDistribution = await _unitOfWork.Repository<MaterialDistribution>()
-                    .FindAsync(md => md.PlotCultivationId == item.PlotCultivationId && 
+                var existingDistribution = await _context.MaterialDistributions
+                    .AsNoTracking()
+                    .AnyAsync(md => md.PlotCultivationId == item.PlotCultivationId && 
                                     md.MaterialId == item.MaterialId &&
-                                    md.Status != DistributionStatus.Rejected);
+                                    md.Status != DistributionStatus.Rejected,
+                              cancellationToken);
 
-                if (existingDistribution != null)
+                if (existingDistribution)
                     continue;
 
                 var scheduledDate = item.ScheduledDate;
@@ -101,11 +113,11 @@ public class InitiateMaterialDistributionCommandHandler
                     SupervisorConfirmationDeadline = supervisorDeadline
                 };
 
-                await _unitOfWork.Repository<MaterialDistribution>().AddAsync(distribution);
+                _context.MaterialDistributions.Add(distribution);
                 distributions.Add(distribution);
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Initiated {Count} material distributions for group {GroupId}",
@@ -119,15 +131,15 @@ public class InitiateMaterialDistributionCommandHandler
                 {
                     var plotCultivation = plotCultivationDict[d.PlotCultivationId];
                     var plot = plotDict[plotCultivation.PlotId];
-                    var farmer = farmerDict[plot.FarmerId];
+                    farmerDict.TryGetValue(plot.FarmerId, out var farmer);
                     var material = materialDict[d.MaterialId];
 
                     return new MaterialDistributionDto
                     {
                         Id = d.Id,
                         PlotCultivationId = d.PlotCultivationId,
-                        PlotName =  "Unknown",
-                        FarmerName = farmer.FullName ?? "Unknown",
+                        PlotName = "Unknown",
+                        FarmerName = farmer?.FullName ?? "Unknown",
                         MaterialId = d.MaterialId,
                         MaterialName = material.Name,
                         Quantity = d.QuantityDistributed,
@@ -150,11 +162,11 @@ public class InitiateMaterialDistributionCommandHandler
         }
     }
 
-    private async Task<DistributionSettings> GetDistributionSettings()
+    private async Task<DistributionSettings> GetDistributionSettings(CancellationToken cancellationToken)
     {
-        var daysBeforeTask = await GetSystemSettingInt("MaterialDistributionDaysBeforeTask", 7);
-        var supervisorWindow = await GetSystemSettingInt("SupervisorConfirmationWindowDays", 2);
-        var farmerWindow = await GetSystemSettingInt("FarmerConfirmationWindowDays", 3);
+        var daysBeforeTask = await GetSystemSettingInt("MaterialDistributionDaysBeforeTask", 7, cancellationToken);
+        var supervisorWindow = await GetSystemSettingInt("SupervisorConfirmationWindowDays", 2, cancellationToken);
+        var farmerWindow = await GetSystemSettingInt("FarmerConfirmationWindowDays", 3, cancellationToken);
 
         return new DistributionSettings
         {
@@ -164,10 +176,11 @@ public class InitiateMaterialDistributionCommandHandler
         };
     }
 
-    private async Task<int> GetSystemSettingInt(string key, int defaultValue)
+    private async Task<int> GetSystemSettingInt(string key, int defaultValue, CancellationToken cancellationToken)
     {
-        var setting = await _unitOfWork.Repository<SystemSetting>()
-            .FindAsync(s => s.SettingKey == key);
+        var setting = await _context.SystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SettingKey == key, cancellationToken);
 
         return setting != null && int.TryParse(setting.SettingValue, out var value)
             ? value

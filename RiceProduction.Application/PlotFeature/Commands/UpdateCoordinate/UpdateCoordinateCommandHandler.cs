@@ -1,10 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
@@ -16,29 +12,31 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate
 {
     public class UpdateCoordinateCommandHandler : IRequestHandler<UpdateCoordinateCommand, Result<bool>>
     {
-        IUnitOfWork _unitOfWork;
-        ILogger<UpdateCoordinateCommandHandler> _logger;
+        private readonly IApplicationDbContext _context;
+        private readonly ILogger<UpdateCoordinateCommandHandler> _logger;
 
-        public UpdateCoordinateCommandHandler(IUnitOfWork unitOfWork, ILogger<UpdateCoordinateCommandHandler> logger)
+        public UpdateCoordinateCommandHandler(IApplicationDbContext context, ILogger<UpdateCoordinateCommandHandler> logger)
         {
-            _unitOfWork = unitOfWork;
+            _context = context;
             _logger = logger;
         }
+
         public async Task<Result<bool>> Handle(UpdateCoordinateCommand request, CancellationToken cancellationToken)
         {
             try
             {
-                var plot = await _unitOfWork.Repository<Plot>().FindAsync(p => p.Id == request.PlotId);
+                var plot = await _context.Plots
+                    .FirstOrDefaultAsync(p => p.Id == request.PlotId, cancellationToken);
                 if (plot == null)
                 {
                     return Result<bool>.Failure("Plot not found");
                 }
-                NetTopologySuite.Geometries.Point? point;
+                Point? point;
                 try
                 {
                     var geoJsonReader = new GeoJsonReader();
                     var geometry = geoJsonReader.Read<Geometry>(request.CoordinateGeoJson);
-                    point = geometry as NetTopologySuite.Geometries.Point;
+                    point = geometry as Point;
                     if (point == null)
                     {
                         return Result<bool>.Failure("Invalid coordinate geometry. Must be a point type");
@@ -55,11 +53,11 @@ namespace RiceProduction.Application.PlotFeature.Commands.UpdateCoordinate
                     return Result<bool>.Failure($"Invalid GeoJSON format: {ex.Message}");
                 }
                 plot.Coordinate = point;
-                _unitOfWork.Repository<Plot>().Update(plot);
-                await _unitOfWork.CompleteAsync();
+                _context.Plots.Update(plot);
+                await _context.SaveChangesAsync(cancellationToken);
                 _logger.LogInformation(
-               "Updated coordinate (marker point) for Plot {PlotId} to [{Longitude}, {Latitude}]. Boundary unchanged.",
-               request.PlotId, point.X, point.Y);
+                    "Updated coordinate (marker point) for Plot {PlotId} to [{Longitude}, {Latitude}]. Boundary unchanged.",
+                    request.PlotId, point.X, point.Y);
 
                 return Result<bool>.Success(true);
             }

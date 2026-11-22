@@ -10,12 +10,12 @@ namespace RiceProduction.Application.MaterialFeature.Queries.CalculateStandardPl
 
 public class CalculateStandardPlanMaterialCostQueryHandler : IRequestHandler<CalculateStandardPlanMaterialCostQuery, Result<CalculateMaterialsCostByAreaResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CalculateStandardPlanMaterialCostQueryHandler> _logger;
 
-    public CalculateStandardPlanMaterialCostQueryHandler(IUnitOfWork unitOfWork, ILogger<CalculateStandardPlanMaterialCostQueryHandler> logger)
+    public CalculateStandardPlanMaterialCostQueryHandler(IApplicationDbContext context, ILogger<CalculateStandardPlanMaterialCostQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -23,14 +23,13 @@ public class CalculateStandardPlanMaterialCostQueryHandler : IRequestHandler<Cal
     {
         try
         {
-            var (effectiveArea, areaError) = await ResolveEffectiveAreaAsync(request);
+            var (effectiveArea, areaError) = await ResolveEffectiveAreaAsync(request, cancellationToken);
             if (areaError != null)
             {
                 return areaError;
             }
 
-            var standardPlan = await _unitOfWork.Repository<StandardPlan>()
-                .GetQueryable()
+            var standardPlan = await _context.StandardPlans
                 .AsNoTracking()
                 .Include(sp => sp.StandardPlanStages.OrderBy(stage => stage.SequenceOrder))
                     .ThenInclude(stage => stage.StandardPlanTasks.OrderBy(task => task.SequenceOrder))
@@ -63,9 +62,10 @@ public class CalculateStandardPlanMaterialCostQueryHandler : IRequestHandler<Cal
                 .Distinct()
                 .ToList();
 
-            var materials = await _unitOfWork.Repository<Material>().ListAsync(
-                filter: m => materialIds.Contains(m.Id) && m.IsActive
-            );
+            var materials = await _context.Materials
+                .AsNoTracking()
+                .Where(m => materialIds.Contains(m.Id) && m.IsActive)
+                .ToListAsync(cancellationToken);
 
             if (!materials.Any())
             {
@@ -73,7 +73,7 @@ public class CalculateStandardPlanMaterialCostQueryHandler : IRequestHandler<Cal
             }
 
             var materialsDict = materials.ToDictionary(m => m.Id, m => m);
-            var currentPrices = await MaterialCostHelper.GetCurrentPricesAsync(_unitOfWork, materialIds, currentDate);
+            var currentPrices = await MaterialCostHelper.GetCurrentPricesAsync(_context, materialIds, currentDate, cancellationToken);
 
             decimal totalCost = 0M;
             var taskCostBreakdowns = new List<TaskCostBreakdown>();
@@ -148,11 +148,16 @@ public class CalculateStandardPlanMaterialCostQueryHandler : IRequestHandler<Cal
     }
 
     private async Task<(decimal Area, Result<CalculateMaterialsCostByAreaResponse>? Error)> ResolveEffectiveAreaAsync(
-        CalculateStandardPlanMaterialCostQuery request)
+        CalculateStandardPlanMaterialCostQuery request,
+        CancellationToken cancellationToken)
     {
         if (request.PlotId.HasValue)
         {
-            var plot = await _unitOfWork.Repository<Plot>().FindAsync(p => p.Id == request.PlotId.Value);
+            var plot = await _context.Plots
+                .AsNoTracking()
+                .Where(p => p.Id == request.PlotId.Value)
+                .Select(p => new { p.Area })
+                .FirstOrDefaultAsync(cancellationToken);
             if (plot == null)
             {
                 return (0M, Result<CalculateMaterialsCostByAreaResponse>.Failure($"Plot with ID {request.PlotId.Value} not found.", "PlotNotFound"));

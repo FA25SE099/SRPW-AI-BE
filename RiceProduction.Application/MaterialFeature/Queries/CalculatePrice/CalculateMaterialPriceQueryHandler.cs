@@ -11,12 +11,12 @@ using System.Collections.Generic;
 namespace RiceProduction.Application.MaterialFeature.Queries.CalculatePrice;
 public class CalculateMaterialPriceQueryHandler : IRequestHandler<CalculateMaterialPriceQuery, Result<MaterialPriceResponse>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CalculateMaterialPriceQueryHandler> _logger;
 
-    public CalculateMaterialPriceQueryHandler(IUnitOfWork unitOfWork, ILogger<CalculateMaterialPriceQueryHandler> logger)
+    public CalculateMaterialPriceQueryHandler(IApplicationDbContext context, ILogger<CalculateMaterialPriceQueryHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
     }
 
@@ -27,19 +27,25 @@ public class CalculateMaterialPriceQueryHandler : IRequestHandler<CalculateMater
             var today = DateTime.UtcNow;
 
             // 1. Tải chi tiết Material (cần để lấy AmmountPerMaterial - Lượng/gói)
-            var material = await _unitOfWork.Repository<Material>().FindAsync(m => m.Id == request.MaterialId);
+            var material = await _context.Materials
+                .AsNoTracking()
+                .Where(m => m.Id == request.MaterialId)
+                .Select(m => new { m.Id, m.Name, m.Unit, m.AmmountPerMaterial, m.IsPartition })
+                .FirstOrDefaultAsync(cancellationToken);
             if (material == null)
             {
                 return Result<MaterialPriceResponse>.Failure("Material not found.", "MaterialNotFound");
             }
             
             // 2. Tải MaterialPrice có hiệu lực mới nhất
-            var latestPrice = await _unitOfWork.Repository<MaterialPrice>().ListAsync(
-                filter: p => p.MaterialId == request.MaterialId && p.ValidFrom <= today,
-                orderBy: q => q.OrderByDescending(p => p.ValidFrom)
-            );
-            
-            var effectivePrice = latestPrice.FirstOrDefault();
+            var effectivePrice = await _context.MaterialPrices
+                .AsNoTracking()
+                .Where(p => p.MaterialId == request.MaterialId
+                    && p.ValidFrom <= today
+                    && (!p.ValidTo.HasValue || p.ValidTo.Value >= today.Date))
+                .OrderByDescending(p => p.ValidFrom)
+                .Select(p => new { p.PricePerMaterial })
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (effectivePrice == null)
             {

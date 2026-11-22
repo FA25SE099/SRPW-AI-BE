@@ -16,18 +16,15 @@ namespace RiceProduction.Application.ReportFeature.Command;
 
 public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEmergencyPlanForPlotCommand, Result<Guid>>
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IApplicationDbContext _context;
     private readonly ILogger<CreateEmergencyPlanForPlotCommandHandler> _logger;
-    private readonly IMediator _mediator;
 
     public CreateEmergencyPlanForPlotCommandHandler(
-        IUnitOfWork unitOfWork,
-        ILogger<CreateEmergencyPlanForPlotCommandHandler> logger,
-        IMediator mediator)
+        IApplicationDbContext context,
+        ILogger<CreateEmergencyPlanForPlotCommandHandler> logger)
     {
-        _unitOfWork = unitOfWork;
+        _context = context;
         _logger = logger;
-        _mediator = mediator;
     }
 
     public async Task<Result<Guid>> Handle(CreateEmergencyPlanForPlotCommand request, CancellationToken cancellationToken)
@@ -41,8 +38,7 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
         try
         {
             // 1. Get Emergency Report with PlotCultivation → Plot
-            var emergencyReport = await _unitOfWork.Repository<EmergencyReport>()
-                .GetQueryable()
+            var emergencyReport = await _context.EmergencyReports
                 .Include(er => er.PlotCultivation)
                     .ThenInclude(pc => pc!.Plot)
                 .FirstOrDefaultAsync(er => er.Id == request.EmergencyReportId, cancellationToken);
@@ -62,9 +58,10 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
 
             var plotCultivation = emergencyReport.PlotCultivation!;
 
-            var plan = await _unitOfWork.Repository<ProductionPlan>()
-                .GetQueryable()
+            var plan = await _context.ProductionPlans
+                .AsNoTracking()
                 .Include(p => p.Group)
+                    .ThenInclude(g => g!.GroupPlots)
                 .FirstOrDefaultAsync(p => p.Id == request.ProductionPlanId, cancellationToken);
 
             if (plan == null)
@@ -74,7 +71,7 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                     "PlanNotFound");
             }
 
-            var plotBelongsToGroup = plan.Group?.GroupPlots?.Any(gp => gp.Plot.Id == plot.Id) ?? false;
+            var plotBelongsToGroup = plan.Group?.GroupPlots?.Any(gp => gp.PlotId == plot.Id) ?? false;
             if (!plotBelongsToGroup)
             {
                 _logger.LogWarning("Plot {PlotId} does not belong to Production Plan {PlanId} group, but continuing for emergency.", plot.Id, plan.Id);
@@ -88,8 +85,8 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
 
             if (requestedMaterialIds.Any())
             {
-                var existingMaterialIds = await _unitOfWork.Repository<Material>()
-                    .GetQueryable()
+                var existingMaterialIds = await _context.Materials
+                    .AsNoTracking()
                     .Where(m => requestedMaterialIds.Contains(m.Id))
                     .Select(m => m.Id)
                     .ToListAsync(cancellationToken);
@@ -103,8 +100,9 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                 }
             }
 
-            var existingVersions = await _unitOfWork.Repository<CultivationVersion>()
-                .ListAsync(v => v.PlotCultivationId == plotCultivation.Id);
+            var existingVersions = await _context.CultivationVersions
+                .Where(v => v.PlotCultivationId == plotCultivation.Id)
+                .ToListAsync(cancellationToken);
 
             if (existingVersions.Any(v =>
                 v.VersionName.Equals(request.NewVersionName.Trim(), StringComparison.OrdinalIgnoreCase)))
@@ -127,8 +125,8 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                 CreatedAt = DateTime.UtcNow,
             };
 
-            await _unitOfWork.Repository<CultivationVersion>().AddAsync(newVersion);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.CultivationVersions.Add(newVersion);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Created CultivationVersion '{VersionName}' (Order {Order}) for Plot {PlotId}",
                 newVersion.VersionName, newVersion.VersionOrder, plot.Id);
@@ -137,8 +135,8 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
             var cultivationTasks = BuildEmergencyCultivationTasks(
                 request, emergencyReport, plot, plotCultivation.Id, newVersion.Id);
 
-            await _unitOfWork.Repository<CultivationTask>().AddRangeAsync(cultivationTasks);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.CultivationTasks.AddRange(cultivationTasks);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Created {Count} standalone emergency CultivationTasks for Plot {SoThua}/{SoTo} ({Area:F2} ha)",
                 cultivationTasks.Count, plot.SoThua, plot.SoTo, plotArea);
@@ -150,14 +148,14 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
 
             if (existingVersions.Any())
             {
-                _unitOfWork.Repository<CultivationVersion>().UpdateRange(existingVersions);
+                _context.CultivationVersions.UpdateRange(existingVersions);
             }
 
             newVersion.IsActive = true;
             newVersion.ActivatedAt = DateTime.UtcNow;
-            _unitOfWork.Repository<CultivationVersion>().Update(newVersion);
+            _context.CultivationVersions.Update(newVersion);
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             emergencyReport.Status = AlertStatus.Resolved;
             emergencyReport.ResolvedBy = expertId;
@@ -166,8 +164,8 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                 $"Emergency resolved by creating version '{newVersion.VersionName}' with {cultivationTasks.Count} standalone tasks " +
                 $"on plot {plot.SoThua}/{plot.SoTo} ({plotArea:F2} ha).";
 
-            _unitOfWork.Repository<EmergencyReport>().Update(emergencyReport);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _context.EmergencyReports.Update(emergencyReport);
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Emergency Report {ReportId} resolved by Expert {ExpertId}. Created version '{VersionName}' with {TaskCount} independent tasks.",
@@ -219,7 +217,9 @@ public class CreateEmergencyPlanForPlotCommandHandler : IRequestHandler<CreateEm
                 TaskType = emergencyTask.TaskType ?? TaskType.PestControl,
                 Status = TaskStatus.EmergencyApproval,
                 ExecutionOrder = emergencyTask.ExecutionOrder ?? (i + 1),
-                ScheduledEndDate = emergencyTask.ScheduledEndDate ?? DateTime.UtcNow.AddDays(7),
+                ScheduledEndDate = emergencyTask.ScheduledEndDate.HasValue
+                    ? DateTime.SpecifyKind(emergencyTask.ScheduledEndDate.Value, DateTimeKind.Utc)
+                    : DateTime.UtcNow.AddDays(7),
 
                 AssignedToUserId = emergencyTask.AssignedToUserId,
                 AssignedToVendorId = emergencyTask.AssignedToVendorId,
